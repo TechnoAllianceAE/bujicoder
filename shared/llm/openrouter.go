@@ -46,7 +46,7 @@ func (o *OpenRouterProvider) StreamCompletion(ctx context.Context, req *Completi
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	httpReq.Header.Set("HTTP-Referer", "https://bujicoder.ai")
+	httpReq.Header.Set("HTTP-Referer", "https://bujicoder.com")
 	httpReq.Header.Set("X-Title", "BujiCoder")
 
 	resp, err := o.client.Do(httpReq)

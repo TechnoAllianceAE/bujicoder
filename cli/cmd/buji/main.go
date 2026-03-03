@@ -86,5 +86,5 @@ Both scrolling AND text selection work by default:
 - Use mouse to select text as usual in your terminal
 - Use Ctrl+C to quit
 
-For team features, visit https://bujicoder.ai`)
+For team features, visit https://bujicoder.com`)
 }

@@ -1207,7 +1207,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/usage" {
 					m.input = ""
-					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "Usage tracking available with BujiCoder Enterprise. Visit bujicoder.ai for details."})
+					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "Usage tracking available with BujiCoder Enterprise. Visit bujicoder.com for details."})
 					return m, nil
 				}
 
@@ -2633,7 +2633,7 @@ func renderWelcomeScreen(version, buildTime string, width int, collapsed bool) s
 		b.WriteString("  " + tipStyle.Render("*") + " " + descStyle.Render(t) + "\n")
 	}
 	b.WriteString("\n")
-	b.WriteString(descStyle.Render("  For teams: bujicoder.ai") + "\n\n")
+	b.WriteString(descStyle.Render("  For teams: bujicoder.com") + "\n\n")
 
 	return b.String()
 }

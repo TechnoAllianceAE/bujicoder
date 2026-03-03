@@ -122,7 +122,7 @@ Agent definitions are YAML files in `agents/`. You can customize them or add you
 
 Need team features like centralized billing, usage analytics, SSO, and shared agent configs?
 
-Visit [bujicoder.ai](https://bujicoder.ai) for BujiCoder Enterprise.
+Visit [bujicoder.com](https://bujicoder.com) for BujiCoder Enterprise.
 
 ## Contributing
 
