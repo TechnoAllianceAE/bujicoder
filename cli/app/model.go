@@ -67,6 +67,14 @@ var slashCommands = []struct{ cmd, desc string }{
 	{"/exit", "Exit BujiCoder"},
 }
 
+// modeOptions defines the available modes for the /mode picker.
+var modeOptions = []struct{ name, desc string }{
+	{"normal", "Balanced speed and quality"},
+	{"heavy", "Higher quality, slower responses"},
+	{"max", "Maximum quality for complex tasks"},
+	{"plan", "Read-only analysis and documentation"},
+}
+
 // Styles
 var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7C3AED"))
@@ -230,6 +238,15 @@ type Model struct {
 	acMatches []int // indices into slashCommands for current matches
 	acCursor  int   // selected item in acMatches
 	acVisible bool  // whether autocomplete dropdown is shown
+
+	// Mode picker state (shown when user types /mode without argument)
+	modePickerVisible bool
+	modePickerCursor  int
+
+	// Prompt history (Up/Down to recall previous inputs)
+	promptHistory []string // past user inputs, oldest first
+	historyIdx    int      // -1 = not browsing; 0..len-1 = browsing
+	historySaved  string   // input saved when user starts browsing
 }
 
 // NewModel creates the initial TUI model.
@@ -250,6 +267,7 @@ func NewModel(version, commit, buildTime string) Model {
 			costMode:       costmode.ModeNormal,
 			conversationID: uuid.NewString(),
 			mdRenderer:     mdRenderer,
+			historyIdx:     -1,
 		}
 	}
 
@@ -281,6 +299,7 @@ func NewModel(version, commit, buildTime string) Model {
 		unifiedCfg:       ucfg,
 		localStore:       localstore.NewStore(),
 		welcomeCollapsed: true,
+		historyIdx:       -1,
 	}
 }
 
@@ -1074,6 +1093,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 			if len(m.input) > 0 && m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
 				m.input = m.input[:len(m.input)-1]
+				m.historyIdx = -1 // reset history browsing on edit
 				m.spinnerFrame = 0
 				m.updateAutocomplete()
 			}
@@ -1136,6 +1156,38 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					}
 					return m, tea.Quit
 				}
+			}
+
+			// Handle mode picker selection.
+			if m.state == StateChat && m.modePickerVisible {
+				selected := modeOptions[m.modePickerCursor]
+				m.modePickerVisible = false
+				m.input = ""
+				if selected.name == "plan" {
+					m.planMode = true
+					m.costMode = costmode.ModeNormal
+					if m.unifiedCfg != nil {
+						m.unifiedCfg.CostMode = "plan"
+						_, _ = cliconfig.SaveUnifiedConfig(m.unifiedCfg)
+					}
+					m.messages = append(m.messages, ChatMessage{
+						Role:    "assistant",
+						Content: "Switched to plan mode\n\nIn plan mode, BujiCoder will only read code for understanding and create/modify .md documentation files. No source code changes will be made.",
+					})
+					return m, nil
+				}
+				newMode := costmode.ParseMode(selected.name)
+				m.costMode = newMode
+				m.planMode = false
+				if m.unifiedCfg != nil {
+					m.unifiedCfg.CostMode = string(newMode)
+					_, _ = cliconfig.SaveUnifiedConfig(m.unifiedCfg)
+				}
+				m.messages = append(m.messages, ChatMessage{
+					Role:    "assistant",
+					Content: fmt.Sprintf("Switched to %s mode", newMode),
+				})
+				return m, nil
 			}
 
 			if m.state == StateChat && !m.streaming && strings.TrimSpace(m.input) != "" {
@@ -1291,14 +1343,20 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					m.input = ""
 					parts := strings.Fields(userMsg)
 					if len(parts) < 2 {
-						modeLabel := string(m.costMode)
+						// Show mode picker dropdown
+						m.modePickerVisible = true
+						// Pre-select current mode
+						currentMode := string(m.costMode)
 						if m.planMode {
-							modeLabel = "plan"
+							currentMode = "plan"
 						}
-						m.messages = append(m.messages, ChatMessage{
-							Role:    "assistant",
-							Content: fmt.Sprintf("Current mode: %s\nAvailable: normal . heavy . max . plan", modeLabel),
-						})
+						m.modePickerCursor = 0
+						for i, opt := range modeOptions {
+							if opt.name == currentMode {
+								m.modePickerCursor = i
+								break
+							}
+						}
 						return m, nil
 					}
 					modeName := strings.ToLower(parts[1])
@@ -1330,6 +1388,8 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				}
 
 				m.messages = append(m.messages, ChatMessage{Role: "user", Content: userMsg})
+				m.promptHistory = append(m.promptHistory, userMsg)
+				m.historyIdx = -1
 				m.input = ""
 				m.streaming = true
 				m.streamBuf = ""
@@ -1375,14 +1435,27 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			// Accept autocomplete selection.
 			if m.state == StateChat && !m.streaming && m.acVisible && len(m.acMatches) > 0 {
 				selected := slashCommands[m.acMatches[m.acCursor]]
-				if selected.cmd == "/mode" {
-					m.input = selected.cmd + " "
-				} else {
-					m.input = selected.cmd
-				}
 				m.acVisible = false
 				m.acMatches = nil
 				m.acCursor = 0
+				if selected.cmd == "/mode" {
+					// Show mode picker instead of putting text in input
+					m.input = ""
+					m.modePickerVisible = true
+					currentMode := string(m.costMode)
+					if m.planMode {
+						currentMode = "plan"
+					}
+					m.modePickerCursor = 0
+					for i, opt := range modeOptions {
+						if opt.name == currentMode {
+							m.modePickerCursor = i
+							break
+						}
+					}
+				} else {
+					m.input = selected.cmd
+				}
 				return m, nil
 			}
 			if msg.String() == "right" {
@@ -1390,7 +1463,12 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "esc":
-			// Dismiss autocomplete first.
+			// Dismiss mode picker first.
+			if m.state == StateChat && m.modePickerVisible {
+				m.modePickerVisible = false
+				return m, nil
+			}
+			// Dismiss autocomplete.
 			if m.state == StateChat && m.acVisible {
 				m.acVisible = false
 				m.acMatches = nil
@@ -1406,6 +1484,24 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "up", "down", "pgup", "pgdown", "home", "end":
+			// Navigate mode picker.
+			if m.state == StateChat && m.modePickerVisible {
+				switch msg.String() {
+				case "up":
+					if m.modePickerCursor > 0 {
+						m.modePickerCursor--
+					} else {
+						m.modePickerCursor = len(modeOptions) - 1
+					}
+				case "down":
+					if m.modePickerCursor < len(modeOptions)-1 {
+						m.modePickerCursor++
+					} else {
+						m.modePickerCursor = 0
+					}
+				}
+				return m, nil
+			}
 			// Navigate autocomplete dropdown.
 			if m.state == StateChat && !m.streaming && m.acVisible && len(m.acMatches) > 0 {
 				switch msg.String() {
@@ -1478,6 +1574,33 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			// Prompt history navigation (Up/Down in input area).
+			if m.state == StateChat && !m.streaming && len(m.promptHistory) > 0 {
+				switch msg.String() {
+				case "up":
+					if m.historyIdx == -1 {
+						// Start browsing: save current input, go to most recent
+						m.historySaved = m.input
+						m.historyIdx = len(m.promptHistory) - 1
+					} else if m.historyIdx > 0 {
+						m.historyIdx--
+					}
+					m.input = m.promptHistory[m.historyIdx]
+					return m, nil
+				case "down":
+					if m.historyIdx >= 0 {
+						if m.historyIdx < len(m.promptHistory)-1 {
+							m.historyIdx++
+							m.input = m.promptHistory[m.historyIdx]
+						} else {
+							// Past the end: restore saved input
+							m.historyIdx = -1
+							m.input = m.historySaved
+						}
+						return m, nil
+					}
+				}
+			}
 			if m.state == StateChat && m.ready {
 				var cmd tea.Cmd
 				m.viewport, cmd = m.viewport.Update(msg)
@@ -1498,6 +1621,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					m.welcomeCollapsed = !m.welcomeCollapsed
 				}
 				m.input += msg.String()
+				m.historyIdx = -1 // reset history browsing on new input
 				m.spinnerFrame = 0
 				m.updateAutocomplete()
 			}
@@ -2910,6 +3034,9 @@ func (m Model) calcFooterHeight() int {
 	}
 	lines := wrapInput(m.input, innerWidth-1)
 	height := len(lines) + 4
+	if m.modePickerVisible {
+		height += len(modeOptions) + 1 // options + header
+	}
 	if m.acVisible && len(m.acMatches) > 0 {
 		height += len(m.acMatches)
 	}
@@ -2975,7 +3102,26 @@ func (m Model) renderFooter() string {
 	}
 
 	var acDropdown string
-	if m.acVisible && len(m.acMatches) > 0 {
+	if m.modePickerVisible {
+		currentMode := string(m.costMode)
+		if m.planMode {
+			currentMode = "plan"
+		}
+		var mp strings.Builder
+		mp.WriteString("  " + dimStyle.Render(fmt.Sprintf("Select mode (current: %s):", currentMode)) + "\n")
+		for i, opt := range modeOptions {
+			marker := "  "
+			if opt.name == currentMode {
+				marker = "* "
+			}
+			if i == m.modePickerCursor {
+				mp.WriteString("  " + promptStyle.Render("> ") + cmdStyle.Render(fmt.Sprintf("%-10s", marker+opt.name)) + " " + descStyle.Render(opt.desc) + "\n")
+			} else {
+				mp.WriteString("    " + dimStyle.Render(fmt.Sprintf("%-10s", marker+opt.name)) + " " + dimStyle.Render(opt.desc) + "\n")
+			}
+		}
+		acDropdown = mp.String()
+	} else if m.acVisible && len(m.acMatches) > 0 {
 		var ac strings.Builder
 		for i, idx := range m.acMatches {
 			sc := slashCommands[idx]
