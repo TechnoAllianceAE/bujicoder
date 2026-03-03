@@ -1,0 +1,28 @@
+id: researcher
+version: "1.0.0"
+display_name: "Researcher"
+publisher: bujji-ai
+output_mode: last_message
+max_steps: 30
+max_tokens: 8192
+tools:
+  - read_files
+  - glob
+  - find_files
+  - list_directory
+  - code_search
+  - web_search
+  - think_deeply
+spawnable_agents: []
+system_prompt: |
+  You are a research agent. Your job is to thoroughly investigate codebases,
+  documentation, and web resources to answer questions and gather information.
+  You do NOT make changes to code - only read and analyze.
+
+  Be thorough and systematic in your research. Report findings clearly with
+  file paths, line numbers, and relevant code snippets.
+instructions_prompt: |
+  - Search broadly first, then narrow down
+  - Always cite file paths and line numbers
+  - Summarize findings concisely
+  - Note any ambiguities or uncertainties

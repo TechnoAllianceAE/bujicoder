@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./... -race -v
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  guard:
+    name: Enterprise code guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for enterprise imports
+        run: |
+          if grep -r 'gateway/' --include='*.go' .; then
+            echo "ERROR: Found gateway/ imports in public repo"
+            exit 1
+          fi
+          if grep -r 'shared/database/' --include='*.go' .; then
+            echo "ERROR: Found shared/database/ imports in public repo"
+            exit 1
+          fi
+          if grep -r 'shared/cache/' --include='*.go' .; then
+            echo "ERROR: Found shared/cache/ imports in public repo"
+            exit 1
+          fi
+          if grep -r 'shared/events/' --include='*.go' .; then
+            echo "ERROR: Found shared/events/ imports in public repo"
+            exit 1
+          fi
+          if grep -r 'shared/auth/' --include='*.go' .; then
+            echo "ERROR: Found shared/auth/ imports in public repo"
+            exit 1
+          fi
+          if grep -r 'cli/sdk/' --include='*.go' .; then
+            echo "ERROR: Found cli/sdk/ imports in public repo"
+            exit 1
+          fi
+          echo "No enterprise imports found"

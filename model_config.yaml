@@ -1,0 +1,31 @@
+modes:
+    heavy:
+        main: x-ai/grok-code-fast-1
+        file_explorer: openai/gpt-oss-20b
+        sub_agent: z-ai/glm-5
+        agent_overrides:
+            editor: together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+            git_committer: openai/gpt-oss-120b
+            reviewer: moonshotai/kimi-k2.5
+            thinker: together/deepseek-ai/DeepSeek-R1
+    max:
+        main: minimax/minimax-m2.5
+        file_explorer: openai/gpt-oss-20b
+        sub_agent: together/MiniMaxAI/MiniMax-M2.5
+        agent_overrides:
+            editor: together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+            git_committer: openai/gpt-oss-120b
+            planner: together/Qwen/Qwen3.5-397B-A17B
+            researcher: together/MiniMaxAI/MiniMax-M2.5
+            reviewer: qwen/qwen3.5-122b-a10b
+            thinker: together/Qwen/Qwen3-235B-A22B-Thinking-2507
+    normal:
+        main: qwen/qwen3.5-122b-a10b
+        file_explorer: openai/gpt-oss-20b
+        sub_agent: together/deepseek-ai/DeepSeek-V3.1
+        agent_overrides:
+            editor: deepseek/deepseek-v3.2-speciale
+            git_committer: openai/gpt-oss-120b
+            planner: z-ai/glm-5
+            reviewer: together/moonshotai/Kimi-K2.5
+            thinker: together/meta-llama/Llama-3.3-70B-Instruct-Turbo

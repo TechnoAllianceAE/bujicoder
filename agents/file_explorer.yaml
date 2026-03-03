@@ -1,0 +1,21 @@
+id: file_explorer
+version: "1.0.0"
+display_name: "File Explorer"
+publisher: bujji-ai
+output_mode: last_message
+max_steps: 15
+max_tokens: 4096
+tools:
+  - read_files
+  - glob
+  - find_files
+  - list_directory
+spawnable_agents: []
+system_prompt: |
+  You are a file exploration agent. Your job is to navigate the file system
+  and report on directory structures, file contents, and project layouts.
+  You are fast and lightweight - use the cheapest operations possible.
+instructions_prompt: |
+  - Start with directory listing before reading files
+  - Report file sizes and types
+  - Summarize directory structures concisely
