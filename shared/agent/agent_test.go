@@ -25,7 +25,7 @@ max_tokens: 4096
 system_prompt: "You are a test agent."
 `
 	path := filepath.Join(dir, "test.yaml")
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	def, err := LoadFile(path)
 	if err != nil {
@@ -58,7 +58,7 @@ func TestLoadFileDefaults(t *testing.T) {
 model: openai/gpt-4
 `
 	path := filepath.Join(dir, "minimal.yaml")
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	def, err := LoadFile(path)
 	if err != nil {
@@ -81,7 +81,7 @@ func TestLoadFileMissingID(t *testing.T) {
 	yaml := `model: openai/gpt-4
 `
 	path := filepath.Join(dir, "bad.yaml")
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	_, err := LoadFile(path)
 	if err == nil {
@@ -94,7 +94,7 @@ func TestLoadFileNoModel(t *testing.T) {
 	yaml := `id: no-model
 `
 	path := filepath.Join(dir, "bad.yaml")
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	def, err := LoadFile(path)
 	if err != nil {
@@ -136,11 +136,11 @@ func TestLoadDir(t *testing.T) {
 	// Write two agent files
 	for _, id := range []string{"alpha", "beta"} {
 		yaml := "id: " + id + "\nmodel: test/model\n"
-		os.WriteFile(filepath.Join(dir, id+".yaml"), []byte(yaml), 0644)
+		_ = os.WriteFile(filepath.Join(dir, id+".yaml"), []byte(yaml), 0644)
 	}
 
 	// Write a non-yaml file that should be skipped
-	os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore me"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "readme.txt"), []byte("ignore me"), 0644)
 
 	reg := NewRegistry()
 	if err := reg.LoadDir(dir); err != nil {
