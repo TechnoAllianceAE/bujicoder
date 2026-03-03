@@ -125,10 +125,6 @@ func LoadFile(path string) (*Definition, error) {
 	if def.ID == "" {
 		return nil, fmt.Errorf("agent definition missing 'id' field")
 	}
-	if def.Model == "" {
-		return nil, fmt.Errorf("agent %s missing 'model' field", def.ID)
-	}
-
 	// Defaults
 	if def.OutputMode == "" {
 		def.OutputMode = "last_message"
@@ -151,9 +147,6 @@ func LoadBytes(data []byte, source string) (*Definition, error) {
 	}
 	if def.ID == "" {
 		return nil, fmt.Errorf("agent definition %s missing 'id' field", source)
-	}
-	if def.Model == "" {
-		return nil, fmt.Errorf("agent %s missing 'model' field", def.ID)
 	}
 	if def.OutputMode == "" {
 		def.OutputMode = "last_message"

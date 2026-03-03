@@ -89,16 +89,19 @@ func TestLoadFileMissingID(t *testing.T) {
 	}
 }
 
-func TestLoadFileMissingModel(t *testing.T) {
+func TestLoadFileNoModel(t *testing.T) {
 	dir := t.TempDir()
 	yaml := `id: no-model
 `
 	path := filepath.Join(dir, "bad.yaml")
 	os.WriteFile(path, []byte(yaml), 0644)
 
-	_, err := LoadFile(path)
-	if err == nil {
-		t.Fatal("expected error for missing model")
+	def, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if def.Model != "" {
+		t.Errorf("Model = %q, want empty", def.Model)
 	}
 }
 
