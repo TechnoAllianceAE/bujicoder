@@ -174,6 +174,7 @@ type Model struct {
 	err             error
 	costMode        costmode.Mode
 	planMode        bool
+	permissions     *tools.ProjectPermissions
 	conversationID  string
 
 	// Verbose streaming state
@@ -1945,6 +1946,17 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 		// Create tool registry with ask_user and approval wired to channels.
 		cwd, _ := os.Getwd()
+
+		// Load per-project permissions from .bujicoderrc.
+		perms := tools.LoadProjectPermissions(cwd)
+		m.permissions = perms
+		if perms != nil {
+			m.messages = append(m.messages, ChatMessage{
+				Role:    "assistant",
+				Content: fmt.Sprintf("Loaded project permissions from .bujicoderrc (mode: %s, %d command rules)", perms.Mode, perms.CommandRuleCount()),
+			})
+		}
+
 		m.toolRegistry = tools.NewRegistry(cwd, tools.RegistryOpts{
 			UserPrompt: func(question string) (string, error) {
 				m.askQuestionCh <- question
@@ -1956,6 +1968,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				approved := <-m.approvalRespCh
 				return approved, nil
 			},
+			Permissions: perms,
 		})
 
 		// Register MCP server tools if configured.
@@ -3049,7 +3062,11 @@ func (m Model) renderFooter() string {
 	if m.planMode {
 		modeIndicator = "plan"
 	}
-	status := fmt.Sprintf("  mode:%s . ctrl+y copy . ctrl+c quit . Up/Down scroll", modeIndicator)
+	permIndicator := ""
+	if m.permissions != nil {
+		permIndicator = fmt.Sprintf(" · permissions:%s", m.permissions.Mode)
+	}
+	status := fmt.Sprintf("  mode:%s%s . ctrl+y copy . ctrl+c quit . Up/Down scroll", modeIndicator, permIndicator)
 	if m.streaming && m.pendingApproval == "" && m.pendingQuestion == "" {
 		return dimStyle.Render(status)
 	}

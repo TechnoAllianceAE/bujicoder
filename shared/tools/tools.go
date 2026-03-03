@@ -64,8 +64,9 @@ type ApprovalFunc func(command, reason string) (bool, error)
 
 // RegistryOpts configures optional behaviour of the tool registry.
 type RegistryOpts struct {
-	UserPrompt UserPromptFunc
-	Approval   ApprovalFunc
+	UserPrompt  UserPromptFunc
+	Approval    ApprovalFunc
+	Permissions *ProjectPermissions
 }
 
 // NewRegistry creates a tool registry with all built-in tools.
@@ -80,17 +81,17 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 	r.Register(&Tool{
 		Name:        "read_files",
 		Description: "Read one or more files",
-		Execute:     readFiles(workDir),
+		Execute:     readFiles(workDir, o.Permissions),
 	})
 	r.Register(&Tool{
 		Name:        "write_file",
 		Description: "Write content to a file",
-		Execute:     writeFile(workDir),
+		Execute:     writeFile(workDir, o.Permissions),
 	})
 	r.Register(&Tool{
 		Name:        "str_replace",
 		Description: "Replace a string in a file",
-		Execute:     strReplace(workDir),
+		Execute:     strReplace(workDir, o.Permissions),
 	})
 	r.Register(&Tool{
 		Name:        "list_directory",
@@ -100,7 +101,7 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 	r.Register(&Tool{
 		Name:        "run_terminal_command",
 		Description: "Run a terminal command",
-		Execute:     runTerminalCommand(workDir, o.Approval),
+		Execute:     runTerminalCommand(workDir, o.Approval, o.Permissions),
 	})
 	r.Register(&Tool{
 		Name:        "glob",
@@ -153,7 +154,7 @@ func (r *Registry) List() []string {
 
 // --- Tool implementations ---
 
-func readFiles(workDir string) func(ctx context.Context, args json.RawMessage) (string, error) {
+func readFiles(workDir string, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
 			Paths []string `json:"paths"`
@@ -165,6 +166,10 @@ func readFiles(workDir string) func(ctx context.Context, args json.RawMessage) (
 		wd := effectiveWorkDir(ctx, workDir)
 		var result strings.Builder
 		for _, p := range params.Paths {
+			if perms.IsPathRestricted(p) {
+				result.WriteString(fmt.Sprintf("--- %s ---\nError: access denied: path is restricted by .bujicoderrc\n\n", p))
+				continue
+			}
 			absPath, err := safePath(wd, p)
 			if err != nil {
 				result.WriteString(fmt.Sprintf("--- %s ---\nError: %v\n\n", p, err))
@@ -181,7 +186,7 @@ func readFiles(workDir string) func(ctx context.Context, args json.RawMessage) (
 	}
 }
 
-func writeFile(workDir string) func(ctx context.Context, args json.RawMessage) (string, error) {
+func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
 			Path    string `json:"path"`
@@ -189,6 +194,10 @@ func writeFile(workDir string) func(ctx context.Context, args json.RawMessage) (
 		}
 		if err := json.Unmarshal(args, &params); err != nil {
 			return "", err
+		}
+
+		if perms.IsPathRestricted(params.Path) {
+			return "", fmt.Errorf("access denied: path %q is restricted by .bujicoderrc", params.Path)
 		}
 
 		absPath, err := safePath(effectiveWorkDir(ctx, workDir), params.Path)
@@ -205,7 +214,7 @@ func writeFile(workDir string) func(ctx context.Context, args json.RawMessage) (
 	}
 }
 
-func strReplace(workDir string) func(ctx context.Context, args json.RawMessage) (string, error) {
+func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
 			Path      string `json:"path"`
@@ -214,6 +223,10 @@ func strReplace(workDir string) func(ctx context.Context, args json.RawMessage) 
 		}
 		if err := json.Unmarshal(args, &params); err != nil {
 			return "", err
+		}
+
+		if perms.IsPathRestricted(params.Path) {
+			return "", fmt.Errorf("access denied: path %q is restricted by .bujicoderrc", params.Path)
 		}
 
 		absPath, err := safePath(effectiveWorkDir(ctx, workDir), params.Path)
@@ -316,7 +329,7 @@ func isDangerousCommand(cmd string) (bool, string) {
 	return false, ""
 }
 
-func runTerminalCommand(workDir string, approvalFn ApprovalFunc) func(ctx context.Context, args json.RawMessage) (string, error) {
+func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
 			Command string `json:"command"`
@@ -325,9 +338,32 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc) func(ctx contex
 			return "", err
 		}
 
+		// 1. Check .bujicoderrc command rules (first match wins).
+		if action := perms.CheckCommand(params.Command); action != "" {
+			switch action {
+			case ActionAllow:
+				// Explicitly allowed — skip all further checks.
+				goto execute
+			case ActionDeny:
+				return "", fmt.Errorf("BLOCKED by .bujicoderrc: command matches a deny rule.\nCommand: %s", params.Command)
+			case ActionAsk:
+				// Fall through to dangerous-command check + approval flow.
+			}
+		}
+
+		// 2. Check isDangerousCommand (hardcoded list).
 		if blocked, reason := isDangerousCommand(params.Command); blocked {
+			// 3. Apply permission mode.
+			if perms != nil && perms.Mode == ModeYolo {
+				// Yolo mode: auto-approve dangerous commands.
+				goto execute
+			}
+			if perms != nil && perms.Mode == ModeStrict {
+				return "", fmt.Errorf("BLOCKED (strict mode): %s. This command was not executed.\nCommand: %s", reason, params.Command)
+			}
+
+			// Ask mode (default).
 			if approvalFn == nil {
-				// No approval callback — hard-block (existing behaviour).
 				return "", fmt.Errorf("BLOCKED: %s. This command was not executed.\nPlease inform the user and let them run it manually.\nCommand: %s", reason, params.Command)
 			}
 			approved, err := approvalFn(params.Command, reason)
@@ -337,9 +373,9 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc) func(ctx contex
 			if !approved {
 				return "", fmt.Errorf("DENIED: user declined to run this command.\nCommand: %s\nReason: %s", params.Command, reason)
 			}
-			// Approved — fall through to execute.
 		}
 
+	execute:
 		cmd := exec.CommandContext(ctx, "sh", "-c", params.Command)
 		cmd.Dir = effectiveWorkDir(ctx, workDir)
 		output, err := cmd.CombinedOutput()
