@@ -151,7 +151,7 @@ func TestLoadModelConfigWithAgentOverrides(t *testing.T) {
       editor: "model-d"
       thinker: "model-e"
 `
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	cfg, err := LoadModelConfig(path)
 	if err != nil {
@@ -190,7 +190,7 @@ func TestLoadModelConfig(t *testing.T) {
     file_explorer: "model-e"
     sub_agent: "model-f"
 `
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	cfg, err := LoadModelConfig(path)
 	if err != nil {
@@ -213,7 +213,7 @@ func TestNewResolver(t *testing.T) {
     file_explorer: "test/model"
     sub_agent: "test/model"
 `
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	r, err := NewResolver(path)
 	if err != nil {
@@ -234,7 +234,7 @@ func TestUpdateConfigPersists(t *testing.T) {
     file_explorer: "old/model"
     sub_agent: "old/model"
 `
-	os.WriteFile(path, []byte(yaml), 0644)
+	_ = os.WriteFile(path, []byte(yaml), 0644)
 
 	r, err := NewResolver(path)
 	if err != nil {

@@ -856,26 +856,6 @@ func initLocalRuntimeFromConfig(ucfg *cliconfig.UnifiedConfig) tea.Cmd {
 	}
 }
 
-// initLocalRuntimeDirect loads agents and model config from disk and registers
-// LLM providers directly from environment variables. No gateway needed.
-func initLocalRuntimeDirect(agentsDir, modelConfigPath string) tea.Cmd {
-	return func() tea.Msg {
-		agentReg := agent.NewRegistry()
-		if err := agentReg.LoadDir(agentsDir); err != nil {
-			return runtimeInitMsg{err: fmt.Errorf("load agents from %s: %w", agentsDir, err)}
-		}
-
-		var resolver *costmode.Resolver
-		if r, err := costmode.NewResolver(modelConfigPath); err == nil {
-			resolver = r
-		}
-
-		return runtimeInitMsg{
-			agentRegistry: agentReg,
-			modelResolver: resolver,
-		}
-	}
-}
 
 // localModelsInfo builds a string showing registered providers and model config for local mode.
 func (m Model) localModelsInfo() string {

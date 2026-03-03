@@ -601,13 +601,6 @@ func askUser(promptFn UserPromptFunc) func(ctx context.Context, args json.RawMes
 	}
 }
 
-func resolvePath(workDir, path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(workDir, path)
-}
-
 // safePath resolves a path relative to workDir and ensures the result stays
 // within workDir. Returns an error if the path escapes the boundary.
 func safePath(workDir, path string) (string, error) {
