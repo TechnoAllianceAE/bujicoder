@@ -16,14 +16,15 @@ import (
 
 // ModelInfo holds metadata about an available model.
 type ModelInfo struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	Source          string  `json:"source"`
-	ContextLength   int     `json:"context_length"`
-	MaxOutputTokens int     `json:"max_output_tokens,omitempty"`
-	PromptCost      float64 `json:"prompt_cost"`
-	CompletionCost  float64 `json:"completion_cost"`
-	Created         int64   `json:"created,omitempty"`
+	ID              string   `json:"id"`
+	Name            string   `json:"name"`
+	Source          string   `json:"source"`
+	ContextLength   int      `json:"context_length"`
+	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
+	PromptCost      float64  `json:"prompt_cost"`
+	CompletionCost  float64  `json:"completion_cost"`
+	Created         int64    `json:"created,omitempty"`
+	InputModalities []string `json:"input_modalities,omitempty"`
 }
 
 type modelEntry struct {
@@ -38,6 +39,9 @@ type modelEntry struct {
 		Prompt     string `json:"prompt"`
 		Completion string `json:"completion"`
 	} `json:"pricing"`
+	Architecture struct {
+		InputModalities []string `json:"input_modalities"`
+	} `json:"architecture"`
 }
 
 type modelsFile struct {
@@ -121,6 +125,9 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 			info.CompletionCost = rate
 		}
 		info.Created = entry.Created
+		if len(entry.Architecture.InputModalities) > 0 {
+			info.InputModalities = entry.Architecture.InputModalities
+		}
 		models[entry.ID] = info
 	}
 	return models
@@ -450,6 +457,22 @@ func (c *ModelCatalog) Get(model string) (ModelInfo, bool) {
 	defer c.mu.RUnlock()
 	info, ok := c.models[model]
 	return info, ok
+}
+
+// SupportsVision returns true if the model supports image input.
+func (c *ModelCatalog) SupportsVision(modelID string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	info, ok := c.models[modelID]
+	if !ok {
+		return false
+	}
+	for _, m := range info.InputModalities {
+		if m == "image" {
+			return true
+		}
+	}
+	return false
 }
 
 // Len returns the number of models in the catalog.
