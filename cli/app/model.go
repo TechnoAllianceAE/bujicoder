@@ -215,7 +215,6 @@ type Model struct {
 
 	// Setup wizard state
 	setupStep       int            // setup step constant (see setup.go)
-	setupChoice     int            // legacy (unused, kept for compat)
 	setupAPIKey     string         // API key being entered
 	setupMode       int            // 0=quick, 1=advanced
 	setupProvider   int            // advanced provider index (0-5)
@@ -3112,16 +3111,6 @@ func (m Model) renderFooter() string {
 	}
 
 	return promptBanner + acDropdown + box + "\n" + dimStyle.Render(status)
-}
-
-// completeStandaloneSetup is a backward-compat wrapper (delegates to setup.go).
-func (m Model) completeStandaloneSetup(providerIdx int, apiKey string) (Model, tea.Cmd) {
-	keys := []string{"openrouter", "groq", "cerebras", "together", "openai", "anthropic"}
-	provider := "openrouter"
-	if providerIdx >= 0 && providerIdx < len(keys) {
-		provider = keys[providerIdx]
-	}
-	return m.completeSetup(provider, apiKey, nil)
 }
 
 // View renders the TUI.
