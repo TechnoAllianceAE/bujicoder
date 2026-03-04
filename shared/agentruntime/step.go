@@ -30,6 +30,7 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 		Model:    cfg.AgentDef.Model,
 		Messages: st.messages,
 		CostMode: string(cfg.CostMode),
+		AgentID:  cfg.AgentDef.ID,
 	}
 
 	if cfg.AgentDef.SystemPrompt != "" {

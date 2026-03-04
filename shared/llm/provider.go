@@ -125,6 +125,7 @@ type CompletionRequest struct {
 	Temperature  *float32
 	MaxTokens    *int
 	CostMode     string // Cost mode for model routing (normal, heavy, max)
+	AgentID      string // Agent ID for per-agent model overrides (e.g., "base", "editor")
 }
 
 // Provider is the interface that LLM provider adapters must implement.

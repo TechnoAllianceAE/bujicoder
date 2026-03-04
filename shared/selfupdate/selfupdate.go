@@ -33,6 +33,12 @@ type UpdateInfo struct {
 // CheckForUpdate checks GitHub for a newer version of BujiCoder.
 // Returns nil (no error) if already up-to-date, version is "dev", or checks are disabled.
 func CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
+	return CheckForUpdateFrom(ctx, githubOwner, githubRepo, "buji_")
+}
+
+// CheckForUpdateFrom checks a specific GitHub owner/repo for a newer version.
+// The filter parameter controls which release assets to match (e.g. "buji_" or "bujicoder_").
+func CheckForUpdateFrom(ctx context.Context, owner, repo, filter string) (*UpdateInfo, error) {
 	if buildinfo.Version == "dev" || buildinfo.Version == "" {
 		return nil, nil
 	}
@@ -43,12 +49,12 @@ func CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 
-	updater, err := newUpdater()
+	updater, err := newUpdaterWithFilter(filter)
 	if err != nil {
 		return nil, fmt.Errorf("create updater: %w", err)
 	}
 
-	latest, found, err := updater.DetectLatest(ctx, goselfupdate.ParseSlug(githubOwner+"/"+githubRepo))
+	latest, found, err := updater.DetectLatest(ctx, goselfupdate.ParseSlug(owner+"/"+repo))
 	if err != nil {
 		return nil, err
 	}
@@ -66,18 +72,25 @@ func CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
 // ApplyUpdate downloads and installs the latest version, replacing the
 // current executable. Prints progress to stdout.
 func ApplyUpdate(ctx context.Context) error {
+	return ApplyUpdateFrom(ctx, githubOwner, githubRepo, "buji_")
+}
+
+// ApplyUpdateFrom downloads and installs the latest version from a specific
+// GitHub owner/repo, filtering release assets by the given prefix.
+func ApplyUpdateFrom(ctx context.Context, owner, repo, filter string) error {
 	if buildinfo.Version == "dev" || buildinfo.Version == "" {
 		return fmt.Errorf("cannot update dev builds — install a release version first")
 	}
 
 	fmt.Printf("Checking for updates (current: v%s)...\n", buildinfo.Version)
 
-	updater, err := newUpdater()
+	updater, err := newUpdaterWithFilter(filter)
 	if err != nil {
 		return fmt.Errorf("create updater: %w", err)
 	}
 
-	latest, found, err := updater.DetectLatest(ctx, goselfupdate.ParseSlug(githubOwner+"/"+githubRepo))
+	slug := owner + "/" + repo
+	latest, found, err := updater.DetectLatest(ctx, goselfupdate.ParseSlug(slug))
 	if err != nil {
 		return fmt.Errorf("check for updates: %w", err)
 	}
@@ -101,7 +114,7 @@ func ApplyUpdate(ctx context.Context) error {
 		return fmt.Errorf("apply update: %w", err)
 	}
 
-	fmt.Printf("\n✓ Updated buji v%s → v%s\n", buildinfo.Version, latest.Version())
+	fmt.Printf("\n✓ Updated bujicoder v%s → v%s\n", buildinfo.Version, latest.Version())
 	if latest.ReleaseNotes != "" {
 		notes := latest.ReleaseNotes
 		if len(notes) > 500 {
@@ -122,7 +135,7 @@ func semverVersion() string {
 	return buildinfo.Version
 }
 
-func newUpdater() (*goselfupdate.Updater, error) {
+func newUpdaterWithFilter(filter string) (*goselfupdate.Updater, error) {
 	token := resolveGitHubToken()
 
 	source, err := goselfupdate.NewGitHubSource(goselfupdate.GitHubConfig{
@@ -134,7 +147,7 @@ func newUpdater() (*goselfupdate.Updater, error) {
 
 	return goselfupdate.NewUpdater(goselfupdate.Config{
 		Source:  source,
-		Filters: []string{`buji_`},
+		Filters: []string{filter},
 	})
 }
 
