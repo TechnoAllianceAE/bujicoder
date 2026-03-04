@@ -1,7 +1,7 @@
 id: git_committer
 version: "1.0.0"
 display_name: "Git Committer"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: last_message
 max_steps: 10
 max_tokens: 4096

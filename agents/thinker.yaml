@@ -1,7 +1,7 @@
 id: thinker
 version: "1.0.0"
 display_name: "Deep Thinker"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: last_message
 max_steps: 5
 max_tokens: 16384

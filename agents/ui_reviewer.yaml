@@ -1,7 +1,7 @@
 id: ui_reviewer
 version: "1.0.0"
 display_name: "UI Reviewer & QA"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: single_message
 max_steps: 30
 max_tokens: 8192

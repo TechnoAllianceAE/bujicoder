@@ -1,7 +1,7 @@
 id: file_explorer
 version: "1.0.0"
 display_name: "File Explorer"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: last_message
 max_steps: 15
 max_tokens: 4096

@@ -1,7 +1,7 @@
 id: editor
 version: "1.0.0"
 display_name: "Editor"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: last_message
 max_steps: 20
 max_tokens: 8192
