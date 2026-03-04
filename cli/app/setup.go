@@ -48,7 +48,6 @@ var setupProviders = []setupProviderInfo{
 }
 
 var setupModeNames = [3]string{"normal", "heavy", "max"}
-var setupRoleNames = [3]string{"main", "file_explorer", "sub_agent"}
 var setupRoleDescs = [3]string{"Primary model", "File explorer (lightweight)", "Sub-agent default"}
 
 // modelsFetchedMsg is the Bubble Tea message returned after fetching provider models.

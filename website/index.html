@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BujiCoder — AI Coding Assistant. Your Models. Your Machine. Your Rules.</title>
+    <meta name="description" content="BujiCoder is a blazing-fast, Go-based AI coding assistant that runs in your terminal. No Node. No npm. Choose any LLM provider. Full control over your models and your code.">
+    <meta name="keywords" content="AI coding assistant, terminal AI, Go CLI, LLM providers, OpenRouter, Groq, Cerebras, OpenAI, Claude, xAI, code assistant, multi-agent AI">
+    <meta property="og:title" content="BujiCoder — AI Coding Assistant. Your Models. Your Machine. Your Rules.">
+    <meta property="og:description" content="Blazing-fast Go-based AI coding assistant. No Node/npm. Choose any LLM provider. Full granular control.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://bujicoder.com">
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav">
+    <div class="nav-inner">
+        <a href="#" class="nav-logo">
+            <span class="logo-icon">&#9670;</span> BujiCoder
+        </a>
+        <div class="nav-links">
+            <a href="#features">Features</a>
+            <a href="#providers">Providers</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+</nav>
+
+<!-- Hero -->
+<header class="hero" id="top">
+    <div class="hero-bg-grid"></div>
+    <div class="container">
+        <div class="hero-badge">Open Source &middot; Apache 2.0</div>
+        <h1 class="hero-title">
+            The AI coding assistant<br>
+            that doesn't need <span class="strike">Node</span>,
+            <span class="strike">npm</span>,<br>
+            or <span class="strike">your patience</span>.
+        </h1>
+        <p class="hero-subtitle">
+            Heavily inspired by <strong class="inspired-inline">Claude Code</strong> and <strong class="inspired-inline">CodeBuff</strong>,
+            BujiCoder is a <strong>Go-native</strong> multi-agent AI coding tool that runs in your terminal.
+            One binary. Zero dependencies. Pick any LLM provider.
+            Your code never leaves your machine.
+        </p>
+        <div class="hero-actions">
+            <a href="#install" class="btn btn-primary">Get Started</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" class="btn btn-secondary" target="_blank" rel="noopener">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                View on GitHub
+            </a>
+        </div>
+        <div class="hero-terminal">
+            <div class="terminal-bar">
+                <span class="terminal-dot red"></span>
+                <span class="terminal-dot yellow"></span>
+                <span class="terminal-dot green"></span>
+                <span class="terminal-title">Terminal</span>
+            </div>
+            <div class="terminal-body">
+                <div class="terminal-line"><span class="t-prompt">$</span> <span class="t-cmd">curl -fsSL https://bujicoder.com/install.sh | bash</span></div>
+                <div class="terminal-line t-fade"><span class="t-output">Downloading buji v1.0.0 for linux/amd64...</span></div>
+                <div class="terminal-line t-fade"><span class="t-success">Installed to ~/.local/bin/buji</span></div>
+                <div class="terminal-line"><span class="t-prompt">$</span> <span class="t-cmd">buji</span></div>
+                <div class="terminal-line t-fade"><span class="t-output">Welcome to BujiCoder! Let's get you set up.</span></div>
+                <div class="terminal-line t-fade"><span class="t-output">? Choose setup mode:</span></div>
+                <div class="terminal-line t-fade"><span class="t-accent">  &gt; Quick Setup</span> <span class="t-dim">— OpenRouter key + recommended defaults</span></div>
+                <div class="terminal-line t-fade"><span class="t-dim">    Advanced Setup — Pick providers, models &amp; agent roles</span></div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- 10 Features -->
+<section class="features" id="features">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">What makes it different</span>
+            <h2 class="section-title">10 reasons BujiCoder isn't just another code assistant</h2>
+            <p class="section-desc">Most AI coding tools lock you into one model, one provider, and a mountain of JavaScript dependencies. BujiCoder takes a fundamentally different approach.</p>
+        </div>
+
+        <div class="features-grid">
+
+            <div class="feature-card feature-highlight">
+                <div class="feature-number">01</div>
+                <div class="feature-icon">&#9889;</div>
+                <h3>Zero-Dependency Go Binary</h3>
+                <p>No Node. No npm. No Python. No Docker. A single compiled binary that starts instantly. Download it, run it, done. Under 30 MB for the entire tool.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">02</div>
+                <div class="feature-icon">&#9881;</div>
+                <h3>Granular Model Control</h3>
+                <p>Assign different models to different agent roles. Use a cheap model for file exploration, a powerful one for editing, and a reasoning model for planning &mdash; all in a single session.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">03</div>
+                <div class="feature-icon">&#127760;</div>
+                <h3>Any Provider, Your Choice</h3>
+                <p>OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama &mdash; bring your own API keys and switch providers freely.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">04</div>
+                <div class="feature-icon">&#129302;</div>
+                <h3>13 Specialized Agents</h3>
+                <p>Not one generic chatbot. A team of 13 purpose-built agents &mdash; editor, planner, researcher, reviewer, git committer, and more &mdash; each with their own tools and system prompts.</p>
+            </div>
+
+            <div class="feature-card feature-highlight">
+                <div class="feature-number">05</div>
+                <div class="feature-icon">&#9878;</div>
+                <h3>Parallel Evolution Mode</h3>
+                <p>In Max mode, multiple agents implement competing solutions simultaneously. A judge agent evaluates and picks the best one. It's like having a coding tournament for every task.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">06</div>
+                <div class="feature-icon">&#128176;</div>
+                <h3>Three Cost Modes</h3>
+                <p><strong>Normal</strong> for fast/cheap everyday coding. <strong>Heavy</strong> for harder tasks with smarter models. <strong>Max</strong> for mission-critical work with the most powerful models and parallel evolution.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">07</div>
+                <div class="feature-icon">&#128274;</div>
+                <h3>Local-First Privacy</h3>
+                <p>All tools execute on your machine. File reads, writes, code search, terminal commands &mdash; nothing routes through a third-party server. Your code stays yours.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">08</div>
+                <div class="feature-icon">&#128268;</div>
+                <h3>MCP Extensibility</h3>
+                <p>Extend BujiCoder with any Model Context Protocol server. Add GitHub, browser automation, databases, or custom tools. Eager or lazy loading &mdash; you control when servers start.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">09</div>
+                <div class="feature-icon">&#128737;</div>
+                <h3>Built-In Safety Rails</h3>
+                <p>Dangerous commands are blocked by default. Per-project <code>.bujicoderrc</code> permissions. Three permission modes &mdash; strict, ask, or yolo. You decide how much autonomy the AI gets.</p>
+            </div>
+
+            <div class="feature-card">
+                <div class="feature-number">10</div>
+                <div class="feature-icon">&#128064;</div>
+                <h3>Vision &amp; Multimodal</h3>
+                <p>Attach images directly with <code>@path/to/screenshot.png</code>. Review UI mockups, debug visual regressions, or let the UI reviewer agent automate browser testing with Puppeteer.</p>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- Providers -->
+<section class="providers" id="providers">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">LLM Providers</span>
+            <h2 class="section-title">Your keys. Your models. Your money.</h2>
+            <p class="section-desc">BujiCoder talks directly to AI providers using your API keys. No middleman markup. No vendor lock-in. Switch providers with a single config change.</p>
+        </div>
+
+        <div class="providers-grid">
+            <div class="provider-card">
+                <div class="provider-name">OpenRouter</div>
+                <div class="provider-desc">200+ models, one API key</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Groq</div>
+                <div class="provider-desc">Ultra-low latency inference</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Cerebras</div>
+                <div class="provider-desc">Wafer-scale speed</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Together AI</div>
+                <div class="provider-desc">Open-source model hosting</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">OpenAI</div>
+                <div class="provider-desc">GPT-4o &amp; family</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Anthropic</div>
+                <div class="provider-desc">Claude Opus, Sonnet, Haiku</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">xAI</div>
+                <div class="provider-desc">Grok models</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Google AI</div>
+                <div class="provider-desc">Gemini family</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Amazon Bedrock</div>
+                <div class="provider-desc">Enterprise-grade access</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Google Vertex</div>
+                <div class="provider-desc">GCP-native model serving</div>
+            </div>
+            <div class="provider-card">
+                <div class="provider-name">Ollama</div>
+                <div class="provider-desc">Run models 100% locally</div>
+            </div>
+            <div class="provider-card provider-card-add">
+                <div class="provider-name">+ Any OpenAI-compatible</div>
+                <div class="provider-desc">Custom endpoints supported</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- How It Works -->
+<section class="how-it-works" id="how-it-works">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">How it works</span>
+            <h2 class="section-title">From install to coding in 60 seconds</h2>
+        </div>
+
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <h3>Install</h3>
+                    <p>One curl command. One binary. No runtime dependencies.</p>
+                    <div class="step-code">
+                        <code>curl -fsSL https://bujicoder.com/install.sh | bash</code>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <h3>Configure</h3>
+                    <p>The setup wizard walks you through picking a provider and entering your API key. Quick setup takes 10 seconds.</p>
+                    <div class="step-code">
+                        <code>buji</code> <span class="step-note">wizard runs on first launch</span>
+                    </div>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <h3>Code</h3>
+                    <p>Ask questions, edit files, search your codebase, run commands. BujiCoder's agents handle the rest.</p>
+                    <div class="step-code">
+                        <code>buji</code> <span class="step-note">start interactive session</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Comparison -->
+<section class="comparison">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">Comparison</span>
+            <h2 class="section-title">How BujiCoder stacks up</h2>
+        </div>
+
+        <div class="table-wrapper">
+            <table class="comparison-table">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th class="highlight-col">BujiCoder</th>
+                        <th>Typical AI Assistants</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Runtime</td>
+                        <td class="highlight-col"><strong>Single Go binary</strong></td>
+                        <td>Node.js + npm install</td>
+                    </tr>
+                    <tr>
+                        <td>Startup time</td>
+                        <td class="highlight-col"><strong>&lt; 100ms</strong></td>
+                        <td>2-10 seconds</td>
+                    </tr>
+                    <tr>
+                        <td>LLM Providers</td>
+                        <td class="highlight-col"><strong>11+ providers</strong></td>
+                        <td>1-2 providers</td>
+                    </tr>
+                    <tr>
+                        <td>Model per agent</td>
+                        <td class="highlight-col"><strong>Yes, fully configurable</strong></td>
+                        <td>One model for everything</td>
+                    </tr>
+                    <tr>
+                        <td>Cost control</td>
+                        <td class="highlight-col"><strong>3 modes + per-agent overrides</strong></td>
+                        <td>Subscription or single tier</td>
+                    </tr>
+                    <tr>
+                        <td>Agent architecture</td>
+                        <td class="highlight-col"><strong>13 specialized agents</strong></td>
+                        <td>Single agent</td>
+                    </tr>
+                    <tr>
+                        <td>Parallel evolution</td>
+                        <td class="highlight-col"><strong>Yes (Max mode)</strong></td>
+                        <td>No</td>
+                    </tr>
+                    <tr>
+                        <td>MCP support</td>
+                        <td class="highlight-col"><strong>Full (eager + lazy)</strong></td>
+                        <td>Limited or none</td>
+                    </tr>
+                    <tr>
+                        <td>Privacy</td>
+                        <td class="highlight-col"><strong>100% local execution</strong></td>
+                        <td>Cloud-dependent</td>
+                    </tr>
+                    <tr>
+                        <td>License</td>
+                        <td class="highlight-col"><strong>Apache 2.0</strong></td>
+                        <td>Varies</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Inspired By -->
+<section class="inspired-by" id="inspired-by">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">Standing on the shoulders of giants</span>
+            <h2 class="section-title">Inspired by the best in the game</h2>
+            <p class="section-desc">BujiCoder didn't emerge in a vacuum. We studied the tools that redefined AI-assisted coding, learned what they got right, and built on those ideas with our own vision.</p>
+        </div>
+
+        <div class="inspired-grid">
+            <div class="inspired-card">
+                <div class="inspired-logo">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                </div>
+                <h3>Claude Code</h3>
+                <p class="inspired-tagline">Anthropic's terminal-native coding agent</p>
+                <p class="inspired-desc">Claude Code proved that a terminal-first AI assistant could be more powerful than any IDE plugin. Its agentic architecture &mdash; where the AI reads files, edits code, runs commands, and iterates on its own &mdash; fundamentally changed how developers interact with AI. BujiCoder's multi-agent orchestration, tool-use system, and permission model are all deeply influenced by the patterns Claude Code pioneered.</p>
+                <div class="inspired-lessons">
+                    <span class="lesson-tag">Agentic tool use</span>
+                    <span class="lesson-tag">Terminal-first UX</span>
+                    <span class="lesson-tag">Permission system</span>
+                    <span class="lesson-tag">File editing patterns</span>
+                </div>
+            </div>
+
+            <div class="inspired-card">
+                <div class="inspired-logo">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                </div>
+                <h3>CodeBuff</h3>
+                <p class="inspired-tagline">The lean, fast coding assistant</p>
+                <p class="inspired-desc">CodeBuff showed that an AI coding tool doesn't need to be a bloated IDE extension with a hundred config files. It championed speed, simplicity, and getting out of the developer's way. BujiCoder carries that same philosophy forward &mdash; a single binary, instant startup, minimal config &mdash; while adding the flexibility to bring your own models and providers.</p>
+                <div class="inspired-lessons">
+                    <span class="lesson-tag">Speed-first design</span>
+                    <span class="lesson-tag">Minimal footprint</span>
+                    <span class="lesson-tag">Developer-centric UX</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="inspired-cta">
+            <p>We took the best ideas, rewrote them in Go, made them provider-agnostic, and added multi-agent superpowers.<br><strong>That's BujiCoder.</strong></p>
+        </div>
+    </div>
+</section>
+
+<!-- Install -->
+<section class="install" id="install">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-label">Install</span>
+            <h2 class="section-title">Ready to try it?</h2>
+            <p class="section-desc">Pick your platform. Be coding in under a minute.</p>
+        </div>
+
+        <div class="install-options">
+            <div class="install-card">
+                <h3>macOS / Linux</h3>
+                <div class="install-code">
+                    <code>curl -fsSL https://raw.githubusercontent.com/TechnoAllianceAE/bujicoder/main/scripts/install.sh | bash</code>
+                </div>
+            </div>
+            <div class="install-card">
+                <h3>From Source (Go 1.24+)</h3>
+                <div class="install-code">
+                    <code>go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code>
+                </div>
+            </div>
+            <div class="install-card">
+                <h3>Windows</h3>
+                <p>Download the latest <code>.exe</code> from <a href="https://github.com/TechnoAllianceAE/bujicoder/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <span class="logo-icon">&#9670;</span> BujiCoder
+                <p class="footer-tagline">AI coding assistant. Your models. Your machine. Your rules.</p>
+            </div>
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h4>Product</h4>
+                    <a href="#features">Features</a>
+                    <a href="#providers">Providers</a>
+                    <a href="#install">Install</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Resources</h4>
+                    <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+                    <a href="https://github.com/TechnoAllianceAE/bujicoder/blob/main/docs/CONFIGURATION.md" target="_blank" rel="noopener">Documentation</a>
+                    <a href="https://github.com/TechnoAllianceAE/bujicoder/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+                </div>
+                <div class="footer-col">
+                    <h4>Enterprise</h4>
+                    <a href="mailto:hello@bujicoder.com">Contact Sales</a>
+                    <a href="#">Team Features</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2025 TechnoAlliance. Apache License 2.0.</p>
+        </div>
+    </div>
+</footer>
+
+<script>
+// Mobile nav toggle
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function(e) {
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            document.querySelector('.nav-links').classList.remove('open');
+            document.querySelector('.nav-toggle').classList.remove('active');
+        }
+    });
+});
+
+// Nav background on scroll
+window.addEventListener('scroll', () => {
+    document.querySelector('.nav').classList.toggle('scrolled', window.scrollY > 40);
+});
+
+// Intersection Observer for fade-in animations
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+        }
+    });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+
+document.querySelectorAll('.feature-card, .provider-card, .step, .install-card').forEach(el => {
+    observer.observe(el);
+});
+</script>
+
+</body>
+</html>
