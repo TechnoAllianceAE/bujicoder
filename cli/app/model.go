@@ -3120,7 +3120,7 @@ func (m Model) View() string {
 		if !m.ready {
 			return "\n  Initializing...\n"
 		}
-		return m.viewport.View() + "\n" + m.renderFooter()
+		return m.viewport.View() + m.renderFooter()
 
 	case StateHistory:
 		return m.renderHistoryView()
