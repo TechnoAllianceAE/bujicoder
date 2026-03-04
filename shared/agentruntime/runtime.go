@@ -46,15 +46,16 @@ type OnEvent func(Event)
 
 // RunConfig configures a single agent run.
 type RunConfig struct {
-	AgentDef      *agent.Definition
-	UserMessage   string
-	UserImages    []llm.ContentPart // Optional image_url parts to include in the user message
-	History       []llm.Message     // Prior conversation history
-	AncestorIDs   []string          // Parent run IDs for sub-agent tracking
-	ProjectRoot   string            // Working directory for dynamic context (file tree, git, knowledge files)
-	OnEvent       OnEvent
-	CostMode      costmode.Mode      // Cost mode for model selection (propagated to sub-agents)
-	ModelResolver *costmode.Resolver // Server-side model resolver (propagated to sub-agents)
+	AgentDef          *agent.Definition
+	UserMessage       string
+	UserImages        []llm.ContentPart      // Optional image_url parts to include in the user message
+	History           []llm.Message           // Prior conversation history
+	AncestorIDs       []string                // Parent run IDs for sub-agent tracking
+	ProjectRoot       string                  // Working directory for dynamic context (file tree, git, knowledge files)
+	OnEvent           OnEvent
+	CostMode          costmode.Mode           // Cost mode for model selection (propagated to sub-agents)
+	ModelResolver     *costmode.Resolver      // Server-side model resolver (propagated to sub-agents)
+	ProposalCollector *tools.ProposalCollector // When set, proposal tools accumulate here instead of writing to disk
 }
 
 // RunResult summarises a completed agent run.
@@ -66,7 +67,8 @@ type RunResult struct {
 	TotalOutputTokens int
 	Model             string
 	FinishReason      string
-	Messages          []llm.Message // Full conversation after this run
+	Messages          []llm.Message          // Full conversation after this run
+	ProposedChanges   []tools.ProposedChange // Proposed file changes (when run with ProposalCollector)
 }
 
 // Runtime is the agent orchestration engine.
@@ -92,6 +94,11 @@ func New(llmReg *llm.Registry, toolReg *tools.Registry, agentReg *agent.Registry
 func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	if cfg.AgentDef == nil {
 		return nil, fmt.Errorf("agent definition is required")
+	}
+
+	// Inject ProposalCollector into context so proposal tools can accumulate changes.
+	if cfg.ProposalCollector != nil {
+		ctx = tools.WithProposalCollector(ctx, cfg.ProposalCollector)
 	}
 
 	state := newState(cfg)

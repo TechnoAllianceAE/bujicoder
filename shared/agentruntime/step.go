@@ -92,6 +92,33 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 			})
 			continue
 		}
+		if toolName == "apply_proposals" {
+			req.Tools = append(req.Tools, llm.ToolDefinition{
+				Name:        "apply_proposals",
+				Description: "Apply a set of proposed file changes to disk. Used after the judge selects the winning implementation.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"changes": map[string]any{
+							"type": "array",
+							"items": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"path":    map[string]any{"type": "string"},
+									"type":    map[string]any{"type": "string", "enum": []string{"edit", "write_file"}},
+									"old_str": map[string]any{"type": "string"},
+									"new_str": map[string]any{"type": "string"},
+									"content": map[string]any{"type": "string"},
+								},
+								"required": []string{"path", "type"},
+							},
+						},
+					},
+					"required": []string{"changes"},
+				},
+			})
+			continue
+		}
 
 		tool, ok := rt.toolRegistry.Get(toolName)
 		if !ok {
@@ -291,6 +318,25 @@ func toolInputSchema(toolName string) map[string]any {
 				"question": map[string]any{"type": "string"},
 			},
 			"required": []string{"question"},
+		}
+	case "propose_edit":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":    map[string]any{"type": "string"},
+				"old_str": map[string]any{"type": "string"},
+				"new_str": map[string]any{"type": "string"},
+			},
+			"required": []string{"path", "old_str", "new_str"},
+		}
+	case "propose_write_file":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path":    map[string]any{"type": "string"},
+				"content": map[string]any{"type": "string"},
+			},
+			"required": []string{"path", "content"},
 		}
 	default:
 		return map[string]any{"type": "object", "properties": map[string]any{}}

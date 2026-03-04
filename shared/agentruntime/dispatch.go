@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
-	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
 // dispatchToolCalls executes a set of tool calls and returns tool result content parts.
@@ -38,6 +41,15 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 			result, err := handleThinkDeeply(ctx, rt, tc.ArgumentsJSON, cfg)
 			if err != nil {
 				resultText = fmt.Sprintf("Error: %v", err)
+				isError = true
+			} else {
+				resultText = result
+			}
+
+		case "apply_proposals":
+			result, err := handleApplyProposals(ctx, tc.ArgumentsJSON, cfg)
+			if err != nil {
+				resultText = fmt.Sprintf("Error applying proposals: %v", err)
 				isError = true
 			} else {
 				resultText = result
@@ -81,6 +93,76 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 	}
 
 	return results, nil
+}
+
+// handleApplyProposals applies a set of proposed file changes to disk.
+func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (string, error) {
+	var args struct {
+		Changes []struct {
+			Path    string `json:"path"`
+			Type    string `json:"type"`
+			OldStr  string `json:"old_str"`
+			NewStr  string `json:"new_str"`
+			Content string `json:"content"`
+		} `json:"changes"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("parse apply_proposals args: %w", err)
+	}
+
+	if len(args.Changes) == 0 {
+		return "No changes to apply", nil
+	}
+
+	workDir := cfg.ProjectRoot
+	if workDir == "" {
+		return "", fmt.Errorf("no project root configured")
+	}
+
+	var summary strings.Builder
+	for i, ch := range args.Changes {
+		absPath, err := tools.SafePath(workDir, ch.Path)
+		if err != nil {
+			summary.WriteString(fmt.Sprintf("[%d] %s: error: %v\n", i+1, ch.Path, err))
+			continue
+		}
+
+		switch ch.Type {
+		case "edit":
+			data, err := os.ReadFile(absPath)
+			if err != nil {
+				summary.WriteString(fmt.Sprintf("[%d] %s: read error: %v\n", i+1, ch.Path, err))
+				continue
+			}
+			content := string(data)
+			if !strings.Contains(content, ch.OldStr) {
+				summary.WriteString(fmt.Sprintf("[%d] %s: old_str not found\n", i+1, ch.Path))
+				continue
+			}
+			newContent := strings.Replace(content, ch.OldStr, ch.NewStr, 1)
+			if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
+				summary.WriteString(fmt.Sprintf("[%d] %s: write error: %v\n", i+1, ch.Path, err))
+				continue
+			}
+			summary.WriteString(fmt.Sprintf("[%d] %s: edit applied\n", i+1, ch.Path))
+
+		case "write_file":
+			if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+				summary.WriteString(fmt.Sprintf("[%d] %s: mkdir error: %v\n", i+1, ch.Path, err))
+				continue
+			}
+			if err := os.WriteFile(absPath, []byte(ch.Content), 0o644); err != nil {
+				summary.WriteString(fmt.Sprintf("[%d] %s: write error: %v\n", i+1, ch.Path, err))
+				continue
+			}
+			summary.WriteString(fmt.Sprintf("[%d] %s: file written (%d bytes)\n", i+1, ch.Path, len(ch.Content)))
+
+		default:
+			summary.WriteString(fmt.Sprintf("[%d] %s: unknown type %q\n", i+1, ch.Path, ch.Type))
+		}
+	}
+
+	return summary.String(), nil
 }
 
 // handleThinkDeeply sends the question to a thinker model for extended reasoning.

@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
 // spawnRequest represents the parsed arguments for spawn_agents.
@@ -82,13 +85,20 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 			ancestors := make([]string, len(parentCfg.AncestorIDs))
 			copy(ancestors, parentCfg.AncestorIDs)
 
+			// If the agent has proposal tools, give it a ProposalCollector.
+			var collector *tools.ProposalCollector
+			if agentHasProposalTools(agentDef) {
+				collector = tools.NewProposalCollector()
+			}
+
 			childCfg := RunConfig{
-				AgentDef:      agentDef,
-				UserMessage:   s.Task,
-				AncestorIDs:   ancestors,
-				ProjectRoot:   parentCfg.ProjectRoot,
-				CostMode:      parentCfg.CostMode,
-				ModelResolver: parentCfg.ModelResolver,
+				AgentDef:          agentDef,
+				UserMessage:       s.Task,
+				AncestorIDs:       ancestors,
+				ProjectRoot:       parentCfg.ProjectRoot,
+				CostMode:          parentCfg.CostMode,
+				ModelResolver:     parentCfg.ModelResolver,
+				ProposalCollector: collector,
 				OnEvent: func(ev Event) {
 					if parentCfg.OnEvent == nil {
 						return
@@ -101,6 +111,11 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 			}
 
 			result, err := rt.Run(ctx, childCfg)
+
+			// Extract proposals from collector into the result.
+			if err == nil && result != nil && collector != nil {
+				result.ProposedChanges = collector.Changes()
+			}
 			results[idx] = spawnResult{
 				agentID: s.AgentID,
 				result:  result,
@@ -135,10 +150,28 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 			output.WriteString(fmt.Sprintf("Error: %v\n", r.err))
 		} else if r.result != nil {
 			output.WriteString(r.result.FinalText)
+			if len(r.result.ProposedChanges) > 0 {
+				output.WriteString("\n--- Proposed Changes ---\n")
+				for _, ch := range r.result.ProposedChanges {
+					output.WriteString(ch.DiffText)
+					output.WriteString("\n")
+				}
+			}
 			output.WriteString(fmt.Sprintf("\n[Steps: %d, Finish: %s]\n", r.result.TotalSteps, r.result.FinishReason))
 		}
 		output.WriteString("\n")
 	}
 
 	return output.String(), nil
+}
+
+// agentHasProposalTools returns true if the agent definition includes
+// propose_edit or propose_write_file in its tools list.
+func agentHasProposalTools(def *agent.Definition) bool {
+	for _, t := range def.Tools {
+		if t == "propose_edit" || t == "propose_write_file" {
+			return true
+		}
+	}
+	return false
 }

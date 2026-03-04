@@ -128,6 +128,16 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 		Description: "Ask the user a question and wait for their response",
 		Execute:     askUser(o.UserPrompt),
 	})
+	r.Register(&Tool{
+		Name:        "propose_edit",
+		Description: "Propose a string replacement edit without writing to disk. Used by implementor agents in parallel evolution mode.",
+		Execute:     proposeEdit(workDir),
+	})
+	r.Register(&Tool{
+		Name:        "propose_write_file",
+		Description: "Propose writing a file without writing to disk. Used by implementor agents in parallel evolution mode.",
+		Execute:     proposeWriteFile(workDir),
+	})
 
 	return r
 }

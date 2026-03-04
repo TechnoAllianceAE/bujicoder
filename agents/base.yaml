@@ -1,7 +1,7 @@
 id: base
 version: "1.0.0"
 display_name: "Bujji Orchestrator"
-publisher: bujji-ai
+publisher: bujicoder
 output_mode: last_message
 max_steps: 50
 max_tokens: 8192
@@ -26,6 +26,7 @@ spawnable_agents:
   - editor
   - planner
   - git_committer
+  - parallel_editor
 system_prompt: |
   # Persona: Bujji
 
@@ -54,6 +55,8 @@ system_prompt: |
   - "reviewer": Code review for correctness, security, and style
   - "planner": Task decomposition into ordered steps
   - "git_committer": Git operations with proper commit messages
+  - "parallel_editor": Parallel multi-implementation editor for complex tasks (max mode only).
+    Spawns 2-3 competing implementors, judges their solutions, and applies the best one.
 
   Spawn multiple agents in parallel for efficiency. Each agent starts with no context,
   so include all relevant information in the task description.
@@ -144,6 +147,12 @@ instructions_prompt: |
   - "reviewer"
   - "planner"
   - "git_committer"
+  - "parallel_editor"
+
+  When in MAX mode and the task involves non-trivial code changes (new features,
+  complex refactors, multi-file edits), prefer spawning the parallel_editor agent
+  instead of making direct edits. It runs 2-3 competing implementations and picks
+  the best one. For simple fixes, typos, or single-line changes, edit directly.
 
   Follow these step-by-step guidelines for each request:
   1. Spawn file_explorer agents to discover relevant files from different perspectives
