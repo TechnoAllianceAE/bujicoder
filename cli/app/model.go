@@ -214,9 +214,19 @@ type Model struct {
 	localStore *localstore.Store        // local conversation persistence
 
 	// Setup wizard state
-	setupStep   int    // 0 = provider selection, 1 = key entry
-	setupChoice int    // selected provider index (0-3)
-	setupAPIKey string // API key being entered
+	setupStep       int            // setup step constant (see setup.go)
+	setupChoice     int            // legacy (unused, kept for compat)
+	setupAPIKey     string         // API key being entered
+	setupMode       int            // 0=quick, 1=advanced
+	setupProvider   int            // advanced provider index (0-5)
+	setupModels     []string       // fetched model IDs
+	setupModelIdx   int            // current selection in model list
+	setupModeStep   int            // cost mode (0=normal, 1=heavy, 2=max)
+	setupRoleStep   int            // role (0=main, 1=file_explorer, 2=sub_agent)
+	setupSelections [3][3]string   // [mode][role] = model ID
+	setupFetchErr   string         // error from model fetch
+	setupFetching   bool           // loading spinner
+	setupScrollOff  int            // scroll offset for model list
 
 	// Local agent runtime (CLI-side tool execution)
 	agentRuntime    *agentruntime.Runtime
@@ -991,7 +1001,7 @@ func listenForApproval(cmdCh chan string) tea.Cmd {
 // Init returns the initial command.
 func (m Model) Init() tea.Cmd {
 	if m.state == StateSetup {
-		return nil // wizard handles its own transitions
+		return tickCmd() // needed for spinner during model fetch
 	}
 	if m.state == StateChat {
 		return tea.Batch(initLocalRuntimeFromConfig(m.unifiedCfg), tickCmd())
@@ -1012,11 +1022,22 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "ctrl+c":
+			if m.state == StateSetup {
+				return m, tea.Quit
+			}
 			if m.mcpManager != nil {
 				m.mcpManager.ShutdownAll()
 			}
 			return m, tea.Quit
 
+		default:
+			// Delegate all non-ctrl+c keys in setup mode to the setup handler.
+			if m.state == StateSetup {
+				return m.handleSetupKeys(msg)
+			}
+		}
+
+		switch msg.String() {
 		case "shift+tab":
 			// Cycle cost modes: normal -> heavy -> max -> plan -> normal
 			if m.state == StateChat && !m.streaming {
@@ -1064,14 +1085,6 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "backspace":
-			if m.state == StateSetup && m.setupStep == 1 {
-				if len(m.setupAPIKey) > 0 {
-					m.setupAPIKey = m.setupAPIKey[:len(m.setupAPIKey)-1]
-				} else {
-					m.setupStep = 0
-				}
-				return m, nil
-			}
 			if len(m.input) > 0 && m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
 				m.input = m.input[:len(m.input)-1]
 				m.historyIdx = -1 // reset history browsing on edit
@@ -1080,18 +1093,6 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "enter":
-			if m.state == StateSetup {
-				if m.setupStep == 0 {
-					m.setupStep = 1
-					m.setupAPIKey = ""
-					return m, nil
-				}
-				key := strings.TrimSpace(m.setupAPIKey)
-				if key == "" {
-					return m, nil
-				}
-				return m.completeStandaloneSetup(m.setupChoice, key)
-			}
 			if m.state == StateHistory && len(m.historyItems) > 0 {
 				selected := m.historyItems[m.historyCursor]
 				m.state = StateChat
@@ -1501,23 +1502,6 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if m.state == StateSetup && m.setupStep == 0 {
-				switch msg.String() {
-				case "up":
-					if m.setupChoice > 0 {
-						m.setupChoice--
-					} else {
-						m.setupChoice = 3
-					}
-				case "down":
-					if m.setupChoice < 3 {
-						m.setupChoice++
-					} else {
-						m.setupChoice = 0
-					}
-				}
-				return m, nil
-			}
 			if m.state == StateHistory && len(m.historyItems) > 0 {
 				visibleRows := m.height - 8
 				if visibleRows < 1 {
@@ -1589,13 +1573,6 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		default:
-			if m.state == StateSetup && m.setupStep == 1 {
-				ch := msg.String()
-				if len(ch) == 1 {
-					m.setupAPIKey += ch
-				}
-				return m, nil
-			}
 			if m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
 				// Toggle welcome collapse when typing "/"
 				if len(m.input) == 0 && msg.String() == "/" && len(m.messages) == 0 {
@@ -1638,10 +1615,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tickMsg:
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
-		if m.streaming || m.state == StateChat {
+		if m.streaming || m.state == StateChat || (m.state == StateSetup && m.setupFetching) {
 			return m, tickCmd()
 		}
 		return m, nil
+
+	case modelsFetchedMsg:
+		return m.handleModelsFetched(msg)
 
 	case streamChunkMsg:
 		if msg.agentID == "" || msg.agentID == "base" {
@@ -3134,125 +3114,14 @@ func (m Model) renderFooter() string {
 	return promptBanner + acDropdown + box + "\n" + dimStyle.Render(status)
 }
 
-// completeStandaloneSetup finishes the first-run wizard for standalone mode.
+// completeStandaloneSetup is a backward-compat wrapper (delegates to setup.go).
 func (m Model) completeStandaloneSetup(providerIdx int, apiKey string) (Model, tea.Cmd) {
-	targetDir := cliconfig.ExeDir()
-	agentsDir := filepath.Join(targetDir, "agents")
-	if err := extractDefaultAgents(agentsDir); err != nil {
-		agentsDir = filepath.Join(cliconfig.Dir(), "agents")
-		_ = extractDefaultAgents(agentsDir)
+	keys := []string{"openrouter", "groq", "cerebras", "together", "openai", "anthropic"}
+	provider := "openrouter"
+	if providerIdx >= 0 && providerIdx < len(keys) {
+		provider = keys[providerIdx]
 	}
-
-	ucfg := cliconfig.DefaultUnifiedConfig("")
-	switch providerIdx {
-	case 0: // OpenRouter
-		ucfg.APIKeys.OpenRouter = apiKey
-	case 1: // Groq
-		ucfg.APIKeys.Groq = apiKey
-	case 2: // Cerebras
-		ucfg.APIKeys.Cerebras = apiKey
-	case 3: // Together AI
-		ucfg.APIKeys.Together = apiKey
-	}
-	ucfg.AgentsDir = agentsDir
-
-	configPath, err := cliconfig.SaveUnifiedConfig(ucfg)
-	if err != nil {
-		m.state = StateChat
-		m.messages = append(m.messages, ChatMessage{
-			Role:    "assistant",
-			Content: fmt.Sprintf("Failed to save config: %v", err),
-		})
-		return m, nil
-	}
-
-	m.state = StateChat
-	m.localCfg = ucfg.ToLegacyConfig()
-	m.unifiedCfg = ucfg
-	m.localStore = localstore.NewStore()
-	m.conversationID = uuid.NewString()
-	m.welcomeCollapsed = true
-	m.messages = append(m.messages, ChatMessage{
-		Role:    "assistant",
-		Content: fmt.Sprintf("Config saved to %s\nAgents extracted to %s\n\nEdit bujicoder.yaml to customize API keys and models.", configPath, agentsDir),
-	})
-
-	return m, tea.Batch(initLocalRuntimeFromConfig(ucfg), checkForUpdateCmd(), tickCmd())
-}
-
-// extractDefaultAgents extracts embedded agent YAMLs to a target directory.
-func extractDefaultAgents(targetDir string) error {
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		return err
-	}
-	entries, err := agentdata.FS.ReadDir(".")
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		data, err := agentdata.FS.ReadFile(entry.Name())
-		if err != nil {
-			continue
-		}
-		_ = os.WriteFile(filepath.Join(targetDir, entry.Name()), data, 0o644)
-	}
-	return nil
-}
-
-// renderSetupView renders the first-run mode selection screen.
-func (m Model) renderSetupView() string {
-	type providerInfo struct {
-		label  string
-		desc   string
-		signUp string
-	}
-	providers := []providerInfo{
-		{"OpenRouter", "100+ models, recommended", "openrouter.ai/keys"},
-		{"Groq", "Ultra-fast inference", "console.groq.com"},
-		{"Cerebras", "Wafer-scale inference", "cloud.cerebras.ai"},
-		{"Together AI", "Open-source models", "api.together.ai"},
-	}
-
-	var b strings.Builder
-
-	b.WriteString("\n")
-	b.WriteString(bannerStyle.Render(bujicoderBanner) + "\n\n")
-
-	sep := dimStyle.Render("  " + strings.Repeat("-", 44))
-
-	if m.setupStep == 0 {
-		b.WriteString("  " + titleStyle.Render("Welcome to BujiCoder") + "\n")
-		b.WriteString(sep + "\n\n")
-		b.WriteString(descStyle.Render("  Choose your API provider:") + "\n\n")
-
-		for i, p := range providers {
-			if i == m.setupChoice {
-				b.WriteString(promptStyle.Render("  > ") + cmdStyle.Render(p.label) + "    " + descStyle.Render(p.desc) + "\n")
-			} else {
-				b.WriteString(dimStyle.Render("    "+p.label+"    "+p.desc) + "\n")
-			}
-		}
-
-		b.WriteString("\n")
-		b.WriteString(dimStyle.Render("  Up/Down: navigate . Enter: select . Ctrl+C: quit") + "\n")
-	} else {
-		chosen := providers[m.setupChoice]
-		b.WriteString("  " + sectionStyle.Render("API Key Setup") + "\n")
-		b.WriteString(sep + "\n\n")
-		b.WriteString(descStyle.Render(fmt.Sprintf("  Enter your %s API key to get started.", chosen.label)) + "\n")
-		b.WriteString(descStyle.Render("  Get one at: ") + cmdStyle.Render(chosen.signUp) + "\n\n")
-
-		b.WriteString(promptStyle.Render(fmt.Sprintf("  %s API Key:  ", chosen.label)) + m.setupAPIKey + dimStyle.Render("|") + "\n\n")
-
-		configPath := filepath.Join(cliconfig.Dir(), "bujicoder.yaml")
-		b.WriteString(descStyle.Render(fmt.Sprintf("  You can add more API keys later by editing:\n  %s", configPath)) + "\n\n")
-		b.WriteString(dimStyle.Render("  Enter: save and start . Backspace: go back . Ctrl+C: quit") + "\n")
-	}
-
-	return b.String()
+	return m.completeSetup(provider, apiKey, nil)
 }
 
 // View renders the TUI.

@@ -309,28 +309,92 @@ func SaveUnifiedConfig(cfg *UnifiedConfig) (string, error) {
 
 // DefaultUnifiedConfig returns a default standalone config with the given API key.
 func DefaultUnifiedConfig(openRouterKey string) *UnifiedConfig {
-	return &UnifiedConfig{
+	return DefaultUnifiedConfigForProvider("openrouter", openRouterKey)
+}
+
+// DefaultUnifiedConfigForProvider returns a default config for the given provider.
+// For openrouter, the defaults use multi-provider models routed through OpenRouter.
+// For direct providers, the defaults use that provider's own models.
+func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
+	cfg := &UnifiedConfig{
 		Mode:     "local",
 		CostMode: "normal",
-		APIKeys: APIKeysConfig{
-			OpenRouter: openRouterKey,
-		},
-		Modes: map[string]UnifiedModeMapping{
+	}
+
+	switch provider {
+	case "groq":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "groq/llama-3.3-70b-versatile", FileExplorer: "groq/llama-3.1-8b-instant", SubAgent: "groq/llama-3.3-70b-versatile"},
+			"heavy":  {Main: "groq/llama-3.3-70b-versatile", FileExplorer: "groq/llama-3.1-8b-instant", SubAgent: "groq/llama-3.3-70b-versatile"},
+			"max":    {Main: "groq/llama-3.3-70b-versatile", FileExplorer: "groq/llama-3.1-8b-instant", SubAgent: "groq/llama-3.3-70b-versatile"},
+		}
+	case "cerebras":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "cerebras/llama-3.3-70b", FileExplorer: "cerebras/llama-3.1-8b", SubAgent: "cerebras/llama-3.3-70b"},
+			"heavy":  {Main: "cerebras/llama-3.3-70b", FileExplorer: "cerebras/llama-3.1-8b", SubAgent: "cerebras/llama-3.3-70b"},
+			"max":    {Main: "cerebras/llama-3.3-70b", FileExplorer: "cerebras/llama-3.1-8b", SubAgent: "cerebras/llama-3.3-70b"},
+		}
+	case "together":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "together/meta-llama/Llama-3.3-70B-Instruct-Turbo", FileExplorer: "together/meta-llama/Llama-3.1-8B-Instruct-Turbo", SubAgent: "together/deepseek-ai/DeepSeek-V3.1"},
+			"heavy":  {Main: "together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8", FileExplorer: "together/meta-llama/Llama-3.1-8B-Instruct-Turbo", SubAgent: "together/deepseek-ai/DeepSeek-V3.1"},
+			"max":    {Main: "together/MiniMaxAI/MiniMax-M2.5", FileExplorer: "together/meta-llama/Llama-3.1-8B-Instruct-Turbo", SubAgent: "together/MiniMaxAI/MiniMax-M2.5"},
+		}
+	case "openai":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "openai/gpt-4o-mini", FileExplorer: "openai/gpt-4o-mini", SubAgent: "openai/gpt-4o-mini"},
+			"heavy":  {Main: "openai/gpt-4o", FileExplorer: "openai/gpt-4o-mini", SubAgent: "openai/gpt-4o"},
+			"max":    {Main: "openai/gpt-4o", FileExplorer: "openai/gpt-4o-mini", SubAgent: "openai/gpt-4o"},
+		}
+	case "anthropic":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "anthropic/claude-sonnet-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
+			"heavy":  {Main: "anthropic/claude-sonnet-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
+			"max":    {Main: "anthropic/claude-opus-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
+		}
+	default: // openrouter — use current production defaults
+		cfg.Modes = map[string]UnifiedModeMapping{
 			"normal": {
-				Main:         "x-ai/grok-code-fast-1",
-				FileExplorer: "openai/gpt-4o-mini",
-				SubAgent:     "z-ai/glm-5",
+				Main:         "qwen/qwen3.5-122b-a10b",
+				FileExplorer: "openai/gpt-oss-20b",
+				SubAgent:     "together/deepseek-ai/DeepSeek-V3.1",
+				AgentOverrides: map[string]string{
+					"editor":       "deepseek/deepseek-v3.2-speciale",
+					"git_committer": "openai/gpt-oss-120b",
+					"planner":      "z-ai/glm-5",
+					"reviewer":     "together/moonshotai/Kimi-K2.5",
+					"thinker":      "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+				},
 			},
 			"heavy": {
-				Main:         "qwen/qwen3.5-35b-a3b",
-				FileExplorer: "openai/gpt-4o-mini",
+				Main:         "x-ai/grok-code-fast-1",
+				FileExplorer: "openai/gpt-oss-20b",
 				SubAgent:     "z-ai/glm-5",
+				AgentOverrides: map[string]string{
+					"editor":       "together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+					"git_committer": "openai/gpt-oss-120b",
+					"reviewer":     "moonshotai/kimi-k2.5",
+					"thinker":      "together/deepseek-ai/DeepSeek-R1",
+				},
 			},
 			"max": {
 				Main:         "minimax/minimax-m2.5",
-				FileExplorer: "openai/gpt-4o-mini",
-				SubAgent:     "z-ai/glm-5",
+				FileExplorer: "openai/gpt-oss-20b",
+				SubAgent:     "together/MiniMaxAI/MiniMax-M2.5",
+				AgentOverrides: map[string]string{
+					"editor":          "together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+					"git_committer":   "openai/gpt-oss-120b",
+					"implementor":     "together/MiniMaxAI/MiniMax-M2.5",
+					"judge":           "minimax/minimax-m2.5",
+					"parallel_editor": "minimax/minimax-m2.5",
+					"planner":         "together/Qwen/Qwen3.5-397B-A17B",
+					"researcher":      "together/MiniMaxAI/MiniMax-M2.5",
+					"reviewer":        "qwen/qwen3.5-122b-a10b",
+					"thinker":         "together/Qwen/Qwen3-235B-A22B-Thinking-2507",
+				},
 			},
-		},
+		}
 	}
+
+	return cfg
 }
