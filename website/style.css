@@ -632,6 +632,118 @@ section {
     color: var(--green);
 }
 
+/* ===== INSPIRED BY ===== */
+.inspired-by {
+    background: var(--bg);
+}
+
+.inspired-inline {
+    color: var(--accent-light);
+    font-weight: 600;
+}
+
+.inspired-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 24px;
+    margin-bottom: 48px;
+}
+
+.inspired-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 40px 36px;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.inspired-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-light));
+    border-radius: var(--radius) var(--radius) 0 0;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.inspired-card:hover {
+    border-color: var(--border-light);
+    background: var(--bg-card-hover);
+    transform: translateY(-4px);
+}
+
+.inspired-card:hover::before {
+    opacity: 1;
+}
+
+.inspired-logo {
+    color: var(--accent-light);
+    margin-bottom: 20px;
+}
+
+.inspired-card h3 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.inspired-tagline {
+    font-size: 0.88rem;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 16px;
+}
+
+.inspired-desc {
+    font-size: 0.92rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 20px;
+}
+
+.inspired-lessons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lesson-tag {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--accent-light);
+    background: var(--accent-glow);
+    border: 1px solid rgba(108, 92, 231, 0.15);
+    padding: 4px 12px;
+    border-radius: 100px;
+    letter-spacing: 0.3px;
+}
+
+.inspired-cta {
+    text-align: center;
+    padding: 32px;
+    background: linear-gradient(135deg, rgba(108, 92, 231, 0.06) 0%, rgba(108, 92, 231, 0.02) 100%);
+    border: 1px solid rgba(108, 92, 231, 0.12);
+    border-radius: var(--radius);
+}
+
+.inspired-cta p {
+    font-size: 1.05rem;
+    color: var(--text-dim);
+    line-height: 1.8;
+}
+
+.inspired-cta strong {
+    color: #fff;
+    font-size: 1.15rem;
+}
+
 /* ===== INSTALL ===== */
 .install {
     background: var(--bg);
@@ -831,6 +943,10 @@ section {
 
     .providers-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .inspired-grid {
+        grid-template-columns: 1fr;
     }
 
     .install-options {
