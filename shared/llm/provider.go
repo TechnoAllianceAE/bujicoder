@@ -185,7 +185,7 @@ func (r *Registry) GetPricing() *PricingService {
 	return r.pricing
 }
 
-// Route determines the provider for a given model string (e.g., "anthropic/claude-sonnet-4").
+// Route determines the provider for a given model string (e.g., "openai/gpt-oss-120b:free").
 // If the model's prefix provider is directly registered, it is used.
 // Otherwise, the request is routed through OpenRouter with the full model ID.
 // The model catalog (models.json) is used only for the admin UI listing;

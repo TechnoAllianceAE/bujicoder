@@ -14,10 +14,10 @@ func TestCalculateCostCents(t *testing.T) {
 	p := &PricingService{
 		prices: map[string]ModelPricing{
 			"openai/gpt-4": {
-				PromptCostPerToken:     0.00003,  // $30/1M tokens
-				CompletionCostPerToken: 0.00006,  // $60/1M tokens
+				PromptCostPerToken:     0.00003, // $30/1M tokens
+				CompletionCostPerToken: 0.00006, // $60/1M tokens
 			},
-			"anthropic/claude-sonnet-4": {
+			"openai/gpt-oss-120b:free": {
 				PromptCostPerToken:     0.000003, // $3/1M tokens
 				CompletionCostPerToken: 0.000015, // $15/1M tokens
 			},
@@ -41,7 +41,7 @@ func TestCalculateCostCents(t *testing.T) {
 		},
 		{
 			name:         "claude sonnet",
-			model:        "anthropic/claude-sonnet-4",
+			model:        "openai/gpt-oss-120b:free",
 			inputTokens:  10000,
 			outputTokens: 2000,
 			wantCents:    7, // (10000*0.000003 + 2000*0.000015) * 100 ≈ 6.0 + fp noise → ceil = 7
@@ -101,7 +101,7 @@ func TestFetchPricing(t *testing.T) {
 				},
 			},
 			{
-				ID: "anthropic/claude-sonnet-4",
+				ID: "openai/gpt-oss-120b:free",
 				Pricing: struct {
 					Prompt     string `json:"prompt"`
 					Completion string `json:"completion"`

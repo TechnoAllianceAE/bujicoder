@@ -71,11 +71,11 @@ You can override the model for a specific agent within a cost mode using `agent_
 ```yaml
 modes:
   max:
-    main: anthropic/claude-sonnet-4
+    main: openai/gpt-oss-120b:free
     file_explorer: openai/gpt-4o-mini
-    sub_agent: anthropic/claude-sonnet-4
+    sub_agent: openai/gpt-oss-120b:free
     agent_overrides:
-      editor: anthropic/claude-sonnet-4
+      editor: openai/gpt-oss-120b:free
       planner: qwen/qwen3-235b-a22b
       researcher: google/gemini-2.5-pro-preview
 ```

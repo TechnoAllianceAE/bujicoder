@@ -75,8 +75,8 @@ func ExeDir() string {
 
 // UnifiedConfig is the single-file YAML config for BujiCoder.
 type UnifiedConfig struct {
-	Mode       string                        `yaml:"mode"`              // "local"
-	CostMode   string                        `yaml:"cost_mode"`         // "normal", "heavy", "max"
+	Mode       string                        `yaml:"mode"`      // "local"
+	CostMode   string                        `yaml:"cost_mode"` // "normal", "heavy", "max"
 	APIKeys    APIKeysConfig                 `yaml:"api_keys"`
 	Modes      map[string]UnifiedModeMapping `yaml:"modes"` // inline model config
 	AgentsDir  string                        `yaml:"agents_dir,omitempty"`
@@ -348,9 +348,9 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 		}
 	case "anthropic":
 		cfg.Modes = map[string]UnifiedModeMapping{
-			"normal": {Main: "anthropic/claude-sonnet-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
-			"heavy":  {Main: "anthropic/claude-sonnet-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
-			"max":    {Main: "anthropic/claude-opus-4-20250514", FileExplorer: "anthropic/claude-haiku-4-5-20251001", SubAgent: "anthropic/claude-sonnet-4-20250514"},
+			"normal": {Main: "openai/gpt-oss-120b:free", FileExplorer: "openai/gpt-oss-120b", SubAgent: "openai/gpt-oss-120b:free"},
+			"heavy":  {Main: "openai/gpt-oss-120b:free", FileExplorer: "openai/gpt-oss-120b", SubAgent: "openai/gpt-oss-120b:free"},
+			"max":    {Main: "openai/gpt-oss-120b:free", FileExplorer: "openai/gpt-oss-120b", SubAgent: "openai/gpt-oss-120b:free"},
 		}
 	default: // openrouter — use current production defaults
 		cfg.Modes = map[string]UnifiedModeMapping{
@@ -359,11 +359,11 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 				FileExplorer: "openai/gpt-oss-20b",
 				SubAgent:     "together/deepseek-ai/DeepSeek-V3.1",
 				AgentOverrides: map[string]string{
-					"editor":       "deepseek/deepseek-v3.2-speciale",
+					"editor":        "deepseek/deepseek-v3.2-speciale",
 					"git_committer": "openai/gpt-oss-120b",
-					"planner":      "z-ai/glm-5",
-					"reviewer":     "together/moonshotai/Kimi-K2.5",
-					"thinker":      "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+					"planner":       "z-ai/glm-5",
+					"reviewer":      "together/moonshotai/Kimi-K2.5",
+					"thinker":       "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
 				},
 			},
 			"heavy": {
@@ -371,10 +371,10 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 				FileExplorer: "openai/gpt-oss-20b",
 				SubAgent:     "z-ai/glm-5",
 				AgentOverrides: map[string]string{
-					"editor":       "together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+					"editor":        "together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
 					"git_committer": "openai/gpt-oss-120b",
-					"reviewer":     "moonshotai/kimi-k2.5",
-					"thinker":      "together/deepseek-ai/DeepSeek-R1",
+					"reviewer":      "moonshotai/kimi-k2.5",
+					"thinker":       "together/deepseek-ai/DeepSeek-R1",
 				},
 			},
 			"max": {

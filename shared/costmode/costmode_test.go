@@ -10,19 +10,19 @@ func testResolver() *Resolver {
 	return NewResolverFromConfig(ModelConfig{
 		Modes: map[Mode]ModelMapping{
 			ModeNormal: {
-				Main:         "google/gemini-2.5-flash",
-				FileExplorer: "google/gemini-2.5-flash",
-				SubAgent:     "google/gemini-2.5-flash",
+				Main:         "qwen/qwen3-coder:free",
+				FileExplorer: "qwen/qwen3-coder:free",
+				SubAgent:     "qwen/qwen3-coder:free",
 			},
 			ModeHeavy: {
-				Main:         "anthropic/claude-sonnet-4",
-				FileExplorer: "anthropic/claude-haiku-4-5",
-				SubAgent:     "anthropic/claude-sonnet-4",
+				Main:         "openai/gpt-oss-120b:free",
+				FileExplorer: "openai/gpt-oss-120b:free",
+				SubAgent:     "openai/gpt-oss-120b:free",
 			},
 			ModeMax: {
-				Main:         "anthropic/claude-sonnet-4",
-				FileExplorer: "anthropic/claude-sonnet-4",
-				SubAgent:     "anthropic/claude-sonnet-4",
+				Main:         "google/gemma-3n-e2b-it:free",
+				FileExplorer: "google/gemma-3n-e2b-it:free",
+				SubAgent:     "google/gemma-3n-e2b-it:free",
 			},
 		},
 	})
@@ -36,15 +36,15 @@ func TestResolveModel(t *testing.T) {
 		role AgentRole
 		want string
 	}{
-		{ModeNormal, RoleMain, "google/gemini-2.5-flash"},
-		{ModeNormal, RoleFileExplorer, "google/gemini-2.5-flash"},
-		{ModeNormal, RoleSubAgent, "google/gemini-2.5-flash"},
-		{ModeHeavy, RoleMain, "anthropic/claude-sonnet-4"},
-		{ModeHeavy, RoleFileExplorer, "anthropic/claude-haiku-4-5"},
-		{ModeHeavy, RoleSubAgent, "anthropic/claude-sonnet-4"},
-		{ModeMax, RoleMain, "anthropic/claude-sonnet-4"},
-		{ModeMax, RoleFileExplorer, "anthropic/claude-sonnet-4"},
-		{ModeMax, RoleSubAgent, "anthropic/claude-sonnet-4"},
+		{ModeNormal, RoleMain, "qwen/qwen3-coder:free"},
+		{ModeNormal, RoleFileExplorer, "qwen/qwen3-coder:free"},
+		{ModeNormal, RoleSubAgent, "qwen/qwen3-coder:free"},
+		{ModeHeavy, RoleMain, "openai/gpt-oss-120b:free"},
+		{ModeHeavy, RoleFileExplorer, "openai/gpt-oss-120b:free"},
+		{ModeHeavy, RoleSubAgent, "openai/gpt-oss-120b:free"},
+		{ModeMax, RoleMain, "google/gemma-3n-e2b-it:free"},
+		{ModeMax, RoleFileExplorer, "google/gemma-3n-e2b-it:free"},
+		{ModeMax, RoleSubAgent, "google/gemma-3n-e2b-it:free"},
 	}
 
 	for _, tt := range tests {
@@ -65,22 +65,22 @@ func TestResolveModelForAgent(t *testing.T) {
 				FileExplorer: "google/gemini-2.5-flash",
 				SubAgent:     "google/gemini-2.5-flash",
 				AgentOverrides: map[string]string{
-					"editor":  "anthropic/claude-sonnet-4",
+					"editor":  "openai/gpt-oss-120b:free",
 					"thinker": "openai/o3",
 				},
 			},
 			ModeHeavy: {
-				Main:         "anthropic/claude-sonnet-4",
-				FileExplorer: "anthropic/claude-haiku-4-5",
-				SubAgent:     "anthropic/claude-sonnet-4",
+				Main:         "openai/gpt-oss-120b:free",
+				FileExplorer: "google/gemma-3n-e2b-it:free",
+				SubAgent:     "openai/gpt-oss-120b:free",
 			},
 		},
 	})
 
 	// Agent with override should use the override
 	got := r.ResolveModelForAgent(ModeNormal, RoleSubAgent, "editor")
-	if got != "anthropic/claude-sonnet-4" {
-		t.Errorf("ResolveModelForAgent(normal, sub_agent, editor) = %q, want anthropic/claude-sonnet-4", got)
+	if got != "openai/gpt-oss-120b:free" {
+		t.Errorf("ResolveModelForAgent(normal, sub_agent, editor) = %q, want openai/gpt-oss-120b:free", got)
 	}
 
 	// Another agent with override
@@ -97,8 +97,8 @@ func TestResolveModelForAgent(t *testing.T) {
 
 	// Mode without overrides falls back to role default
 	got = r.ResolveModelForAgent(ModeHeavy, RoleSubAgent, "editor")
-	if got != "anthropic/claude-sonnet-4" {
-		t.Errorf("ResolveModelForAgent(heavy, sub_agent, editor) = %q, want anthropic/claude-sonnet-4", got)
+	if got != "openai/gpt-oss-120b:free" {
+		t.Errorf("ResolveModelForAgent(heavy, sub_agent, editor) = %q, want openai/gpt-oss-120b:free", got)
 	}
 
 	// Main role ignores agent overrides
@@ -171,7 +171,7 @@ func TestLoadModelConfigWithAgentOverrides(t *testing.T) {
 func TestResolveModelUnknownModeFallsBack(t *testing.T) {
 	r := testResolver()
 	got := r.ResolveModel(Mode("unknown"), RoleMain)
-	want := "google/gemini-2.5-flash" // ModeNormal fallback
+	want := "qwen/qwen3-coder:free" // ModeNormal fallback
 	if got != want {
 		t.Errorf("ResolveModel(unknown, main) = %q, want %q", got, want)
 	}
@@ -286,7 +286,7 @@ func TestParseMode(t *testing.T) {
 		{"", ModeNormal},
 		{"invalid", ModeNormal},
 		{"NORMAL", ModeNormal}, // case-sensitive
-		{"free", ModeNormal},  // old mode falls back
+		{"free", ModeNormal},   // old mode falls back
 	}
 
 	for _, tt := range tests {

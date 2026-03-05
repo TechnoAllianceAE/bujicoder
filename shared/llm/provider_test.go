@@ -25,15 +25,15 @@ func TestRegistryRoute(t *testing.T) {
 	reg.Register(&mockProvider{name: "openai"})
 
 	t.Run("valid route", func(t *testing.T) {
-		p, model, err := reg.Route("anthropic/claude-sonnet-4")
+		p, model, err := reg.Route("openai/gpt-oss-120b:free")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if p.Name() != "anthropic" {
-			t.Errorf("provider = %q, want %q", p.Name(), "anthropic")
+		if p.Name() != "openai" {
+			t.Errorf("provider = %q, want %q", p.Name(), "openai")
 		}
-		if model != "claude-sonnet-4" {
-			t.Errorf("model = %q, want %q", model, "claude-sonnet-4")
+		if model != "gpt-oss-120b:free" {
+			t.Errorf("model = %q, want %q", model, "gpt-oss-120b:free")
 		}
 	})
 
