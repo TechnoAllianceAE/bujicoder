@@ -59,6 +59,7 @@ var slashCommands = []struct{ cmd, desc string }{
 	{"/copy", "Copy last response to clipboard"},
 	{"/about", "Show version and system info"},
 	{"/init", "Analyse project docs and explain codebase"},
+	{"/mcp", "Manage MCP servers (list · add · remove)"},
 	{"/models", "List available models and mode mappings"},
 	{"/refresh", "Refresh model-agent assignments"},
 	{"/update", "Check for updates"},
@@ -1318,6 +1319,151 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 						Content: b.String(),
 					})
 					return m, nil
+				}
+
+				if strings.HasPrefix(userMsg, "/mcp") {
+					m.input = ""
+					parts := strings.Fields(userMsg)
+					subCmd := ""
+					if len(parts) > 1 {
+						subCmd = strings.ToLower(parts[1])
+					}
+
+					switch subCmd {
+					case "add":
+						// /mcp add <name> <command> [args...]
+						if len(parts) < 4 {
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: "Usage: `/mcp add <name> <command> [args...]`\n\nExample:\n```\n/mcp add browser npx -y @anthropic-ai/mcp-server-puppeteer\n```",
+							})
+							return m, nil
+						}
+						name := parts[2]
+						command := parts[3]
+						args := parts[4:]
+
+						// Check for duplicate name.
+						if m.unifiedCfg != nil {
+							for _, s := range m.unifiedCfg.MCPServers {
+								if s.Name == name {
+									m.messages = append(m.messages, ChatMessage{
+										Role:    "assistant",
+										Content: fmt.Sprintf("MCP server `%s` already exists. Remove it first with `/mcp remove %s`.", name, name),
+									})
+									return m, nil
+								}
+							}
+						}
+
+						newServer := cliconfig.MCPServerConfig{
+							Name:    name,
+							Command: command,
+							Args:    args,
+							Lazy:    true,
+						}
+
+						if m.unifiedCfg == nil {
+							m.unifiedCfg = &cliconfig.UnifiedConfig{}
+						}
+						m.unifiedCfg.MCPServers = append(m.unifiedCfg.MCPServers, newServer)
+						_, _ = cliconfig.SaveUnifiedConfig(m.unifiedCfg)
+
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: fmt.Sprintf("Added MCP server `%s` (lazy). It will start on first tool call.\n\nRestart BujiCoder or use `/refresh` to activate it in this session.", name),
+						})
+						return m, nil
+
+					case "remove", "rm":
+						// /mcp remove <name>
+						if len(parts) < 3 {
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: "Usage: `/mcp remove <name>`",
+							})
+							return m, nil
+						}
+						name := parts[2]
+						found := false
+						if m.unifiedCfg != nil {
+							filtered := m.unifiedCfg.MCPServers[:0]
+							for _, s := range m.unifiedCfg.MCPServers {
+								if s.Name == name {
+									found = true
+									continue
+								}
+								filtered = append(filtered, s)
+							}
+							if found {
+								m.unifiedCfg.MCPServers = filtered
+								_, _ = cliconfig.SaveUnifiedConfig(m.unifiedCfg)
+							}
+						}
+						if !found {
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: fmt.Sprintf("MCP server `%s` not found.", name),
+							})
+							return m, nil
+						}
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: fmt.Sprintf("Removed MCP server `%s`. Restart BujiCoder to fully unload it.", name),
+						})
+						return m, nil
+
+					default:
+						// /mcp (no subcommand) — show status
+						var b strings.Builder
+						b.WriteString("**MCP Servers**\n\n")
+
+						if m.unifiedCfg == nil || len(m.unifiedCfg.MCPServers) == 0 {
+							b.WriteString("No MCP servers configured.\n\n")
+							b.WriteString("Add one with:\n```\n/mcp add <name> <command> [args...]\n```\n")
+							b.WriteString("Example:\n```\n/mcp add browser npx -y @anthropic-ai/mcp-server-puppeteer\n```")
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: b.String(),
+							})
+							return m, nil
+						}
+
+						// Gather live status if manager is running.
+						running := make(map[string][]string)
+						if m.mcpManager != nil {
+							for _, info := range m.mcpManager.Status() {
+								if info.Running {
+									running[info.Name] = info.Tools
+								}
+							}
+						}
+
+						for _, s := range m.unifiedCfg.MCPServers {
+							status := "stopped"
+							if tools, ok := running[s.Name]; ok {
+								status = fmt.Sprintf("running · %d tools", len(tools))
+							} else if s.Lazy {
+								status = "lazy (starts on first call)"
+							}
+							b.WriteString(fmt.Sprintf("  **%s** — `%s %s`\n", s.Name, s.Command, strings.Join(s.Args, " ")))
+							b.WriteString(fmt.Sprintf("    Status: %s\n\n", status))
+
+							if tools, ok := running[s.Name]; ok && len(tools) > 0 {
+								for _, t := range tools {
+									b.WriteString(fmt.Sprintf("    · %s\n", t))
+								}
+								b.WriteString("\n")
+							}
+						}
+
+						b.WriteString("Commands: `/mcp add <name> <cmd> [args]` · `/mcp remove <name>`")
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: b.String(),
+						})
+						return m, nil
+					}
 				}
 
 				if strings.HasPrefix(userMsg, "/mode") {
