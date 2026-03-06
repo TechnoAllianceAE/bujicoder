@@ -227,6 +227,40 @@ func (m *Manager) wrapTool(serverName string, t *gosdk.Tool) *tools.Tool {
 	}
 }
 
+// ServerInfo describes the status of a single MCP server for display purposes.
+type ServerInfo struct {
+	Name    string
+	Command string
+	Args    []string
+	Lazy    bool
+	Running bool
+	Tools   []string // tool names discovered from the server
+}
+
+// Status returns the status of all configured MCP servers.
+func (m *Manager) Status() []ServerInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var infos []ServerInfo
+	for name, cfg := range m.configs {
+		info := ServerInfo{
+			Name:    name,
+			Command: cfg.Command,
+			Args:    cfg.Args,
+			Lazy:    cfg.Lazy,
+		}
+		if conn, ok := m.conns[name]; ok {
+			info.Running = true
+			for _, t := range conn.tools {
+				info.Tools = append(info.Tools, t.Name)
+			}
+		}
+		infos = append(infos, info)
+	}
+	return infos
+}
+
 // ShutdownAll gracefully shuts down all running MCP server connections.
 func (m *Manager) ShutdownAll() {
 	m.mu.Lock()
