@@ -167,6 +167,7 @@ type Model struct {
 	width           int
 	height          int
 	input           string
+	cursorPos       int // cursor position within input (0 = before first char)
 	messages        []ChatMessage
 	streaming       bool
 	streamBuf       string
@@ -1085,9 +1086,20 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case "backspace":
-			if len(m.input) > 0 && m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
-				m.input = m.input[:len(m.input)-1]
+			if len(m.input) > 0 && m.cursorPos > 0 && m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
+				runes := []rune(m.input)
+				m.input = string(runes[:m.cursorPos-1]) + string(runes[m.cursorPos:])
+				m.cursorPos--
 				m.historyIdx = -1 // reset history browsing on edit
+				m.spinnerFrame = 0
+				m.updateAutocomplete()
+			}
+
+		case "delete":
+			runes := []rune(m.input)
+			if m.cursorPos < len(runes) && m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
+				m.input = string(runes[:m.cursorPos]) + string(runes[m.cursorPos+1:])
+				m.historyIdx = -1
 				m.spinnerFrame = 0
 				m.updateAutocomplete()
 			}
@@ -1110,6 +1122,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				answer := strings.ToLower(strings.TrimSpace(m.input))
 				approved := answer == "y" || answer == "yes"
 				m.input = ""
+				m.cursorPos = 0
 				m.pendingApproval = ""
 				m.pendingApprovalCmd = ""
 				m.approvalRespCh <- approved
@@ -1123,6 +1136,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					answer = "(no answer)"
 				}
 				m.input = ""
+				m.cursorPos = 0
 				m.pendingQuestion = ""
 				m.askAnswerCh <- answer
 				return m, listenForAskUser(m.askQuestionCh)
@@ -1133,6 +1147,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				trimmed := strings.TrimSpace(m.input)
 				if trimmed == "/quit" || trimmed == "/exit" {
 					m.input = ""
+				m.cursorPos = 0
 					if m.mcpManager != nil {
 						m.mcpManager.ShutdownAll()
 					}
@@ -1145,6 +1160,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				selected := modeOptions[m.modePickerCursor]
 				m.modePickerVisible = false
 				m.input = ""
+				m.cursorPos = 0
 				if selected.name == "plan" {
 					m.planMode = true
 					m.costMode = costmode.ModeNormal
@@ -1177,6 +1193,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				if m.acVisible && len(m.acMatches) > 0 {
 					selected := slashCommands[m.acMatches[m.acCursor]]
 					m.input = selected.cmd
+					m.cursorPos = len([]rune(m.input))
 					m.acVisible = false
 					m.acMatches = nil
 					m.acCursor = 0
@@ -1185,6 +1202,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/new" {
 					m.input = ""
+				m.cursorPos = 0
 					m.conversationID = uuid.NewString()
 					m.messages = []ChatMessage{}
 					m.err = nil
@@ -1197,6 +1215,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/history" {
 					m.input = ""
+				m.cursorPos = 0
 					if m.localStore != nil {
 						return m, fetchLocalHistory(m.localStore)
 					}
@@ -1206,6 +1225,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/resume") {
 					m.input = ""
+				m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					if len(parts) < 2 {
 						m.messages = append(m.messages, ChatMessage{
@@ -1223,12 +1243,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/models" {
 					m.input = ""
+				m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: m.localModelsInfo()})
 					return m, nil
 				}
 
 				if userMsg == "/refresh" {
 					m.input = ""
+				m.cursorPos = 0
 					// Reload unified config from disk.
 					if newCfg := cliconfig.LoadUnifiedConfig(); newCfg != nil {
 						m.unifiedCfg = newCfg
@@ -1241,12 +1263,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/usage" {
 					m.input = ""
+				m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "Usage tracking available with BujiCoder Enterprise. Visit bujicoder.com for details."})
 					return m, nil
 				}
 
 				if userMsg == "/init" {
 					m.input = ""
+				m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{
 						Role:    "assistant",
 						Content: gatherCodebaseInfo(),
@@ -1256,6 +1280,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/update" {
 					m.input = ""
+				m.cursorPos = 0
 					if m.updateVersion != "" {
 						m.messages = append(m.messages, ChatMessage{
 							Role:    "assistant",
@@ -1272,6 +1297,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/copy" {
 					m.input = ""
+				m.cursorPos = 0
 					for i := len(m.messages) - 1; i >= 0; i-- {
 						if m.messages[i].Role == "assistant" {
 							return m, copyToClipboardCmd(m.messages[i].Content)
@@ -1288,12 +1314,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/help" {
 					m.input = ""
+				m.cursorPos = 0
 					m.welcomeCollapsed = false
 					return m, nil
 				}
 
 				if userMsg == "/about" {
 					m.input = ""
+				m.cursorPos = 0
 					cwd, _ := os.Getwd()
 					var b strings.Builder
 					b.WriteString("BujiCoder -- AI Coding Assistant\n\n")
@@ -1323,6 +1351,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/mcp") {
 					m.input = ""
+				m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					subCmd := ""
 					if len(parts) > 1 {
@@ -1468,6 +1497,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/mode") {
 					m.input = ""
+				m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					if len(parts) < 2 {
 						// Show mode picker dropdown
@@ -1518,6 +1548,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				m.promptHistory = append(m.promptHistory, userMsg)
 				m.historyIdx = -1
 				m.input = ""
+				m.cursorPos = 0
 				m.streaming = true
 				m.streamBuf = ""
 				m.subAgentStreams = make(map[string]string)
@@ -1558,7 +1589,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				)
 			}
 
-		case "tab", "right":
+		case "tab":
 			// Accept autocomplete selection.
 			if m.state == StateChat && !m.streaming && m.acVisible && len(m.acMatches) > 0 {
 				selected := slashCommands[m.acMatches[m.acCursor]]
@@ -1566,8 +1597,8 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				m.acMatches = nil
 				m.acCursor = 0
 				if selected.cmd == "/mode" {
-					// Show mode picker instead of putting text in input
 					m.input = ""
+					m.cursorPos = 0
 					m.modePickerVisible = true
 					currentMode := string(m.costMode)
 					if m.planMode {
@@ -1582,11 +1613,68 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					}
 				} else {
 					m.input = selected.cmd
+					m.cursorPos = len([]rune(m.input))
 				}
 				return m, nil
 			}
-			if msg.String() == "right" {
+
+		case "right":
+			// Accept autocomplete selection if visible.
+			if m.state == StateChat && !m.streaming && m.acVisible && len(m.acMatches) > 0 {
+				selected := slashCommands[m.acMatches[m.acCursor]]
+				m.acVisible = false
+				m.acMatches = nil
+				m.acCursor = 0
+				if selected.cmd == "/mode" {
+					m.input = ""
+					m.cursorPos = 0
+					m.modePickerVisible = true
+					currentMode := string(m.costMode)
+					if m.planMode {
+						currentMode = "plan"
+					}
+					m.modePickerCursor = 0
+					for i, opt := range modeOptions {
+						if opt.name == currentMode {
+							m.modePickerCursor = i
+							break
+						}
+					}
+				} else {
+					m.input = selected.cmd
+					m.cursorPos = len([]rune(m.input))
+				}
 				return m, nil
+			}
+			// Move cursor right within input.
+			if m.state == StateChat && m.cursorPos < len([]rune(m.input)) {
+				m.cursorPos++
+			}
+
+		case "left":
+			// Move cursor left within input.
+			if m.state == StateChat && m.cursorPos > 0 {
+				m.cursorPos--
+			}
+
+		case "home":
+			if m.state == StateHistory && len(m.historyItems) > 0 {
+				m.historyCursor = 0
+				return m, nil
+			}
+			// Move cursor to beginning of input.
+			if m.state == StateChat {
+				m.cursorPos = 0
+			}
+
+		case "end":
+			if m.state == StateHistory && len(m.historyItems) > 0 {
+				m.historyCursor = len(m.historyItems) - 1
+				return m, nil
+			}
+			// Move cursor to end of input.
+			if m.state == StateChat {
+				m.cursorPos = len([]rune(m.input))
 			}
 
 		case "esc":
@@ -1610,7 +1698,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				return m, nil
 			}
 
-		case "up", "down", "pgup", "pgdown", "home", "end":
+		case "up", "down", "pgup", "pgdown":
 			// Navigate mode picker.
 			if m.state == StateChat && m.modePickerVisible {
 				switch msg.String() {
@@ -1671,10 +1759,6 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					if m.historyCursor >= len(m.historyItems) {
 						m.historyCursor = len(m.historyItems) - 1
 					}
-				case "home":
-					m.historyCursor = 0
-				case "end":
-					m.historyCursor = len(m.historyItems) - 1
 				}
 				if m.historyCursor < m.historyOffset {
 					m.historyOffset = m.historyCursor
@@ -1684,46 +1768,56 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			// Prompt history navigation (Up/Down in input area).
-			if m.state == StateChat && !m.streaming && len(m.promptHistory) > 0 {
-				switch msg.String() {
-				case "up":
-					if m.historyIdx == -1 {
-						// Start browsing: save current input, go to most recent
-						m.historySaved = m.input
-						m.historyIdx = len(m.promptHistory) - 1
-					} else if m.historyIdx > 0 {
-						m.historyIdx--
-					}
-					m.input = m.promptHistory[m.historyIdx]
-					return m, nil
-				case "down":
-					if m.historyIdx >= 0 {
-						if m.historyIdx < len(m.promptHistory)-1 {
-							m.historyIdx++
-							m.input = m.promptHistory[m.historyIdx]
-						} else {
-							// Past the end: restore saved input
-							m.historyIdx = -1
-							m.input = m.historySaved
-						}
-						return m, nil
-					}
-				}
-			}
+			// In chat state, Up/Down/PgUp/PgDown scroll the viewport.
 			if m.state == StateChat && m.ready {
 				var cmd tea.Cmd
 				m.viewport, cmd = m.viewport.Update(msg)
 				return m, cmd
 			}
 
+		case "ctrl+up", "ctrl+down":
+			// Prompt history navigation (Ctrl+Up/Down in input area).
+			if m.state == StateChat && !m.streaming && len(m.promptHistory) > 0 {
+				switch msg.String() {
+				case "ctrl+up":
+					if m.historyIdx == -1 {
+						m.historySaved = m.input
+						m.historyIdx = len(m.promptHistory) - 1
+					} else if m.historyIdx > 0 {
+						m.historyIdx--
+					}
+					m.input = m.promptHistory[m.historyIdx]
+					m.cursorPos = len([]rune(m.input))
+					return m, nil
+				case "ctrl+down":
+					if m.historyIdx >= 0 {
+						if m.historyIdx < len(m.promptHistory)-1 {
+							m.historyIdx++
+							m.input = m.promptHistory[m.historyIdx]
+						} else {
+							m.historyIdx = -1
+							m.input = m.historySaved
+						}
+						m.cursorPos = len([]rune(m.input))
+						return m, nil
+					}
+				}
+			}
+
 		default:
 			if m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
+				ch := msg.String()
+				// Filter out non-printable key names that slip through.
+				if len(ch) > 1 {
+					break
+				}
 				// Toggle welcome collapse when typing "/"
-				if len(m.input) == 0 && msg.String() == "/" && len(m.messages) == 0 {
+				if len(m.input) == 0 && ch == "/" && len(m.messages) == 0 {
 					m.welcomeCollapsed = !m.welcomeCollapsed
 				}
-				m.input += msg.String()
+				runes := []rune(m.input)
+				m.input = string(runes[:m.cursorPos]) + ch + string(runes[m.cursorPos:])
+				m.cursorPos++
 				m.historyIdx = -1 // reset history browsing on new input
 				m.spinnerFrame = 0
 				m.updateAutocomplete()
@@ -2851,8 +2945,12 @@ func renderWelcomeScreen(version, buildTime string, width int, collapsed bool) s
 	b.WriteString(sep + "\n")
 	keys := []struct{ key, desc string }{
 		{"Enter", "Send message"},
-		{"Up/Down", "Scroll up/down"},
+		{"Up/Down", "Scroll chat up/down"},
 		{"PgUp/PgDn", "Page up/down"},
+		{"Ctrl+Up/Down", "Browse prompt history"},
+		{"Left/Right", "Move cursor in input"},
+		{"Home/End", "Jump to start/end of input"},
+		{"Delete", "Delete character after cursor"},
 		{"Ctrl+Y", "Copy last response to clipboard"},
 		{"Ctrl+C", "Quit BujiCoder"},
 	}
@@ -3194,7 +3292,14 @@ func (m Model) renderFooter() string {
 			content.WriteString(promptStyle.Render("> ") + cursorChar + dimStyle.Render("Type a message..."))
 		}
 	} else {
-		lines := wrapInput(m.input, innerWidth-1)
+		// Insert cursor character at cursorPos within the input text.
+		runes := []rune(m.input)
+		pos := m.cursorPos
+		if pos > len(runes) {
+			pos = len(runes)
+		}
+		displayText := string(runes[:pos]) + cursorChar + string(runes[pos:])
+		lines := wrapInput(displayText, innerWidth-1)
 		for i, line := range lines {
 			if i == 0 {
 				content.WriteString(promptStyle.Render("> ") + line)
@@ -3202,7 +3307,6 @@ func (m Model) renderFooter() string {
 				content.WriteString("\n  " + line)
 			}
 		}
-		content.WriteString(cursorChar)
 	}
 
 	boxWidth := m.width - 2
