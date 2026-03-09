@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slash Commands — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html" class="active">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Slash Commands</h1>
+        <p class="docs-subtitle">Quick actions you can run from the chat input. Type <code>/</code> to see autocomplete suggestions.</p>
+
+        <h2>All Commands</h2>
+        <table>
+            <thead>
+                <tr><th>Command</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>/new</code></td><td>Start a new conversation (clears chat history)</td></tr>
+                <tr><td><code>/mode [name]</code></td><td>Switch cost mode. Without argument, shows a picker. Options: <code>normal</code>, <code>heavy</code>, <code>max</code>, <code>plan</code></td></tr>
+                <tr><td><code>/history</code></td><td>Browse and resume past conversations</td></tr>
+                <tr><td><code>/copy</code></td><td>Copy the last assistant response to clipboard</td></tr>
+                <tr><td><code>/about</code></td><td>Show version, Go runtime, and config paths</td></tr>
+                <tr><td><code>/init</code></td><td>Analyse project docs and explain the codebase</td></tr>
+                <tr><td><code>/models</code></td><td>List available models and current mode-to-model mappings</td></tr>
+                <tr><td><code>/mcp</code></td><td>List configured MCP servers and their status</td></tr>
+                <tr><td><code>/mcp add &lt;name&gt; &lt;cmd&gt; [args]</code></td><td>Add a new MCP server (lazy by default)</td></tr>
+                <tr><td><code>/mcp remove &lt;name&gt;</code></td><td>Remove an MCP server from config</td></tr>
+                <tr><td><code>/refresh</code></td><td>Reload config and refresh model-agent assignments</td></tr>
+                <tr><td><code>/update</code></td><td>Check for BujiCoder updates</td></tr>
+                <tr><td><code>/help</code></td><td>Show help and keyboard shortcuts</td></tr>
+                <tr><td><code>/quit</code></td><td>Exit BujiCoder</td></tr>
+                <tr><td><code>/exit</code></td><td>Exit BujiCoder (alias for /quit)</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Keyboard Shortcuts</h2>
+        <table>
+            <thead>
+                <tr><th>Key</th><th>Action</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>Enter</code></td><td>Send message</td></tr>
+                <tr><td><code>Up / Down</code></td><td>Scroll chat up/down</td></tr>
+                <tr><td><code>PgUp / PgDn</code></td><td>Page up/down</td></tr>
+                <tr><td><code>Ctrl+Up / Ctrl+Down</code></td><td>Browse prompt history</td></tr>
+                <tr><td><code>Left / Right</code></td><td>Move cursor in input</td></tr>
+                <tr><td><code>Home / End</code></td><td>Jump to start/end of input</td></tr>
+                <tr><td><code>Delete</code></td><td>Delete character after cursor</td></tr>
+                <tr><td><code>Tab</code></td><td>Accept autocomplete suggestion</td></tr>
+                <tr><td><code>Esc</code></td><td>Dismiss autocomplete/mode picker</td></tr>
+                <tr><td><code>Shift+Tab</code></td><td>Cycle cost modes (normal / heavy / max / plan)</td></tr>
+                <tr><td><code>Ctrl+Y</code></td><td>Copy last response to clipboard</td></tr>
+                <tr><td><code>Ctrl+C</code></td><td>Quit BujiCoder</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Autocomplete</h2>
+        <p>When you type <code>/</code> followed by characters, BujiCoder shows a dropdown of matching commands. Use:</p>
+        <ul>
+            <li><code>Up / Down</code> to navigate the list</li>
+            <li><code>Tab</code> or <code>Right</code> to accept the selection</li>
+            <li><code>Esc</code> to dismiss</li>
+        </ul>
+
+        <h2>File Attachments</h2>
+        <p>Attach files to your message using the <code>@</code> prefix:</p>
+<pre><code>@path/to/file.py Can you explain this code?
+@screenshot.png What's wrong with this UI?</code></pre>
+        <p>BujiCoder supports text files and images (PNG, JPG, etc.) for multimodal models.</p>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

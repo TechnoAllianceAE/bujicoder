@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html" class="active">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Configuration</h1>
+        <p class="docs-subtitle">BujiCoder uses a single YAML config file for all settings.</p>
+
+        <h2>Config File Location</h2>
+        <p>The config file lives at:</p>
+<pre><code>~/.bujicoder/bujicoder.yaml</code></pre>
+        <p>This file is created automatically by the setup wizard on first run. You can edit it manually at any time.</p>
+
+        <div class="docs-callout info">
+            <strong>Override:</strong> Set the <code>BUJICODER_CONFIG_DIR</code> environment variable to use a different config directory.
+        </div>
+
+        <h2>Full Config Example</h2>
+        <p>Here's a complete config file with all available options:</p>
+<pre><code># BujiCoder Configuration
+# Edit this file to customize API keys, models, and settings.
+
+mode: local
+cost_mode: normal
+
+api_keys:
+  openrouter: sk-or-v1-abc123...       # OpenRouter (200+ models)
+  anthropic: sk-ant-api03-abc123...     # Anthropic (Claude)
+  openai: sk-abc123...                  # OpenAI (GPT-4o)
+  google_ai: AIza...                    # Google AI (Gemini)
+  xai: xai-abc123...                    # xAI (Grok)
+  groq: gsk_abc123...                   # Groq
+  cerebras: csk-abc123...               # Cerebras
+  together: abc123...                   # Together AI
+  ollama_url: http://localhost:11434    # Ollama (local models)
+
+modes:
+  normal:
+    main: x-ai/grok-code-fast-1
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5
+  heavy:
+    main: qwen/qwen3.5-35b-a3b
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5
+  max:
+    main: minimax/minimax-m2.5
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5
+    agent_overrides:
+      editor: anthropic/claude-sonnet-4
+      planner: qwen/qwen3-235b-a22b
+
+agents_dir: ~/.bujicoder/agents        # Custom agent definitions
+
+mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+    lazy: true
+  - name: github
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    lazy: true</code></pre>
+
+        <h2>Config Fields Reference</h2>
+        <table>
+            <thead>
+                <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>mode</code></td><td>string</td><td>Always <code>local</code></td></tr>
+                <tr><td><code>cost_mode</code></td><td>string</td><td>Default cost mode: <code>normal</code>, <code>heavy</code>, or <code>max</code></td></tr>
+                <tr><td><code>api_keys</code></td><td>object</td><td>API keys for LLM providers (see <a href="api-keys.html">API Keys</a>)</td></tr>
+                <tr><td><code>modes</code></td><td>object</td><td>Model assignments per cost mode (see <a href="modes.html">Cost Modes</a>)</td></tr>
+                <tr><td><code>agents_dir</code></td><td>string</td><td>Path to custom agent YAML files (optional)</td></tr>
+                <tr><td><code>mcp_servers</code></td><td>list</td><td>MCP server configs (see <a href="mcp-servers.html">MCP Servers</a>)</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Environment Variables</h2>
+        <p>These environment variables override or supplement the config file:</p>
+        <table>
+            <thead>
+                <tr><th>Variable</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>BUJICODER_CONFIG_DIR</code></td><td>Override config directory (default: <code>~/.bujicoder</code>)</td></tr>
+                <tr><td><code>BUJICODER_AGENTS_DIR</code></td><td>Override custom agents directory</td></tr>
+                <tr><td><code>BUJICODER_ENABLE_MOUSE</code></td><td>Enable mouse capture in TUI</td></tr>
+                <tr><td><code>BUJICODER_DISABLE_UPDATE_CHECK</code></td><td>Skip update check on launch</td></tr>
+                <tr><td><code>OPENROUTER_API_KEY</code></td><td>OpenRouter API key (fallback if not in config)</td></tr>
+                <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic API key (fallback)</td></tr>
+                <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI API key (fallback)</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Project-Level Config</h2>
+        <p>Create a <code>.bujicoderrc</code> file in your project root to set per-project permissions:</p>
+<pre><code>permissions:
+  allowed_commands:
+    - "go test"
+    - "npm run"
+    - "make"
+  auto_approve_reads: true</code></pre>
+
+        <h2>Data Directories</h2>
+        <table>
+            <thead>
+                <tr><th>Path</th><th>Contents</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>~/.bujicoder/bujicoder.yaml</code></td><td>Main config file</td></tr>
+                <tr><td><code>~/.bujicoder/agents/</code></td><td>Custom agent YAML definitions</td></tr>
+                <tr><td><code>~/.bujicoder/conversations/</code></td><td>Saved chat history (JSON)</td></tr>
+            </tbody>
+        </table>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

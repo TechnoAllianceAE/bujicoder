@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Installation — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html" class="active">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Installation</h1>
+        <p class="docs-subtitle">BujiCoder ships as a single binary. No runtime dependencies required.</p>
+
+        <h2>macOS / Linux (recommended)</h2>
+        <p>Use the install script to download the latest release and place it in your PATH:</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/TechnoAllianceAE/bujicoder/main/scripts/install.sh | bash</code></pre>
+        <p>This installs the <code>buji</code> binary to <code>~/.local/bin/</code>. Make sure this directory is in your <code>$PATH</code>.</p>
+
+        <h2>Build from Source</h2>
+        <p>Requires <strong>Go 1.24+</strong>.</p>
+<pre><code>go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code></pre>
+        <p>Or clone and build manually:</p>
+<pre><code>git clone https://github.com/TechnoAllianceAE/bujicoder.git
+cd bujicoder
+go build -o buji ./cli/cmd/buji
+./buji</code></pre>
+
+        <h2>Windows</h2>
+        <p>Download the latest <code>.exe</code> from <a href="https://github.com/TechnoAllianceAE/bujicoder/releases" target="_blank" rel="noopener">GitHub Releases</a> and add it to your PATH.</p>
+
+        <h2>Verify Installation</h2>
+<pre><code>buji --version</code></pre>
+
+        <h2>First Run</h2>
+        <p>On first launch, BujiCoder runs a setup wizard that:</p>
+        <ol>
+            <li>Asks you to choose a setup mode (<strong>Quick</strong> or <strong>Advanced</strong>)</li>
+            <li>Prompts for an API key from your chosen provider</li>
+            <li>Creates the config file at <code>~/.bujicoder/bujicoder.yaml</code></li>
+        </ol>
+        <div class="docs-callout info">
+            <strong>Note:</strong> You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.
+        </div>
+
+        <h2>Updating</h2>
+        <p>BujiCoder checks for updates on launch (can be disabled). To update manually:</p>
+<pre><code># Re-run the install script
+curl -fsSL https://raw.githubusercontent.com/TechnoAllianceAE/bujicoder/main/scripts/install.sh | bash
+
+# Or from source
+go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code></pre>
+        <p>You can also use the <code>/update</code> command inside the TUI to check for updates.</p>
+
+        <h2>Uninstalling</h2>
+<pre><code># Remove the binary
+rm ~/.local/bin/buji
+
+# Remove config and data (optional)
+rm -rf ~/.bujicoder</code></pre>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>
