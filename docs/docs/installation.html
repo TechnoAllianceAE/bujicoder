@@ -70,6 +70,21 @@ go build -o buji ./cli/cmd/buji
             <li>Prompts for an API key from your chosen provider</li>
             <li>Creates the config file at <code>~/.bujicoder/bujicoder.yaml</code></li>
         </ol>
+
+        <div class="docs-callout tip">
+            <strong>You only need one API key.</strong> We recommend <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a> — it gives access to 200+ models with a single key, and BujiCoder's default model mappings are designed for it. Just paste your OpenRouter key and you're ready to code.
+        </div>
+
+        <p>If you use a different provider (Anthropic, OpenAI, Groq, etc.), you'll also need to configure the <code>modes</code> section in your config to use models available from that provider. See <a href="api-keys.html">API Keys</a> for per-provider sample configs.</p>
+
+        <h3>Quick Start with OpenRouter</h3>
+        <ol>
+            <li>Sign up at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> (free — use Google, GitHub, or email)</li>
+            <li>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> and click <strong>Create Key</strong></li>
+            <li>Add credits under <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">Credits</a> (many models have free tiers)</li>
+            <li>Run <code>buji</code> and paste your key when prompted — that's it!</li>
+        </ol>
+
         <div class="docs-callout info">
             <strong>Note:</strong> You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.
         </div>
