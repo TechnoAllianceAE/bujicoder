@@ -80,6 +80,9 @@
         </table>
 
         <h2>Configuring Models per Mode</h2>
+        <div class="docs-callout warn">
+            <strong>Match models to your provider:</strong> Every model ID in your <code>modes</code> config must be available from the provider whose API key you've configured. The examples below use OpenRouter model IDs (the default). If you use a different provider, see <a href="api-keys.html">API Keys</a> for per-provider sample configs.
+        </div>
 <pre><code>modes:
   normal:
     main: x-ai/grok-code-fast-1

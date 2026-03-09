@@ -44,16 +44,19 @@
         <p class="docs-subtitle">BujiCoder talks directly to LLM providers using your API keys. No middleman, no markup.</p>
 
         <div class="docs-callout tip">
-            <strong>Quick start:</strong> You only need <strong>one</strong> API key to get started. OpenRouter is the easiest since it gives access to 200+ models with a single key.
+            <strong>Quick start:</strong> You only need <strong>one</strong> API key to get started. OpenRouter is the recommended default — it gives access to 200+ models with a single key, and BujiCoder's built-in model mappings are designed for it out of the box.
+        </div>
+
+        <div class="docs-callout warn">
+            <strong>Important:</strong> Every model in your <code>modes</code> config must be available from a provider whose API key you have. If you only have an OpenRouter key, all models must use OpenRouter model IDs (e.g. <code>anthropic/claude-sonnet-4</code>, <code>openai/gpt-4o</code>). If you only have an Anthropic key, all models must be Anthropic models. See <a href="configuration.html">Configuration</a> for per-provider sample configs.
         </div>
 
         <h2>Adding Keys to the Config</h2>
-        <p>Add your API keys under the <code>api_keys</code> section in <code>~/.bujicoder/bujicoder.yaml</code>:</p>
-<pre><code>api_keys:
-  openrouter: sk-or-v1-abc123...
-  anthropic: sk-ant-api03-abc123...
-  openai: sk-abc123...</code></pre>
-        <p>You can add as many providers as you want. BujiCoder routes each model to its provider automatically based on the model ID prefix.</p>
+        <p>Add your API key under the <code>api_keys</code> section in <code>~/.bujicoder/bujicoder.yaml</code>. You only need one:</p>
+<pre><code># Minimal config — just one provider
+api_keys:
+  openrouter: sk-or-v1-abc123...</code></pre>
+        <p>You can optionally add more providers. BujiCoder routes each model to its provider automatically based on the model ID prefix.</p>
 
         <h2>Using Environment Variables</h2>
         <p>API keys can also be set via environment variables. These are used as fallbacks when no key is in the config file:</p>
@@ -79,6 +82,21 @@ export OPENAI_API_KEY="sk-abc123..."</code></pre>
             </tbody>
         </table>
         <p>Model IDs use the OpenRouter format, e.g. <code>anthropic/claude-sonnet-4</code>, <code>openai/gpt-4o</code>, <code>google/gemini-2.5-pro-preview</code>.</p>
+
+        <h4>How to Get Your OpenRouter API Key</h4>
+        <ol>
+            <li>Go to <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> and create a free account (you can sign in with Google, GitHub, or email).</li>
+            <li>Once logged in, navigate to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> (or click <strong>Keys</strong> in the dashboard sidebar).</li>
+            <li>Click <strong>Create Key</strong>, give it a name (e.g. "bujicoder"), and copy the generated key. It starts with <code>sk-or-v1-</code>.</li>
+            <li>Add credits to your account under <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">Credits</a>. Many models have free tiers, but paid models require a balance.</li>
+            <li>Add the key to your config:</li>
+        </ol>
+<pre><code># ~/.bujicoder/bujicoder.yaml
+api_keys:
+  openrouter: sk-or-v1-your-key-here</code></pre>
+        <div class="docs-callout tip">
+            <strong>Why OpenRouter?</strong> With one key you get access to models from OpenAI, Anthropic, Google, Meta, Mistral, xAI, and many others. BujiCoder's default model mappings all use OpenRouter model IDs, so it works out of the box with no extra configuration.
+        </div>
 
         <h3>Anthropic</h3>
         <p>Direct access to Claude models.</p>
@@ -170,16 +188,79 @@ modes:
   normal:
     main: ollama/llama3</code></pre>
 
-        <h2>Multiple Providers</h2>
-        <p>You can use different providers for different agent roles. For example, use a cheap OpenRouter model for file exploration and a powerful Anthropic model for editing:</p>
+        <h2>One Key Is Enough</h2>
+        <p>BujiCoder works with a single API key. The key determines which models you can use — every model in your <code>modes</code> config must be accessible through the provider(s) whose keys you've configured.</p>
+
+        <h3>OpenRouter Only (Recommended)</h3>
+        <p>The default model mappings are designed for OpenRouter. With just an OpenRouter key, everything works out of the box — no config changes needed:</p>
+<pre><code>api_keys:
+  openrouter: sk-or-v1-your-key-here
+
+# No modes section needed — defaults use OpenRouter models</code></pre>
+
+        <h3>Anthropic Only</h3>
+        <p>If you only have an Anthropic key, set all models to Anthropic models:</p>
+<pre><code>api_keys:
+  anthropic: sk-ant-api03-your-key-here
+
+modes:
+  normal:
+    main: anthropic/claude-sonnet-4-20250514
+    file_explorer: anthropic/claude-haiku-4-5-20251001
+    sub_agent: anthropic/claude-sonnet-4-20250514
+  heavy:
+    main: anthropic/claude-sonnet-4-20250514
+    file_explorer: anthropic/claude-haiku-4-5-20251001
+    sub_agent: anthropic/claude-sonnet-4-20250514
+  max:
+    main: anthropic/claude-opus-4-20250514
+    file_explorer: anthropic/claude-haiku-4-5-20251001
+    sub_agent: anthropic/claude-sonnet-4-20250514</code></pre>
+
+        <h3>OpenAI Only</h3>
+        <p>If you only have an OpenAI key:</p>
+<pre><code>api_keys:
+  openai: sk-your-key-here
+
+modes:
+  normal:
+    main: openai/gpt-4o-mini
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: openai/gpt-4o-mini
+  heavy:
+    main: openai/gpt-4o
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: openai/gpt-4o
+  max:
+    main: openai/gpt-4o
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: openai/gpt-4o</code></pre>
+
+        <h3>Groq Only</h3>
+        <p>If you only have a Groq key:</p>
+<pre><code>api_keys:
+  groq: gsk_your-key-here
+
+modes:
+  normal:
+    main: groq/llama-3.3-70b-versatile
+    file_explorer: groq/llama-3.1-8b-instant
+    sub_agent: groq/llama-3.3-70b-versatile
+  heavy:
+    main: groq/llama-3.3-70b-versatile
+    file_explorer: groq/llama-3.1-8b-instant
+    sub_agent: groq/llama-3.3-70b-versatile</code></pre>
+
+        <h3>Multiple Providers</h3>
+        <p>You can mix providers for different agent roles. When you have multiple keys, you can pick the best model from each provider:</p>
 <pre><code>api_keys:
   openrouter: sk-or-v1-...
   anthropic: sk-ant-api03-...
 
 modes:
   heavy:
-    main: anthropic/claude-sonnet-4
-    file_explorer: openai/gpt-4o-mini    # routed via OpenRouter
+    main: anthropic/claude-sonnet-4          # direct Anthropic API
+    file_explorer: openai/gpt-4o-mini        # routed via OpenRouter
     sub_agent: anthropic/claude-sonnet-4</code></pre>
 
         <div class="docs-callout warn">
