@@ -100,6 +100,56 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-github"]
     lazy: true</code></pre>
 
+        <h2>Agent &amp; Sub-Agent Model Mapping</h2>
+        <p>Each cost mode assigns models to three roles: <code>main</code> (orchestrator), <code>file_explorer</code> (lightweight navigation), and <code>sub_agent</code> (all other specialist agents). You can override the model for individual agents using <code>agent_overrides</code>:</p>
+<pre><code># Sample config with agent/sub-agent model mapping
+mode: local
+cost_mode: normal
+
+api_keys:
+  openrouter: sk-or-v1-your-key-here
+
+modes:
+  normal:
+    main: qwen/qwen3.5-122b-a10b
+    file_explorer: openai/gpt-oss-20b
+    sub_agent: together/deepseek-ai/DeepSeek-V3.1
+    agent_overrides:
+      editor: deepseek/deepseek-v3.2-speciale
+      git_committer: openai/gpt-oss-120b
+      planner: z-ai/glm-5
+      reviewer: together/moonshotai/Kimi-K2.5
+      thinker: together/meta-llama/Llama-3.3-70B-Instruct-Turbo
+
+  heavy:
+    main: x-ai/grok-code-fast-1
+    file_explorer: openai/gpt-oss-20b
+    sub_agent: z-ai/glm-5
+    agent_overrides:
+      editor: together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+      git_committer: openai/gpt-oss-120b
+      reviewer: moonshotai/kimi-k2.5
+      thinker: together/deepseek-ai/DeepSeek-R1
+
+  max:
+    main: minimax/minimax-m2.5
+    file_explorer: openai/gpt-oss-20b
+    sub_agent: together/MiniMaxAI/MiniMax-M2.5
+    agent_overrides:
+      editor: together/Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+      git_committer: openai/gpt-oss-120b
+      implementor: together/MiniMaxAI/MiniMax-M2.5
+      judge: minimax/minimax-m2.5
+      parallel_editor: minimax/minimax-m2.5
+      planner: together/Qwen/Qwen3.5-397B-A17B
+      researcher: together/MiniMaxAI/MiniMax-M2.5
+      reviewer: qwen/qwen3.5-122b-a10b
+      thinker: together/Qwen/Qwen3-235B-A22B-Thinking-2507</code></pre>
+
+        <div class="docs-callout info">
+            <strong>How resolution works:</strong> When an agent runs, BujiCoder checks <code>agent_overrides</code> first, then falls back to the role-based model (<code>main</code>, <code>file_explorer</code>, or <code>sub_agent</code>). This lets you assign expensive, high-quality models to critical agents (like <code>editor</code>) while keeping cheaper models for others.
+        </div>
+
         <h2>Config Fields Reference</h2>
         <table>
             <thead>

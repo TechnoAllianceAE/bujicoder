@@ -80,6 +80,21 @@ export OPENAI_API_KEY="sk-abc123..."</code></pre>
         </table>
         <p>Model IDs use the OpenRouter format, e.g. <code>anthropic/claude-sonnet-4</code>, <code>openai/gpt-4o</code>, <code>google/gemini-2.5-pro-preview</code>.</p>
 
+        <h4>How to Get Your OpenRouter API Key</h4>
+        <ol>
+            <li>Go to <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> and create a free account (you can sign in with Google, GitHub, or email).</li>
+            <li>Once logged in, navigate to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> (or click <strong>Keys</strong> in the dashboard sidebar).</li>
+            <li>Click <strong>Create Key</strong>, give it a name (e.g. "bujicoder"), and copy the generated key. It starts with <code>sk-or-v1-</code>.</li>
+            <li>Add credits to your account under <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">Credits</a>. Many models have free tiers, but paid models require a balance.</li>
+            <li>Add the key to your config:</li>
+        </ol>
+<pre><code># ~/.bujicoder/bujicoder.yaml
+api_keys:
+  openrouter: sk-or-v1-your-key-here</code></pre>
+        <div class="docs-callout tip">
+            <strong>Why OpenRouter?</strong> With one key you get access to models from OpenAI, Anthropic, Google, Meta, Mistral, xAI, and many others. BujiCoder's default model mappings all use OpenRouter model IDs, so it works out of the box with no extra configuration.
+        </div>
+
         <h3>Anthropic</h3>
         <p>Direct access to Claude models.</p>
         <table>
