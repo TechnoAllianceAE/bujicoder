@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
 )
 
 // Tool is a local tool executor.
@@ -32,6 +34,38 @@ type Registry struct {
 type contextKey string
 
 const workDirCtxKey contextKey = "tools_work_dir"
+const planModeCtxKey contextKey = "tools_plan_mode"
+const cacheCtxKey contextKey = "tools_context_cache"
+
+// WithPlanMode returns a child context with plan mode enabled.
+// When plan mode is active, write operations (write_file, str_replace,
+// run_terminal_command) are blocked unless the target is a .md file.
+func WithPlanMode(ctx context.Context, enabled bool) context.Context {
+	return context.WithValue(ctx, planModeCtxKey, enabled)
+}
+
+// IsPlanMode returns true if the context has plan mode enabled.
+func IsPlanMode(ctx context.Context) bool {
+	v, _ := ctx.Value(planModeCtxKey).(bool)
+	return v
+}
+
+// isPlanModeAllowedPath returns true if the path is allowed in plan mode.
+// Only .md (markdown) files can be written in plan mode.
+func isPlanModeAllowedPath(path string) bool {
+	return strings.HasSuffix(strings.ToLower(path), ".md")
+}
+
+// WithContextCache returns a child context carrying a file content cache.
+func WithContextCache(ctx context.Context, cache *contextcache.Cache) context.Context {
+	return context.WithValue(ctx, cacheCtxKey, cache)
+}
+
+// getContextCache returns the context cache if set.
+func getContextCache(ctx context.Context) *contextcache.Cache {
+	c, _ := ctx.Value(cacheCtxKey).(*contextcache.Cache)
+	return c
+}
 
 // WithWorkDir returns a child context carrying a per-request working directory.
 // Tools will use this directory instead of the default one configured at startup.
@@ -174,12 +208,22 @@ func readFiles(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		}
 
 		wd := effectiveWorkDir(ctx, workDir)
+		cache := getContextCache(ctx)
 		var result strings.Builder
 		for _, p := range params.Paths {
 			if perms.IsPathRestricted(p) {
 				result.WriteString(fmt.Sprintf("--- %s ---\nError: access denied: path is restricted by .bujicoderrc\n\n", p))
 				continue
 			}
+
+			// Try the context cache first (avoids redundant disk reads).
+			if cache != nil {
+				if content, err := cache.Get(p); err == nil {
+					result.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", p, content))
+					continue
+				}
+			}
+
 			absPath, err := safePath(wd, p)
 			if err != nil {
 				result.WriteString(fmt.Sprintf("--- %s ---\nError: %v\n\n", p, err))
@@ -206,6 +250,10 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 			return "", err
 		}
 
+		if IsPlanMode(ctx) && !isPlanModeAllowedPath(params.Path) {
+			return "", fmt.Errorf("BLOCKED (plan mode): write_file is not allowed for non-.md files in plan mode. Use propose_write_file instead.\nPath: %s", params.Path)
+		}
+
 		if perms.IsPathRestricted(params.Path) {
 			return "", fmt.Errorf("access denied: path %q is restricted by .bujicoderrc", params.Path)
 		}
@@ -220,6 +268,10 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		if err := os.WriteFile(absPath, []byte(params.Content), 0o644); err != nil {
 			return "", err
 		}
+		// Invalidate cache for the written file.
+		if cache := getContextCache(ctx); cache != nil {
+			cache.Invalidate(params.Path)
+		}
 		return fmt.Sprintf("Wrote %d bytes to %s", len(params.Content), params.Path), nil
 	}
 }
@@ -233,6 +285,10 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		}
 		if err := json.Unmarshal(args, &params); err != nil {
 			return "", err
+		}
+
+		if IsPlanMode(ctx) && !isPlanModeAllowedPath(params.Path) {
+			return "", fmt.Errorf("BLOCKED (plan mode): str_replace is not allowed for non-.md files in plan mode. Use propose_edit instead.\nPath: %s", params.Path)
 		}
 
 		if perms.IsPathRestricted(params.Path) {
@@ -256,6 +312,10 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		newContent := strings.Replace(content, params.OldStr, params.NewStr, 1)
 		if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
 			return "", err
+		}
+		// Invalidate cache for the edited file.
+		if cache := getContextCache(ctx); cache != nil {
+			cache.Invalidate(params.Path)
 		}
 		return "Replacement applied", nil
 	}
@@ -339,6 +399,34 @@ func isDangerousCommand(cmd string) (bool, string) {
 	return false, ""
 }
 
+// isReadOnlyCommand checks if a terminal command is safe for plan mode (read-only).
+func isReadOnlyCommand(cmd string) bool {
+	lower := strings.ToLower(strings.TrimSpace(cmd))
+	// Allow common read-only commands
+	readOnlyPrefixes := []string{
+		"ls", "cat", "head", "tail", "less", "more", "wc",
+		"find", "grep", "rg", "ag", "ack",
+		"git status", "git log", "git diff", "git show", "git branch",
+		"git remote", "git tag", "git stash list",
+		"pwd", "echo", "which", "whereis", "whoami",
+		"tree", "file", "stat", "du", "df",
+		"go vet", "go doc", "go list",
+		"npm list", "npm ls", "npm info",
+		"python --version", "node --version", "go version",
+	}
+	for _, prefix := range readOnlyPrefixes {
+		if lower == prefix || strings.HasPrefix(lower, prefix+" ") || strings.HasPrefix(lower, prefix+"\t") {
+			return true
+		}
+	}
+	// Allow piped read-only commands if the first command is read-only
+	if idx := strings.Index(lower, "|"); idx > 0 {
+		first := strings.TrimSpace(lower[:idx])
+		return isReadOnlyCommand(first)
+	}
+	return false
+}
+
 func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
@@ -346,6 +434,11 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectP
 		}
 		if err := json.Unmarshal(args, &params); err != nil {
 			return "", err
+		}
+
+		// Plan mode: only allow read-only commands.
+		if IsPlanMode(ctx) && !isReadOnlyCommand(params.Command) {
+			return "", fmt.Errorf("BLOCKED (plan mode): only read-only commands are allowed in plan mode.\nCommand: %s", params.Command)
 		}
 
 		// 1. Check .bujicoderrc command rules (first match wins).

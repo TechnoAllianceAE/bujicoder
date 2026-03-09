@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
+	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
@@ -55,7 +56,8 @@ type RunConfig struct {
 	OnEvent           OnEvent
 	CostMode          costmode.Mode           // Cost mode for model selection (propagated to sub-agents)
 	ModelResolver     *costmode.Resolver      // Server-side model resolver (propagated to sub-agents)
-	ProposalCollector *tools.ProposalCollector // When set, proposal tools accumulate here instead of writing to disk
+	ProposalCollector *tools.ProposalCollector    // When set, proposal tools accumulate here instead of writing to disk
+	ContextCache      *contextcache.Cache         // When set, file reads are cached to avoid redundant disk I/O
 }
 
 // RunResult summarises a completed agent run.

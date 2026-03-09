@@ -19,6 +19,16 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 		ctx = tools.WithWorkDir(ctx, cfg.ProjectRoot)
 	}
 
+	// Propagate plan mode to tools so write operations are blocked.
+	if cfg.CostMode == "plan" {
+		ctx = tools.WithPlanMode(ctx, true)
+	}
+
+	// Inject context cache for faster repeated file reads.
+	if cfg.ContextCache != nil {
+		ctx = tools.WithContextCache(ctx, cfg.ContextCache)
+	}
+
 	var results []llm.ContentPart
 
 	for _, tc := range toolCalls {
@@ -47,12 +57,17 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 			}
 
 		case "apply_proposals":
-			result, err := handleApplyProposals(ctx, tc.ArgumentsJSON, cfg)
-			if err != nil {
-				resultText = fmt.Sprintf("Error applying proposals: %v", err)
+			if cfg.CostMode == "plan" {
+				resultText = "BLOCKED (plan mode): apply_proposals is not allowed in plan mode."
 				isError = true
 			} else {
-				resultText = result
+				result, err := handleApplyProposals(ctx, tc.ArgumentsJSON, cfg)
+				if err != nil {
+					resultText = fmt.Sprintf("Error applying proposals: %v", err)
+					isError = true
+				} else {
+					resultText = result
+				}
 			}
 
 		default:
