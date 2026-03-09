@@ -108,9 +108,9 @@ code {
 
 .nav-logo:hover { color: #fff; }
 
-.logo-icon {
-    color: var(--accent);
-    font-size: 1.4rem;
+.logo-image {
+    height: 1.8rem;
+    width: auto;
 }
 
 .nav-links {
