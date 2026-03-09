@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cost Modes — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html" class="active">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Cost Modes</h1>
+        <p class="docs-subtitle">Control the speed-quality-cost tradeoff for every task.</p>
+
+        <h2>Overview</h2>
+        <p>BujiCoder has four modes that determine which models are used and how agents behave:</p>
+        <table>
+            <thead>
+                <tr><th>Mode</th><th>Purpose</th><th>Speed</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>Normal</strong></td><td>Everyday coding tasks</td><td>Fast</td><td>Low</td></tr>
+                <tr><td><strong>Heavy</strong></td><td>Complex tasks requiring deeper reasoning</td><td>Medium</td><td>Medium</td></tr>
+                <tr><td><strong>Max</strong></td><td>Mission-critical work, parallel evolution</td><td>Slow</td><td>High</td></tr>
+                <tr><td><strong>Plan</strong></td><td>Read-only analysis and documentation</td><td>Fast</td><td>Low</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Switching Modes</h2>
+        <p>Switch modes in the TUI using any of these methods:</p>
+        <ul>
+            <li><code>/mode normal</code>, <code>/mode heavy</code>, <code>/mode max</code>, <code>/mode plan</code></li>
+            <li><code>/mode</code> (opens a visual picker)</li>
+            <li><code>Shift+Tab</code> (cycles through modes)</li>
+        </ul>
+        <p>Your selected mode is saved to the config file and persists across sessions.</p>
+
+        <h2>Model Roles</h2>
+        <p>Each cost mode assigns models to three roles:</p>
+        <table>
+            <thead>
+                <tr><th>Role</th><th>Used by</th><th>Recommendation</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>main</code></td><td>Orchestrator agent (routes tasks, drives conversation)</td><td>Best model you can afford</td></tr>
+                <tr><td><code>file_explorer</code></td><td>File navigation, codebase search</td><td>Fast, cheap model</td></tr>
+                <tr><td><code>sub_agent</code></td><td>Editor, planner, researcher, reviewer, etc.</td><td>Balance of quality and cost</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Configuring Models per Mode</h2>
+<pre><code>modes:
+  normal:
+    main: x-ai/grok-code-fast-1
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5
+  heavy:
+    main: qwen/qwen3.5-35b-a3b
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5
+  max:
+    main: minimax/minimax-m2.5
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: z-ai/glm-5</code></pre>
+
+        <h2>Per-Agent Overrides</h2>
+        <p>Within any cost mode, you can override the model for a specific agent using <code>agent_overrides</code>:</p>
+<pre><code>modes:
+  max:
+    main: anthropic/claude-sonnet-4
+    file_explorer: openai/gpt-4o-mini
+    sub_agent: anthropic/claude-sonnet-4
+    agent_overrides:
+      editor: anthropic/claude-sonnet-4
+      planner: qwen/qwen3-235b-a22b
+      researcher: google/gemini-2.5-pro-preview</code></pre>
+        <p>Any agent not listed in <code>agent_overrides</code> uses the default <code>sub_agent</code> model. The orchestrator always uses <code>main</code>.</p>
+
+        <h2>Plan Mode</h2>
+        <p>Plan mode is a special read-only mode where BujiCoder:</p>
+        <ul>
+            <li>Reads and analyses code for understanding</li>
+            <li>Creates and modifies <code>.md</code> documentation files</li>
+            <li>Does <strong>not</strong> modify source code</li>
+        </ul>
+        <p>This is useful for project onboarding, architecture documentation, and code review analysis.</p>
+
+        <h2>Max Mode — Parallel Evolution</h2>
+        <p>In Max mode, when editing files, BujiCoder can spawn multiple agents to implement competing solutions in parallel. A judge agent then evaluates the results and picks the best one.</p>
+        <p>This is like running a coding tournament for every task — more expensive, but produces higher quality results.</p>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

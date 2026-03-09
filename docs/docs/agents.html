@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Architecture — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html" class="active">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Agent Architecture</h1>
+        <p class="docs-subtitle">BujiCoder uses a multi-agent system where specialized agents collaborate to complete tasks.</p>
+
+        <h2>How It Works</h2>
+        <p>Instead of one generic chatbot, BujiCoder has a team of purpose-built agents. The <strong>orchestrator</strong> (base agent) receives your message, decides which specialist to delegate to, and coordinates the workflow.</p>
+        <p>Each agent has:</p>
+        <ul>
+            <li>A <strong>system prompt</strong> tailored to its role</li>
+            <li>A specific set of <strong>tools</strong> it can use</li>
+            <li>A <strong>model assignment</strong> based on the current cost mode</li>
+        </ul>
+
+        <h2>Built-in Agents</h2>
+        <table>
+            <thead>
+                <tr><th>Agent</th><th>Role</th><th>Tools</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>base</strong></td><td>Orchestrator — routes tasks to sub-agents</td><td>All tools + spawns sub-agents</td></tr>
+                <tr><td><strong>editor</strong></td><td>Precise file modifications</td><td>edit_file, write_file, read_files</td></tr>
+                <tr><td><strong>file_explorer</strong></td><td>Fast codebase navigation</td><td>read_files, glob, list_directory</td></tr>
+                <tr><td><strong>planner</strong></td><td>Task decomposition and planning</td><td>read_files, code_search, think_deeply</td></tr>
+                <tr><td><strong>researcher</strong></td><td>Deep research and analysis</td><td>read_files, web_search, think_deeply</td></tr>
+                <tr><td><strong>reviewer</strong></td><td>Code quality evaluation</td><td>read_files, code_search, glob</td></tr>
+                <tr><td><strong>thinker</strong></td><td>Pure reasoning (no file access)</td><td>think_deeply</td></tr>
+                <tr><td><strong>git_committer</strong></td><td>Git staging and commits</td><td>run_terminal_command, read_files</td></tr>
+                <tr><td><strong>parallel_editor</strong></td><td>Max-mode parallel implementation</td><td>spawn_agents, apply_proposals</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Model Assignment</h2>
+        <p>Agents use models based on their role and the current cost mode:</p>
+        <ul>
+            <li>The <strong>base</strong> (orchestrator) agent uses the <code>main</code> model</li>
+            <li>The <strong>file_explorer</strong> agent uses the <code>file_explorer</code> model</li>
+            <li>All other agents use the <code>sub_agent</code> model, unless overridden</li>
+        </ul>
+        <p>See <a href="modes.html">Cost Modes</a> for how to configure models per mode and per agent.</p>
+
+        <h2>Agent Workflow Example</h2>
+        <p>When you ask "Add a login form to the app", the typical workflow is:</p>
+        <ol>
+            <li><strong>base</strong> receives the task, spawns <strong>planner</strong></li>
+            <li><strong>planner</strong> reads relevant files, creates a step-by-step plan</li>
+            <li><strong>base</strong> spawns <strong>editor</strong> for each file modification</li>
+            <li><strong>editor</strong> makes precise edits using edit_file/write_file tools</li>
+            <li><strong>base</strong> optionally spawns <strong>reviewer</strong> to check the changes</li>
+            <li><strong>base</strong> summarises the result for you</li>
+        </ol>
+
+        <h2>Custom Agents</h2>
+        <p>Agent definitions live in YAML files. You can customise existing agents or add your own by placing YAML files in the agents directory:</p>
+<pre><code># Default location
+~/.bujicoder/agents/
+
+# Or set a custom path in config
+agents_dir: /path/to/my/agents</code></pre>
+
+        <div class="docs-callout info">
+            <strong>Note:</strong> Use <code>/models</code> in the TUI to see which models are currently assigned to each agent role.
+        </div>
+
+        <h2>Max Mode — Parallel Evolution</h2>
+        <p>In Max mode, when editing files, the <strong>parallel_editor</strong> agent can spawn multiple competing implementations simultaneously. A judge evaluates all proposals and picks the best one, resulting in higher quality output at the cost of more API calls.</p>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

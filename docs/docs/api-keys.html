@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Keys — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html" class="active">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>API Keys</h1>
+        <p class="docs-subtitle">BujiCoder talks directly to LLM providers using your API keys. No middleman, no markup.</p>
+
+        <div class="docs-callout tip">
+            <strong>Quick start:</strong> You only need <strong>one</strong> API key to get started. OpenRouter is the easiest since it gives access to 200+ models with a single key.
+        </div>
+
+        <h2>Adding Keys to the Config</h2>
+        <p>Add your API keys under the <code>api_keys</code> section in <code>~/.bujicoder/bujicoder.yaml</code>:</p>
+<pre><code>api_keys:
+  openrouter: sk-or-v1-abc123...
+  anthropic: sk-ant-api03-abc123...
+  openai: sk-abc123...</code></pre>
+        <p>You can add as many providers as you want. BujiCoder routes each model to its provider automatically based on the model ID prefix.</p>
+
+        <h2>Using Environment Variables</h2>
+        <p>API keys can also be set via environment variables. These are used as fallbacks when no key is in the config file:</p>
+<pre><code># Add to your shell profile (~/.bashrc, ~/.zshrc, etc.)
+export OPENROUTER_API_KEY="sk-or-v1-abc123..."
+export ANTHROPIC_API_KEY="sk-ant-api03-abc123..."
+export OPENAI_API_KEY="sk-abc123..."</code></pre>
+
+        <div class="docs-callout info">
+            <strong>Priority:</strong> Config file keys take precedence over environment variables.
+        </div>
+
+        <h2>Supported Providers</h2>
+
+        <h3>OpenRouter</h3>
+        <p>Access 200+ models from multiple providers with a single API key. This is the recommended starting point.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>openrouter</code></td></tr>
+                <tr><td><strong>Env variable</strong></td><td><code>OPENROUTER_API_KEY</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>sk-or-v1-...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a></td></tr>
+            </tbody>
+        </table>
+        <p>Model IDs use the OpenRouter format, e.g. <code>anthropic/claude-sonnet-4</code>, <code>openai/gpt-4o</code>, <code>google/gemini-2.5-pro-preview</code>.</p>
+
+        <h3>Anthropic</h3>
+        <p>Direct access to Claude models.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>anthropic</code></td></tr>
+                <tr><td><strong>Env variable</strong></td><td><code>ANTHROPIC_API_KEY</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>sk-ant-api03-...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>OpenAI</h3>
+        <p>Access to GPT-4o, GPT-4o-mini, and other OpenAI models.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>openai</code></td></tr>
+                <tr><td><strong>Env variable</strong></td><td><code>OPENAI_API_KEY</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>sk-...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Google AI (Gemini)</h3>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>google_ai</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>AIza...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>xAI (Grok)</h3>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>xai</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>xai-...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://console.x.ai" target="_blank" rel="noopener">console.x.ai</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Groq</h3>
+        <p>Ultra-low latency inference for supported open-source models.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>groq</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>gsk_...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Cerebras</h3>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>cerebras</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>csk-...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://cloud.cerebras.ai" target="_blank" rel="noopener">cloud.cerebras.ai</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Together AI</h3>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>together</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://api.together.xyz/settings/api-keys" target="_blank" rel="noopener">api.together.xyz</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Ollama (Local Models)</h3>
+        <p>Run models 100% locally on your own hardware. No API key needed — just provide the Ollama server URL.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>ollama_url</code></td></tr>
+                <tr><td><strong>Default</strong></td><td><code>http://localhost:11434</code></td></tr>
+            </tbody>
+        </table>
+        <p>Setup:</p>
+<pre><code># 1. Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# 2. Pull a model
+ollama pull llama3
+
+# 3. Add to config
+api_keys:
+  ollama_url: http://localhost:11434
+
+modes:
+  normal:
+    main: ollama/llama3</code></pre>
+
+        <h2>Multiple Providers</h2>
+        <p>You can use different providers for different agent roles. For example, use a cheap OpenRouter model for file exploration and a powerful Anthropic model for editing:</p>
+<pre><code>api_keys:
+  openrouter: sk-or-v1-...
+  anthropic: sk-ant-api03-...
+
+modes:
+  heavy:
+    main: anthropic/claude-sonnet-4
+    file_explorer: openai/gpt-4o-mini    # routed via OpenRouter
+    sub_agent: anthropic/claude-sonnet-4</code></pre>
+
+        <div class="docs-callout warn">
+            <strong>Security:</strong> Never commit your <code>bujicoder.yaml</code> file to version control. The config directory (<code>~/.bujicoder/</code>) is in your home folder by default, so this shouldn't happen accidentally.
+        </div>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

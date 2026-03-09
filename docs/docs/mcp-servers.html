@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Servers — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html" class="active">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>MCP Servers</h1>
+        <p class="docs-subtitle">Extend BujiCoder with any <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model Context Protocol</a> server.</p>
+
+        <h2>What is MCP?</h2>
+        <p>MCP (Model Context Protocol) is an open standard for connecting AI tools to external systems. MCP servers expose tools (functions) that BujiCoder can call — things like GitHub operations, browser automation, database queries, and more.</p>
+
+        <h2>Adding MCP Servers</h2>
+
+        <h3>Via Config File</h3>
+        <p>Add servers to the <code>mcp_servers</code> section in <code>~/.bujicoder/bujicoder.yaml</code>:</p>
+<pre><code>mcp_servers:
+  - name: filesystem
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+    lazy: true
+
+  - name: github
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    lazy: true
+
+  - name: puppeteer
+    command: npx
+    args: ["-y", "@anthropic-ai/mcp-server-puppeteer"]
+    lazy: true</code></pre>
+
+        <h3>Via the /mcp Command</h3>
+        <p>Add or remove servers without leaving the TUI:</p>
+<pre><code># List all configured servers and their status
+/mcp
+
+# Add a new server
+/mcp add github npx -y @modelcontextprotocol/server-github
+
+# Remove a server
+/mcp remove github</code></pre>
+        <p>Servers added via <code>/mcp add</code> are saved to the config file and default to lazy loading.</p>
+
+        <h2>Server Config Fields</h2>
+        <table>
+            <thead>
+                <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>name</code></td><td>string</td><td>Unique identifier for the server</td></tr>
+                <tr><td><code>command</code></td><td>string</td><td>The command to launch the server process</td></tr>
+                <tr><td><code>args</code></td><td>list</td><td>Arguments passed to the command</td></tr>
+                <tr><td><code>lazy</code></td><td>bool</td><td>If <code>true</code>, only start when a tool from this server is first invoked</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Eager vs Lazy Loading</h2>
+        <table>
+            <thead>
+                <tr><th></th><th>Eager (<code>lazy: false</code>)</th><th>Lazy (<code>lazy: true</code>)</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>When started</strong></td><td>On BujiCoder launch</td><td>On first tool call</td></tr>
+                <tr><td><strong>Startup impact</strong></td><td>Slower startup</td><td>No impact</td></tr>
+                <tr><td><strong>First call</strong></td><td>Instant</td><td>Small delay while server starts</td></tr>
+                <tr><td><strong>Best for</strong></td><td>Frequently used servers</td><td>Occasionally used servers</td></tr>
+            </tbody>
+        </table>
+
+        <div class="docs-callout tip">
+            <strong>Recommendation:</strong> Use <code>lazy: true</code> for most servers. This keeps startup fast and only pays the cost when you actually need the tools.
+        </div>
+
+        <h2>Popular MCP Servers</h2>
+        <table>
+            <thead>
+                <tr><th>Server</th><th>What it does</th><th>Package</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>Filesystem</strong></td><td>Sandboxed file access to specific directories</td><td><code>@modelcontextprotocol/server-filesystem</code></td></tr>
+                <tr><td><strong>GitHub</strong></td><td>Create issues, PRs, search repos, manage branches</td><td><code>@modelcontextprotocol/server-github</code></td></tr>
+                <tr><td><strong>Puppeteer</strong></td><td>Browser automation, screenshots, page interaction</td><td><code>@anthropic-ai/mcp-server-puppeteer</code></td></tr>
+                <tr><td><strong>PostgreSQL</strong></td><td>Query and manage PostgreSQL databases</td><td><code>@modelcontextprotocol/server-postgres</code></td></tr>
+                <tr><td><strong>Brave Search</strong></td><td>Web search via Brave Search API</td><td><code>@anthropic-ai/mcp-server-brave-search</code></td></tr>
+                <tr><td><strong>Memory</strong></td><td>Persistent key-value memory for agents</td><td><code>@modelcontextprotocol/server-memory</code></td></tr>
+            </tbody>
+        </table>
+
+        <h2>Example: GitHub Server with Token</h2>
+        <p>Some servers need environment variables. Set them in your shell before launching BujiCoder:</p>
+<pre><code># Set the token in your shell profile
+export GITHUB_TOKEN="ghp_abc123..."
+
+# Then add the server to config
+mcp_servers:
+  - name: github
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    lazy: true</code></pre>
+
+        <h2>Checking Server Status</h2>
+        <p>Use <code>/mcp</code> in the TUI to see all configured servers, their status (running / lazy / stopped), and the tools they provide.</p>
+
+        <h2>Troubleshooting</h2>
+        <ul>
+            <li><strong>Server fails to start:</strong> Make sure <code>npx</code> is installed and the package name is correct. Try running the command manually in your terminal to see error output.</li>
+            <li><strong>Tools not showing:</strong> Restart BujiCoder after adding servers to the config file, or use <code>/refresh</code>.</li>
+            <li><strong>Permission errors:</strong> Some servers need API tokens or credentials passed via environment variables.</li>
+        </ul>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

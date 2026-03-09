@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation — BujiCoder</title>
+    <meta name="description" content="BujiCoder developer documentation. Installation, configuration, API keys, MCP servers, and more.">
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo">
+            <span class="logo-icon">&#9670;</span> BujiCoder
+        </a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./" class="active">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>BujiCoder Documentation</h1>
+        <p class="docs-subtitle">Everything you need to install, configure, and get the most out of BujiCoder.</p>
+
+        <h2>What is BujiCoder?</h2>
+        <p>BujiCoder is a Go-native, multi-agent AI coding assistant that runs in your terminal. It ships as a single binary with zero runtime dependencies — no Node.js, no npm, no Python.</p>
+        <p>You bring your own API keys from any supported LLM provider and BujiCoder routes your requests directly. Your code never leaves your machine.</p>
+
+        <h2>Quick Start</h2>
+        <p>Get up and running in under a minute:</p>
+
+        <h3>1. Install</h3>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/TechnoAllianceAE/bujicoder/main/scripts/install.sh | bash</code></pre>
+
+        <h3>2. Launch</h3>
+<pre><code>buji</code></pre>
+        <p>The setup wizard runs automatically on first launch. It asks you to pick a provider and enter an API key.</p>
+
+        <h3>3. Code</h3>
+        <p>Start typing natural-language instructions. BujiCoder reads files, edits code, runs terminal commands, searches your codebase, and commits changes — all from the chat interface.</p>
+
+        <div class="docs-callout tip">
+            <strong>Tip:</strong> Press <code>Shift+Tab</code> to cycle between cost modes (normal / heavy / max / plan) without leaving the chat.
+        </div>
+
+        <h2>Documentation Sections</h2>
+        <table>
+            <thead>
+                <tr><th>Section</th><th>What you'll learn</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><a href="installation.html">Installation</a></td><td>Install on macOS, Linux, Windows, or build from source</td></tr>
+                <tr><td><a href="configuration.html">Configuration</a></td><td>Config file location, structure, and all available options</td></tr>
+                <tr><td><a href="api-keys.html">API Keys</a></td><td>How to add keys for each provider and use environment variables</td></tr>
+                <tr><td><a href="modes.html">Cost Modes</a></td><td>Normal, Heavy, Max, and Plan modes explained</td></tr>
+                <tr><td><a href="mcp-servers.html">MCP Servers</a></td><td>Extend BujiCoder with MCP tool servers</td></tr>
+                <tr><td><a href="agents.html">Agent Architecture</a></td><td>The 13 specialized agents and how to customize them</td></tr>
+                <tr><td><a href="commands.html">Slash Commands</a></td><td>All available TUI commands and keyboard shortcuts</td></tr>
+            </tbody>
+        </table>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>
