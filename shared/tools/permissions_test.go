@@ -10,7 +10,7 @@ func TestLoadProjectPermissions_NoFile(t *testing.T) {
 	dir := t.TempDir()
 	perms := LoadProjectPermissions(dir)
 	if perms != nil {
-		t.Fatal("expected nil when no .bujicoderrc exists")
+		t.Fatal("expected nil when no permissions file exists")
 	}
 }
 
@@ -30,7 +30,11 @@ restricted_paths:
   - ".env"
   - "**/*.pem"
 `
-	if err := os.WriteFile(filepath.Join(dir, ".bujicoderrc"), []byte(rc), 0o644); err != nil {
+	permDir := filepath.Join(dir, ".bujicoder")
+	if err := os.MkdirAll(permDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(permDir, "permissions.yaml"), []byte(rc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,17 +60,65 @@ func TestLoadProjectPermissions_WalksUp(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	permDir := filepath.Join(root, ".bujicoder")
+	if err := os.MkdirAll(permDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	rc := "mode: strict\n"
-	if err := os.WriteFile(filepath.Join(root, ".bujicoderrc"), []byte(rc), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(permDir, "permissions.yaml"), []byte(rc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	perms := LoadProjectPermissions(sub)
 	if perms == nil {
-		t.Fatal("expected to find .bujicoderrc by walking up")
+		t.Fatal("expected to find permissions.yaml by walking up")
 	}
 	if perms.Mode != ModeStrict {
 		t.Fatalf("expected strict, got %s", perms.Mode)
+	}
+}
+
+func TestLoadProjectPermissions_LegacyFallback(t *testing.T) {
+	dir := t.TempDir()
+	rc := "mode: yolo\n"
+	// Write legacy .bujicoderrc (no .bujicoder/permissions.yaml)
+	if err := os.WriteFile(filepath.Join(dir, ".bujicoderrc"), []byte(rc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	perms := LoadProjectPermissions(dir)
+	if perms == nil {
+		t.Fatal("expected non-nil from legacy .bujicoderrc")
+	}
+	if perms.Mode != ModeYolo {
+		t.Fatalf("expected yolo from legacy file, got %s", perms.Mode)
+	}
+}
+
+func TestLoadProjectPermissions_NewOverridesLegacy(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write legacy .bujicoderrc with yolo
+	if err := os.WriteFile(filepath.Join(dir, ".bujicoderrc"), []byte("mode: yolo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write new .bujicoder/permissions.yaml with strict
+	permDir := filepath.Join(dir, ".bujicoder")
+	if err := os.MkdirAll(permDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(permDir, "permissions.yaml"), []byte("mode: strict\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	perms := LoadProjectPermissions(dir)
+	if perms == nil {
+		t.Fatal("expected non-nil")
+	}
+	// New file should take precedence
+	if perms.Mode != ModeStrict {
+		t.Fatalf("expected strict (new file), got %s (legacy may have won)", perms.Mode)
 	}
 }
 
@@ -170,7 +222,11 @@ func TestDefaultMode(t *testing.T) {
 	dir := t.TempDir()
 	// No mode specified — should default to "ask".
 	rc := "commands:\n  - pattern: \"ls\"\n    action: allow\n"
-	if err := os.WriteFile(filepath.Join(dir, ".bujicoderrc"), []byte(rc), 0o644); err != nil {
+	permDir := filepath.Join(dir, ".bujicoder")
+	if err := os.MkdirAll(permDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(permDir, "permissions.yaml"), []byte(rc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -186,7 +242,11 @@ func TestDefaultMode(t *testing.T) {
 func TestInvalidMode_DefaultsToAsk(t *testing.T) {
 	dir := t.TempDir()
 	rc := "mode: banana\n"
-	if err := os.WriteFile(filepath.Join(dir, ".bujicoderrc"), []byte(rc), 0o644); err != nil {
+	permDir := filepath.Join(dir, ".bujicoder")
+	if err := os.MkdirAll(permDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(permDir, "permissions.yaml"), []byte(rc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

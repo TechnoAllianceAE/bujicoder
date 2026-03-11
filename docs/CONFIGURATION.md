@@ -128,18 +128,32 @@ mcp_servers:
       GITHUB_TOKEN: ghp_...
 ```
 
-## Project-Level Config
+## Project-Level Permissions
 
-Create a `.bujicoderrc` file in your project root to set per-project permissions:
+Create a `.bujicoder/permissions.yaml` file in your project root (or globally
+at `~/.bujicoder/permissions.yaml`) to set permissions:
 
 ```yaml
-permissions:
-  allowed_commands:
-    - "go test"
-    - "npm run"
-    - "make"
-  auto_approve_reads: true
+mode: ask    # ask | yolo | strict
+tools:
+  write_file: allow
+  run_terminal_command: ask
+commands:
+  - pattern: "go test*"
+    action: allow
+  - pattern: "npm run*"
+    action: allow
+  - pattern: "git push --force*"
+    action: deny
+restricted_paths:
+  - ".env"
+  - "**/*.pem"
 ```
+
+**Lookup order** (highest priority first):
+1. `<project>/.bujicoder/permissions.yaml`
+2. `~/.bujicoder/permissions.yaml` (global default)
+3. `<project>/.bujicoderrc` (legacy, still supported)
 
 ## Conversations
 

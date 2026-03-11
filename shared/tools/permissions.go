@@ -32,7 +32,8 @@ type CommandRule struct {
 	Action  PermissionAction `yaml:"action"`
 }
 
-// ProjectPermissions holds the parsed .bujicoderrc configuration.
+// ProjectPermissions holds the parsed permissions configuration.
+// Loaded from .bujicoder/permissions.yaml (project-local or ~/.bujicoder/).
 type ProjectPermissions struct {
 	Mode            PermissionMode            `yaml:"mode"`
 	Tools           map[string]PermissionAction `yaml:"tools"`
@@ -59,47 +60,88 @@ func (p *ProjectPermissions) CommandRuleCount() int {
 	return len(p.Commands)
 }
 
-// LoadProjectPermissions searches for a .bujicoderrc file starting from dir
-// and walking up to the git root (or filesystem root). Returns nil if no file
-// is found.
+// LoadProjectPermissions searches for a permissions file using the following
+// precedence (highest first):
+//
+//  1. .bujicoder/permissions.yaml in the project directory (walking up to git root)
+//  2. ~/.bujicoder/permissions.yaml (global fallback)
+//  3. .bujicoderrc in the project directory (legacy, walking up to git root)
+//
+// Returns nil if no file is found.
 func LoadProjectPermissions(dir string) *ProjectPermissions {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		return nil
 	}
 
+	// 1. Walk up from dir looking for .bujicoder/permissions.yaml (preferred)
+	//    and .bujicoderrc (legacy fallback).
+	var legacyCandidate string
+	searchDir := dir
 	for {
-		candidate := filepath.Join(dir, ".bujicoderrc")
-		data, err := os.ReadFile(candidate)
-		if err == nil {
-			perms := &ProjectPermissions{
-				Mode: ModeAsk, // default
-			}
-			if err := yaml.Unmarshal(data, perms); err != nil {
-				return nil // malformed file — treat as absent
-			}
-			perms.sourceFile = candidate
-			// Normalise mode
-			switch perms.Mode {
-			case ModeAsk, ModeYolo, ModeStrict:
-				// valid
-			default:
-				perms.Mode = ModeAsk
-			}
+		// Preferred: .bujicoder/permissions.yaml
+		candidate := filepath.Join(searchDir, ".bujicoder", "permissions.yaml")
+		if perms := tryLoadPermissions(candidate); perms != nil {
 			return perms
 		}
 
+		// Track legacy .bujicoderrc (use only if no .bujicoder/permissions.yaml found)
+		if legacyCandidate == "" {
+			legacy := filepath.Join(searchDir, ".bujicoderrc")
+			if _, err := os.Stat(legacy); err == nil {
+				legacyCandidate = legacy
+			}
+		}
+
 		// Stop at git root or filesystem root.
-		if isGitRoot(dir) {
+		if isGitRoot(searchDir) {
 			break
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
+		parent := filepath.Dir(searchDir)
+		if parent == searchDir {
 			break // filesystem root
 		}
-		dir = parent
+		searchDir = parent
 	}
+
+	// 2. Global fallback: ~/.bujicoder/permissions.yaml
+	if home, err := os.UserHomeDir(); err == nil {
+		candidate := filepath.Join(home, ".bujicoder", "permissions.yaml")
+		if perms := tryLoadPermissions(candidate); perms != nil {
+			return perms
+		}
+	}
+
+	// 3. Legacy fallback: .bujicoderrc (if found during walk)
+	if legacyCandidate != "" {
+		return tryLoadPermissions(legacyCandidate)
+	}
+
 	return nil
+}
+
+// tryLoadPermissions attempts to load and parse a permissions file.
+// Returns nil if the file doesn't exist or is malformed.
+func tryLoadPermissions(path string) *ProjectPermissions {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	perms := &ProjectPermissions{
+		Mode: ModeAsk, // default
+	}
+	if err := yaml.Unmarshal(data, perms); err != nil {
+		return nil // malformed file — treat as absent
+	}
+	perms.sourceFile = path
+	// Normalise mode
+	switch perms.Mode {
+	case ModeAsk, ModeYolo, ModeStrict:
+		// valid
+	default:
+		perms.Mode = ModeAsk
+	}
+	return perms
 }
 
 // CheckCommand matches a terminal command against the command rules.

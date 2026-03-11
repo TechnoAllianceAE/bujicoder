@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools/editmatch"
 )
 
 // Tool is a local tool executor.
@@ -212,7 +213,7 @@ func readFiles(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		var result strings.Builder
 		for _, p := range params.Paths {
 			if perms.IsPathRestricted(p) {
-				result.WriteString(fmt.Sprintf("--- %s ---\nError: access denied: path is restricted by .bujicoderrc\n\n", p))
+				result.WriteString(fmt.Sprintf("--- %s ---\nError: access denied: path is restricted by permissions.yaml\n\n", p))
 				continue
 			}
 
@@ -255,7 +256,7 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		}
 
 		if perms.IsPathRestricted(params.Path) {
-			return "", fmt.Errorf("access denied: path %q is restricted by .bujicoderrc", params.Path)
+			return "", fmt.Errorf("access denied: path %q is restricted by permissions.yaml", params.Path)
 		}
 
 		absPath, err := safePath(effectiveWorkDir(ctx, workDir), params.Path)
@@ -292,7 +293,7 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		}
 
 		if perms.IsPathRestricted(params.Path) {
-			return "", fmt.Errorf("access denied: path %q is restricted by .bujicoderrc", params.Path)
+			return "", fmt.Errorf("access denied: path %q is restricted by permissions.yaml", params.Path)
 		}
 
 		absPath, err := safePath(effectiveWorkDir(ctx, workDir), params.Path)
@@ -305,11 +306,14 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		}
 
 		content := string(data)
-		if !strings.Contains(content, params.OldStr) {
-			return "", fmt.Errorf("old_str not found in %s", params.Path)
+
+		// Use fuzzy edit matching — tries exact first, then cascading strategies.
+		match := editmatch.Find(content, params.OldStr)
+		if match == nil {
+			return "", fmt.Errorf("old_str not found in %s (tried exact + fuzzy matching)", params.Path)
 		}
 
-		newContent := strings.Replace(content, params.OldStr, params.NewStr, 1)
+		newContent := content[:match.Start] + params.NewStr + content[match.End:]
 		if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
 			return "", err
 		}
@@ -317,7 +321,11 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		if cache := getContextCache(ctx); cache != nil {
 			cache.Invalidate(params.Path)
 		}
-		return "Replacement applied", nil
+		result := "Replacement applied"
+		if match.Strategy != "exact" {
+			result = fmt.Sprintf("Replacement applied (fuzzy match: %s)", match.Strategy)
+		}
+		return result, nil
 	}
 }
 
@@ -441,14 +449,14 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectP
 			return "", fmt.Errorf("BLOCKED (plan mode): only read-only commands are allowed in plan mode.\nCommand: %s", params.Command)
 		}
 
-		// 1. Check .bujicoderrc command rules (first match wins).
+		// 1. Check permissions.yaml command rules (first match wins).
 		if action := perms.CheckCommand(params.Command); action != "" {
 			switch action {
 			case ActionAllow:
 				// Explicitly allowed — skip all further checks.
 				goto execute
 			case ActionDeny:
-				return "", fmt.Errorf("BLOCKED by .bujicoderrc: command matches a deny rule.\nCommand: %s", params.Command)
+				return "", fmt.Errorf("BLOCKED by permissions.yaml: command matches a deny rule.\nCommand: %s", params.Command)
 			case ActionAsk:
 				// Fall through to dangerous-command check + approval flow.
 			}

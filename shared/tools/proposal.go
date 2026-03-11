@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/pmezard/go-difflib/difflib"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools/editmatch"
 )
 
 // ProposedChange represents a file change proposed by an implementor agent.
@@ -95,11 +96,12 @@ func proposeEdit(workDir string) func(ctx context.Context, args json.RawMessage)
 		}
 		content := string(data)
 
-		if !strings.Contains(content, params.OldStr) {
-			return "", fmt.Errorf("old_str not found in %s", params.Path)
+		match := editmatch.Find(content, params.OldStr)
+		if match == nil {
+			return "", fmt.Errorf("old_str not found in %s (tried exact + fuzzy matching)", params.Path)
 		}
 
-		newContent := strings.Replace(content, params.OldStr, params.NewStr, 1)
+		newContent := content[:match.Start] + params.NewStr + content[match.End:]
 		diff, err := unifiedDiff(params.Path, content, newContent)
 		if err != nil {
 			return "", fmt.Errorf("compute diff: %w", err)

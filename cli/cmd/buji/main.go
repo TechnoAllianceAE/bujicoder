@@ -31,6 +31,15 @@ func main() {
 		}
 	}
 
+	// Check for --verbose flag anywhere in args.
+	verbose := false
+	for _, arg := range os.Args[1:] {
+		if arg == "--verbose" {
+			verbose = true
+			break
+		}
+	}
+
 	opts := []tea.ProgramOption{}
 	// Enable alt screen for proper scrolling and viewport management.
 	opts = append(opts, tea.WithAltScreen())
@@ -41,7 +50,7 @@ func main() {
 	}
 
 	p := tea.NewProgram(
-		app.NewModel(buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime),
+		app.NewModel(buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime, verbose),
 		opts...,
 	)
 
@@ -66,6 +75,7 @@ func printUsage() {
 
 Usage:
   buji              Start interactive TUI
+  buji --verbose    Start with verbose logging to stderr
   buji update       Update to the latest version
   buji --version    Show version
   buji --help       Show this help
@@ -80,6 +90,8 @@ Environment:
   BUJICODER_CONFIG_DIR            Config directory (default: ~/.bujicoder)
   BUJICODER_ENABLE_MOUSE          Set to 1 to enable mouse capture in TUI
   BUJICODER_DISABLE_UPDATE_CHECK  Skip update check
+  BUJICODER_LOG_LEVEL             Log level: trace, debug, info, warn, error (default: info)
+  BUJICODER_LOG_DIR               Override log directory (default: ~/.bujicoder/logs)
 
 Both scrolling AND text selection work by default:
 - Use terminal scroll (Shift+PageUp/Down, Ctrl+Shift+Up/Down) or mouse wheel to scroll

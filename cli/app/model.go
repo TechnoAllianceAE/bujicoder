@@ -23,6 +23,7 @@ import (
 	"github.com/rs/zerolog"
 
 	agentdata "github.com/TechnoAllianceAE/bujicoder/agents"
+	"github.com/TechnoAllianceAE/bujicoder/shared/logging"
 	cliconfig "github.com/TechnoAllianceAE/bujicoder/cli/config"
 	"github.com/TechnoAllianceAE/bujicoder/cli/localstore"
 	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
@@ -229,6 +230,9 @@ type Model struct {
 	setupFetching   bool           // loading spinner
 	setupScrollOff  int            // scroll offset for model list
 
+	// Structured logger (writes JSON to ~/.bujicoder/logs/)
+	log zerolog.Logger
+
 	// Local agent runtime (CLI-side tool execution)
 	agentRuntime    *agentruntime.Runtime
 	agentRegistry   *agent.Registry
@@ -262,11 +266,14 @@ type Model struct {
 }
 
 // NewModel creates the initial TUI model.
-func NewModel(version, commit, buildTime string) Model {
+func NewModel(version, commit, buildTime string, verbose bool) Model {
 	mdRenderer, _ := newMarkdownRenderer(80)
 
 	// Try unified config first.
 	ucfg := cliconfig.LoadUnifiedConfig()
+
+	// Initialize logger early — available even during setup.
+	log := logging.New(logging.Config{Verbose: verbose})
 
 	// No config found -> first-run setup.
 	if ucfg == nil {
@@ -280,6 +287,7 @@ func NewModel(version, commit, buildTime string) Model {
 			conversationID: uuid.NewString(),
 			mdRenderer:     mdRenderer,
 			historyIdx:     -1,
+			log:            log,
 		}
 	}
 
@@ -312,6 +320,7 @@ func NewModel(version, commit, buildTime string) Model {
 		localStore:       localstore.NewStore(),
 		welcomeCollapsed: true,
 		historyIdx:       -1,
+		log:              log,
 	}
 }
 
@@ -2146,13 +2155,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		// Create tool registry with ask_user and approval wired to channels.
 		cwd, _ := os.Getwd()
 
-		// Load per-project permissions from .bujicoderrc.
+		// Load per-project permissions from .bujicoder/permissions.yaml.
 		perms := tools.LoadProjectPermissions(cwd)
 		m.permissions = perms
 		if perms != nil {
 			m.messages = append(m.messages, ChatMessage{
 				Role:    "assistant",
-				Content: fmt.Sprintf("Loaded project permissions from .bujicoderrc (mode: %s, %d command rules)", perms.Mode, perms.CommandRuleCount()),
+				Content: fmt.Sprintf("Loaded project permissions from %s (mode: %s, %d command rules)", perms.SourceFile(), perms.Mode, perms.CommandRuleCount()),
 			})
 		}
 
@@ -2202,9 +2211,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 
-		// Create agent runtime.
-		log := zerolog.Nop()
-		m.agentRuntime = agentruntime.New(m.llmRegistry, m.toolRegistry, m.agentRegistry, log)
+		// Create agent runtime with persistent logger.
+		m.log = logging.New(logging.Config{})
+		m.log.Info().
+			Str("cost_mode", string(m.costMode)).
+			Bool("plan_mode", m.planMode).
+			Msg("session started")
+		m.agentRuntime = agentruntime.New(m.llmRegistry, m.toolRegistry, m.agentRegistry, m.log)
 		m.runtimeReady = true
 
 		cmds := []tea.Cmd{listenForAskUser(m.askQuestionCh), listenForApproval(m.approvalCmdCh), checkForUpdateCmd()}

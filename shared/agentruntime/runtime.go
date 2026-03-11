@@ -128,6 +128,12 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 
 		stepResult, err := executeStep(ctx, r, state, cfg)
 		if err != nil {
+			r.log.Error().
+				Str("agent", cfg.AgentDef.ID).
+				Str("model", cfg.AgentDef.Model).
+				Int("step", step).
+				Err(err).
+				Msg("agent step failed")
 			result.FinishReason = "error"
 			result.Messages = state.messages
 			result.TotalSteps = step + 1
@@ -156,6 +162,10 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	}
 
 	// Hit max steps
+	r.log.Warn().
+		Str("agent", cfg.AgentDef.ID).
+		Int("max_steps", cfg.AgentDef.MaxSteps).
+		Msg("agent hit max steps limit")
 	result.FinishReason = "max_steps"
 	result.Messages = state.messages
 	return result, nil

@@ -7,12 +7,34 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools/editmatch"
 )
 
+// isSafeTool returns true if the tool is read-only and can safely run in parallel.
+func isSafeTool(name string) bool {
+	switch name {
+	case "read_files", "list_directory", "glob", "find_files", "code_search", "web_search":
+		return true
+	default:
+		return false
+	}
+}
+
+// toolResult holds the result of a single tool execution.
+type toolResult struct {
+	idx      int
+	text     string
+	isError  bool
+	toolName string
+	toolID   string
+}
+
 // dispatchToolCalls executes a set of tool calls and returns tool result content parts.
+// Safe (read-only) tools run in parallel; unsafe tools run sequentially.
 func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCallEvent, cfg RunConfig) ([]llm.ContentPart, error) {
 	// Inject the per-request working directory so tools operate on the client's codebase.
 	if cfg.ProjectRoot != "" {
@@ -29,85 +51,158 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 		ctx = tools.WithContextCache(ctx, cfg.ContextCache)
 	}
 
-	var results []llm.ContentPart
+	// Partition tool calls into safe (parallelizable) and unsafe (sequential).
+	// We process them in batches: consecutive safe tools run in parallel,
+	// then each unsafe tool runs alone. Order is preserved.
+	results := make([]toolResult, len(toolCalls))
 
-	for _, tc := range toolCalls {
-		var resultText string
-		var isError bool
+	i := 0
+	for i < len(toolCalls) {
+		// Collect a batch of consecutive safe tools.
+		batchStart := i
+		allSafe := true
+		for i < len(toolCalls) && isSafeTool(toolCalls[i].Name) {
+			i++
+		}
 
-		switch tc.Name {
-		case "spawn_agents":
-			// Special case: spawn sub-agents
-			result, err := handleSpawnAgents(ctx, rt, tc.ArgumentsJSON, cfg)
+		if i > batchStart {
+			// Run this batch of safe tools in parallel.
+			batch := toolCalls[batchStart:i]
+			if len(batch) > 1 {
+				var wg sync.WaitGroup
+				for j, tc := range batch {
+					wg.Add(1)
+					go func(idx int, tc llm.ToolCallEvent) {
+						defer wg.Done()
+						text, isErr := executeSingleTool(ctx, rt, tc, cfg)
+						results[batchStart+idx] = toolResult{
+							idx:      batchStart + idx,
+							text:     text,
+							isError:  isErr,
+							toolName: tc.Name,
+							toolID:   tc.ID,
+						}
+					}(j, tc)
+				}
+				wg.Wait()
+			} else {
+				// Single safe tool — no need for goroutine overhead.
+				tc := batch[0]
+				text, isErr := executeSingleTool(ctx, rt, tc, cfg)
+				results[batchStart] = toolResult{
+					idx:      batchStart,
+					text:     text,
+					isError:  isErr,
+					toolName: tc.Name,
+					toolID:   tc.ID,
+				}
+			}
+			allSafe = true
+		}
+
+		// Process unsafe tools one at a time.
+		if i < len(toolCalls) && !isSafeTool(toolCalls[i].Name) {
+			tc := toolCalls[i]
+			text, isErr := executeSingleTool(ctx, rt, tc, cfg)
+			results[i] = toolResult{
+				idx:      i,
+				text:     text,
+				isError:  isErr,
+				toolName: tc.Name,
+				toolID:   tc.ID,
+			}
+			i++
+			allSafe = false
+		}
+
+		_ = allSafe
+	}
+
+	// Emit events and build content parts in original order.
+	parts := make([]llm.ContentPart, len(toolCalls))
+	for idx, r := range results {
+		if cfg.OnEvent != nil {
+			cfg.OnEvent(Event{
+				Type:       EventToolResult,
+				ToolCallID: r.toolID,
+				ToolName:   r.toolName,
+				Text:       r.text,
+				IsError:    r.isError,
+				AgentID:    cfg.AgentDef.ID,
+			})
+		}
+		parts[idx] = llm.ContentPart{
+			Type:       "tool_result",
+			ToolCallID: r.toolID,
+			ToolName:   r.toolName,
+			Text:       r.text,
+			IsError:    r.isError,
+		}
+	}
+
+	return parts, nil
+}
+
+// executeSingleTool runs a single tool call and returns the result text and error flag.
+func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, cfg RunConfig) (string, bool) {
+	var resultText string
+	var isError bool
+
+	switch tc.Name {
+	case "spawn_agents":
+		result, err := handleSpawnAgents(ctx, rt, tc.ArgumentsJSON, cfg)
+		if err != nil {
+			rt.log.Error().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Err(err).Msg("sub-agent spawn failed")
+			resultText = fmt.Sprintf("Error spawning agents: %v", err)
+			isError = true
+		} else {
+			resultText = result
+		}
+
+	case "think_deeply":
+		result, err := handleThinkDeeply(ctx, rt, tc.ArgumentsJSON, cfg)
+		if err != nil {
+			rt.log.Error().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Err(err).Msg("think_deeply failed")
+			resultText = fmt.Sprintf("Error: %v", err)
+			isError = true
+		} else {
+			resultText = result
+		}
+
+	case "apply_proposals":
+		if cfg.CostMode == "plan" {
+			resultText = "BLOCKED (plan mode): apply_proposals is not allowed in plan mode."
+			isError = true
+		} else {
+			result, err := handleApplyProposals(ctx, tc.ArgumentsJSON, cfg)
 			if err != nil {
-				resultText = fmt.Sprintf("Error spawning agents: %v", err)
+				rt.log.Error().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Err(err).Msg("apply_proposals failed")
+				resultText = fmt.Sprintf("Error applying proposals: %v", err)
 				isError = true
 			} else {
 				resultText = result
 			}
+		}
 
-		case "think_deeply":
-			// Extended reasoning tool — pass through to the LLM with a reasoning prompt
-			result, err := handleThinkDeeply(ctx, rt, tc.ArgumentsJSON, cfg)
+	default:
+		tool, ok := rt.toolRegistry.Get(tc.Name)
+		if !ok {
+			rt.log.Warn().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Msg("unknown tool requested")
+			resultText = fmt.Sprintf("Unknown tool: %s", tc.Name)
+			isError = true
+		} else {
+			result, err := tool.Execute(ctx, json.RawMessage(tc.ArgumentsJSON))
 			if err != nil {
+				rt.log.Error().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Err(err).Msg("tool execution failed")
 				resultText = fmt.Sprintf("Error: %v", err)
 				isError = true
 			} else {
 				resultText = result
 			}
-
-		case "apply_proposals":
-			if cfg.CostMode == "plan" {
-				resultText = "BLOCKED (plan mode): apply_proposals is not allowed in plan mode."
-				isError = true
-			} else {
-				result, err := handleApplyProposals(ctx, tc.ArgumentsJSON, cfg)
-				if err != nil {
-					resultText = fmt.Sprintf("Error applying proposals: %v", err)
-					isError = true
-				} else {
-					resultText = result
-				}
-			}
-
-		default:
-			// Dispatch to the local tool registry
-			tool, ok := rt.toolRegistry.Get(tc.Name)
-			if !ok {
-				resultText = fmt.Sprintf("Unknown tool: %s", tc.Name)
-				isError = true
-			} else {
-				result, err := tool.Execute(ctx, json.RawMessage(tc.ArgumentsJSON))
-				if err != nil {
-					resultText = fmt.Sprintf("Error: %v", err)
-					isError = true
-				} else {
-					resultText = result
-				}
-			}
 		}
-
-		if cfg.OnEvent != nil {
-			cfg.OnEvent(Event{
-				Type:       EventToolResult,
-				ToolCallID: tc.ID,
-				ToolName:   tc.Name,
-				Text:       resultText,
-				IsError:    isError,
-				AgentID:    cfg.AgentDef.ID,
-			})
-		}
-
-		results = append(results, llm.ContentPart{
-			Type:       "tool_result",
-			ToolCallID: tc.ID,
-			ToolName:   tc.Name,
-			Text:       resultText,
-			IsError:    isError,
-		})
 	}
 
-	return results, nil
+	return resultText, isError
 }
 
 // handleApplyProposals applies a set of proposed file changes to disk.
@@ -150,11 +245,12 @@ func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (st
 				continue
 			}
 			content := string(data)
-			if !strings.Contains(content, ch.OldStr) {
+			match := editmatch.Find(content, ch.OldStr)
+			if match == nil {
 				summary.WriteString(fmt.Sprintf("[%d] %s: old_str not found\n", i+1, ch.Path))
 				continue
 			}
-			newContent := strings.Replace(content, ch.OldStr, ch.NewStr, 1)
+			newContent := content[:match.Start] + ch.NewStr + content[match.End:]
 			if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
 				summary.WriteString(fmt.Sprintf("[%d] %s: write error: %v\n", i+1, ch.Path, err))
 				continue

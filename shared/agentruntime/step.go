@@ -140,12 +140,14 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 	// Route to the LLM provider
 	provider, _, err := rt.llmRegistry.Route(req.Model)
 	if err != nil {
+		rt.log.Error().Str("model", req.Model).Str("agent", cfg.AgentDef.ID).Err(err).Msg("model routing failed")
 		return nil, fmt.Errorf("route model %q: %w", req.Model, err)
 	}
 
 	// Start streaming
 	eventCh, err := provider.StreamCompletion(ctx, req)
 	if err != nil {
+		rt.log.Error().Str("model", req.Model).Str("provider", provider.Name()).Str("agent", cfg.AgentDef.ID).Err(err).Msg("LLM completion failed to start")
 		return nil, fmt.Errorf("start completion: %w", err)
 	}
 
@@ -179,6 +181,13 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 			finishReason = ev.Complete.FinishReason
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
+			rt.log.Error().
+				Str("provider", provider.Name()).
+				Str("model", req.Model).
+				Str("agent", cfg.AgentDef.ID).
+				Str("error_code", ev.Error.Code).
+				Str("error_type", "provider_error").
+				Msg(ev.Error.Message)
 			return nil, fmt.Errorf("provider error [%s]: %s", ev.Error.Code, ev.Error.Message)
 		}
 	}
