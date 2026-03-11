@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,6 +31,9 @@ func main() {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
+			return
+		case "uninstall":
+			runUninstall("buji")
 			return
 		}
 	}
@@ -77,6 +84,7 @@ Usage:
   buji              Start interactive TUI
   buji --verbose    Start with verbose logging to stderr
   buji update       Update to the latest version
+  buji uninstall    Remove buji and optionally ~/.bujicoder
   buji --version    Show version
   buji --help       Show this help
 
@@ -99,4 +107,70 @@ Both scrolling AND text selection work by default:
 - Use Ctrl+C to quit
 
 For team features, visit https://bujicoder.com`)
+}
+
+func runUninstall(binaryName string) {
+	fmt.Println("\n  BujiCoder — Uninstaller\n")
+
+	binaryPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Error: could not determine binary path: %v\n", err)
+		os.Exit(1)
+	}
+	binaryPath, _ = filepath.EvalSymlinks(binaryPath)
+
+	// Confirm with user
+	fmt.Printf("  This will remove:\n")
+	fmt.Printf("    • %s\n", binaryPath)
+	fmt.Printf("\n  Continue? [y/N] ")
+
+	reader := bufio.NewReader(os.Stdin)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		fmt.Println("  Cancelled.")
+		return
+	}
+
+	// Remove binary — may need sudo on Unix
+	if err := os.Remove(binaryPath); err != nil {
+		if os.IsPermission(err) && runtime.GOOS != "windows" {
+			fmt.Println("  Permission denied — retrying with sudo...")
+			cmd := exec.Command("sudo", "rm", "-f", binaryPath)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "  Error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "  Error removing binary: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	fmt.Printf("  ✓ Removed %s\n", binaryPath)
+
+	// Ask about config directory
+	home, _ := os.UserHomeDir()
+	configDir := filepath.Join(home, ".bujicoder")
+	if _, err := os.Stat(configDir); err == nil {
+		fmt.Printf("\n  Config directory found: %s\n", configDir)
+		fmt.Printf("  Contains: API keys, conversations, logs, permissions.\n")
+		fmt.Printf("  Remove it? [y/N] ")
+
+		answer, _ = reader.ReadString('\n')
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if answer == "y" || answer == "yes" {
+			if err := os.RemoveAll(configDir); err != nil {
+				fmt.Fprintf(os.Stderr, "  Warning: could not remove %s: %v\n", configDir, err)
+			} else {
+				fmt.Printf("  ✓ Removed %s\n", configDir)
+			}
+		} else {
+			fmt.Printf("  Kept %s\n", configDir)
+		}
+	}
+
+	fmt.Println("\n  ✓ BujiCoder has been uninstalled.\n")
 }
