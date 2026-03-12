@@ -113,19 +113,27 @@ type ToolDefinition struct {
 	InputSchema map[string]any `json:"input_schema"`
 }
 
+// ResponseFormat specifies structured output requirements for the LLM.
+// When set, the model is instructed to return JSON conforming to the schema.
+type ResponseFormat struct {
+	Type   string         `json:"type"`   // "json_schema" or "json_object"
+	Schema map[string]any `json:"schema"` // JSON Schema object (for "json_schema" type)
+}
+
 // CompletionRequest is the input to a streaming completion.
 type CompletionRequest struct {
-	RequestID    string
-	UserID       string
-	OrgID        *string
-	Model        string
-	Messages     []Message
-	Tools        []ToolDefinition
-	SystemPrompt *string
-	Temperature  *float32
-	MaxTokens    *int
-	CostMode     string // Cost mode for model routing (normal, heavy, max)
-	AgentID      string // Agent ID for per-agent model overrides (e.g., "base", "editor")
+	RequestID      string
+	UserID         string
+	OrgID          *string
+	Model          string
+	Messages       []Message
+	Tools          []ToolDefinition
+	SystemPrompt   *string
+	Temperature    *float32
+	MaxTokens      *int
+	CostMode       string          // Cost mode for model routing (normal, heavy, max)
+	AgentID        string          // Agent ID for per-agent model overrides (e.g., "base", "editor")
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"` // When set, forces structured JSON output
 }
 
 // Provider is the interface that LLM provider adapters must implement.

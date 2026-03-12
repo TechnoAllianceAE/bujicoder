@@ -110,7 +110,7 @@ For team features, visit https://bujicoder.com`)
 }
 
 func runUninstall(binaryName string) {
-	fmt.Println("\n  BujiCoder — Uninstaller\n")
+	fmt.Println("\n  BujiCoder — Uninstaller")
 
 	binaryPath, err := os.Executable()
 	if err != nil {
@@ -172,5 +172,5 @@ func runUninstall(binaryName string) {
 		}
 	}
 
-	fmt.Println("\n  ✓ BujiCoder has been uninstalled.\n")
+	fmt.Println("\n  ✓ BujiCoder has been uninstalled.")
 }

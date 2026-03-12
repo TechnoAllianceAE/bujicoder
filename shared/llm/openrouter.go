@@ -261,25 +261,14 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 		}
 
 		if finishReason != "" {
-			// Find the max index to iterate all possible tool calls.
-			maxIdx := -1
-			for idx := range pendingTools {
-				if idx > maxIdx {
-					maxIdx = idx
-				}
-			}
-			for idx := 0; idx <= maxIdx; idx++ {
+			for idx := 0; idx < len(pendingTools); idx++ {
 				pt := pendingTools[idx]
-				if pt == nil || pt.id == "" || pt.name == "" {
+				if pt == nil || pt.id == "" {
 					continue
 				}
 				args := pt.args.String()
 				if args == "" {
 					args = "{}"
-				}
-				// Validate that args is valid JSON before emitting.
-				if !json.Valid([]byte(args)) {
-					continue
 				}
 				ch <- StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            pt.id,

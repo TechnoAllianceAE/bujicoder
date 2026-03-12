@@ -122,61 +122,42 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 				err:     err,
 			}
 
-			// Emit "completed" status — distinguish success/failure/empty clearly.
+			// Emit "completed" status
 			if parentCfg.OnEvent != nil {
-				if err != nil {
-					parentCfg.OnEvent(Event{
-						Type:    EventError,
-						AgentID: s.AgentID,
-						Text:    fmt.Sprintf("Agent %s failed: %v", s.AgentID, err),
-						IsError: true,
-					})
-				} else if result != nil && strings.TrimSpace(result.FinalText) == "" && result.FinishReason != "stop" {
-					parentCfg.OnEvent(Event{
-						Type:    EventError,
-						AgentID: s.AgentID,
-						Text:    fmt.Sprintf("Agent %s returned no response (finish_reason: %s, steps: %d)", s.AgentID, result.FinishReason, result.TotalSteps),
-						IsError: true,
-					})
-				} else {
-					statusText := fmt.Sprintf("Completed %s", s.AgentID)
-					if result != nil {
-						statusText += fmt.Sprintf(" (%d steps)", result.TotalSteps)
-					}
-					parentCfg.OnEvent(Event{
-						Type:    EventStatus,
-						AgentID: s.AgentID,
-						Text:    statusText,
-					})
+				statusText := fmt.Sprintf("Completed %s", s.AgentID)
+				if result != nil {
+					statusText += fmt.Sprintf(" (%d steps)", result.TotalSteps)
 				}
+				if err != nil {
+					statusText += " (error)"
+				}
+				parentCfg.OnEvent(Event{
+					Type:    EventStatus,
+					AgentID: s.AgentID,
+					Text:    statusText,
+				})
 			}
 		}(i, spec)
 	}
 
 	wg.Wait()
 
-	// Format results — clearly report failures so the orchestrator can take over.
+	// Format results
 	var output strings.Builder
-	for i, r := range results {
+	for _, r := range results {
 		output.WriteString(fmt.Sprintf("=== Agent: %s ===\n", r.agentID))
 		if r.err != nil {
-			output.WriteString(fmt.Sprintf("FAILED: %v\n", r.err))
-			output.WriteString(fmt.Sprintf("TASK (for you to complete): %s\n", req.Agents[i].Task))
+			output.WriteString(fmt.Sprintf("Error: %v\n", r.err))
 		} else if r.result != nil {
-			if strings.TrimSpace(r.result.FinalText) == "" {
-				output.WriteString(fmt.Sprintf("FAILED: agent returned empty response (finish_reason: %s, steps: %d)\n", r.result.FinishReason, r.result.TotalSteps))
-				output.WriteString(fmt.Sprintf("TASK (for you to complete): %s\n", req.Agents[i].Task))
-			} else {
-				output.WriteString(r.result.FinalText)
-				if len(r.result.ProposedChanges) > 0 {
-					output.WriteString("\n--- Proposed Changes ---\n")
-					for _, ch := range r.result.ProposedChanges {
-						output.WriteString(ch.DiffText)
-						output.WriteString("\n")
-					}
+			output.WriteString(r.result.FinalText)
+			if len(r.result.ProposedChanges) > 0 {
+				output.WriteString("\n--- Proposed Changes ---\n")
+				for _, ch := range r.result.ProposedChanges {
+					output.WriteString(ch.DiffText)
+					output.WriteString("\n")
 				}
-				output.WriteString(fmt.Sprintf("\n[Steps: %d, Finish: %s]\n", r.result.TotalSteps, r.result.FinishReason))
 			}
+			output.WriteString(fmt.Sprintf("\n[Steps: %d, Finish: %s]\n", r.result.TotalSteps, r.result.FinishReason))
 		}
 		output.WriteString("\n")
 	}

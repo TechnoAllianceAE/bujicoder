@@ -1,0 +1,53 @@
+id: refactor
+display_name: Refactor Pipeline
+description: >
+  Analyze code for refactoring opportunities, plan changes,
+  implement them, and verify with a code review.
+steps:
+  - agent: researcher
+    task: >
+      Analyze the following code for refactoring opportunities.
+      Identify code smells, duplication, overly complex functions,
+      and suggest specific improvements.
+
+      Task: {{user_task}}
+    output_var: analysis
+
+  - agent: planner
+    task: >
+      Based on this analysis, create a detailed refactoring plan
+      with step-by-step changes. List each file and the specific
+      changes needed. Keep the plan focused and incremental.
+
+      Analysis:
+      {{analysis}}
+    output_var: plan
+
+  - agent: editor
+    task: >
+      Implement the following refactoring plan. Make each change
+      carefully, preserving existing behavior.
+
+      Plan:
+      {{plan}}
+    output_var: changes
+
+  - agent: reviewer
+    task: >
+      Review the refactoring changes below. Check for:
+      1. Correctness — does the refactored code preserve behavior?
+      2. Quality — is the new code cleaner and more maintainable?
+      3. Completeness — were all planned changes applied?
+
+      If issues are found, respond with "NEEDS_CHANGES" and list them.
+      If everything looks good, respond with "APPROVED".
+
+      Changes made:
+      {{changes}}
+    output_var: review
+
+  - agent: editor
+    task: >
+      Fix the issues found during review:
+      {{review}}
+    condition: "{{review}} contains 'NEEDS_CHANGES'"

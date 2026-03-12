@@ -9,11 +9,15 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/codeintel"
+	"github.com/TechnoAllianceAE/bujicoder/shared/smartctx"
 )
 
 // buildDynamicContext gathers project context (file tree, git changes, system info,
-// knowledge files) and returns a prompt section to append to the system prompt.
-func buildDynamicContext(projectRoot string) string {
+// knowledge files, symbol index, and smart-ranked files) and returns a prompt
+// section to append to the system prompt.
+func buildDynamicContext(projectRoot string, userQuery ...string) string {
 	if projectRoot == "" {
 		return ""
 	}
@@ -40,6 +44,26 @@ func buildDynamicContext(projectRoot string) string {
 
 	if knowledge := readKnowledgeFiles(projectRoot); knowledge != "" {
 		sections = append(sections, "# Knowledge Files\n\n"+knowledge)
+	}
+
+	// Symbol index: extract top-level symbols from project files for code intelligence.
+	parser := codeintel.NewParser()
+	symbolIndex := parser.IndexProject(projectRoot, nil)
+	if formatted := codeintel.FormatIndex(symbolIndex); formatted != "" {
+		sections = append(sections, "# Code Intelligence\n\n"+formatted)
+	}
+
+	// Smart context: rank files by relevance to the user's query.
+	query := ""
+	if len(userQuery) > 0 {
+		query = userQuery[0]
+	}
+	if query != "" {
+		symbolNames := codeintel.SymbolNames(symbolIndex)
+		ranked := smartctx.RankFiles(projectRoot, query, symbolNames)
+		if formatted := smartctx.FormatRankedFiles(ranked); formatted != "" {
+			sections = append(sections, "# Smart Context\n\n"+formatted)
+		}
 	}
 
 	return strings.Join(sections, "\n\n")

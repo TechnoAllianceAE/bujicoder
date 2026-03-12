@@ -348,6 +348,31 @@ func toolInputSchema(toolName string) map[string]any {
 			},
 			"required": []string{"path", "content"},
 		}
+	case "symbols":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"paths": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "Optional list of file paths to analyze. If empty, indexes the entire project.",
+				},
+			},
+		}
+	case "structured_output":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"schema": map[string]any{
+					"type":        "object",
+					"description": "JSON Schema to validate against",
+				},
+				"data": map[string]any{
+					"description": "The structured data to validate",
+				},
+			},
+			"required": []string{"schema", "data"},
+		}
 	default:
 		return map[string]any{"type": "object", "properties": map[string]any{}}
 	}

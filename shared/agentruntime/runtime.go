@@ -12,6 +12,8 @@ import (
 	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
+	"github.com/TechnoAllianceAE/bujicoder/shared/lsp"
+	"github.com/TechnoAllianceAE/bujicoder/shared/snapshot"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
@@ -58,6 +60,9 @@ type RunConfig struct {
 	ModelResolver     *costmode.Resolver      // Server-side model resolver (propagated to sub-agents)
 	ProposalCollector *tools.ProposalCollector    // When set, proposal tools accumulate here instead of writing to disk
 	ContextCache      *contextcache.Cache         // When set, file reads are cached to avoid redundant disk I/O
+	SnapshotManager   *snapshot.Manager           // When set, auto-snapshots after write tools
+	LSPManager        *lsp.Manager                // When set, LSP diagnostics run after file edits
+	TodoList          *tools.TodoList             // When set, agents can track tasks
 }
 
 // RunResult summarises a completed agent run.
@@ -106,12 +111,12 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	state := newState(cfg)
 
 	// Build dynamic context once for the orchestrator agent (not sub-agents).
+	// Pass the user message for smart context ranking when available.
 	if cfg.ProjectRoot != "" && cfg.AgentDef.ID == "base" {
-		state.dynamicCtx = buildDynamicContext(cfg.ProjectRoot)
+		state.dynamicCtx = buildDynamicContext(cfg.ProjectRoot, cfg.UserMessage)
 	}
 
 	result := &RunResult{}
-	var lastStepText string
 
 	for step := 0; step < cfg.AgentDef.MaxSteps; step++ {
 		select {
@@ -152,25 +157,9 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		if stepResult.model != "" {
 			result.Model = stepResult.model
 		}
-		if stepResult.text != "" {
-			lastStepText = stepResult.text
-		}
 
-		// If no tool calls were made, check if the response was truncated
+		// If no tool calls were made, the agent is done
 		if !stepResult.hasToolCalls {
-			// If finish_reason is "length", the model hit max_tokens and the
-			// response was cut off. Continue the loop so the model can pick up
-			// where it left off in the next step.
-			if stepResult.finishReason == "length" {
-				r.log.Info().
-					Str("agent", cfg.AgentDef.ID).
-					Int("step", step).
-					Msg("response truncated by max_tokens, continuing")
-				// The partial text was already appended to messages by executeStep.
-				// The next step will continue the response.
-				continue
-			}
-
 			result.FinalText = stepResult.text
 			result.FinishReason = stepResult.finishReason
 			result.Messages = state.messages
@@ -178,12 +167,11 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		}
 	}
 
-	// Hit max steps — use the last available text as the final response
+	// Hit max steps
 	r.log.Warn().
 		Str("agent", cfg.AgentDef.ID).
 		Int("max_steps", cfg.AgentDef.MaxSteps).
 		Msg("agent hit max steps limit")
-	result.FinalText = lastStepText
 	result.FinishReason = "max_steps"
 	result.Messages = state.messages
 	return result, nil

@@ -16,7 +16,6 @@ import (
 
 	agentdata "github.com/TechnoAllianceAE/bujicoder/agents"
 	cliconfig "github.com/TechnoAllianceAE/bujicoder/cli/config"
-	"github.com/TechnoAllianceAE/bujicoder/cli/localstore"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 )
 
@@ -555,7 +554,7 @@ func (m Model) completeSetup(providerKey, apiKey string, selections *[3][3]strin
 	m.state = StateChat
 	m.localCfg = ucfg.ToLegacyConfig()
 	m.unifiedCfg = ucfg
-	m.localStore = localstore.NewStore()
+	m.localStore = openLocalStore(m.log)
 	m.conversationID = uuid.NewString()
 	m.welcomeCollapsed = true
 	m.costMode = costmode.ModeNormal

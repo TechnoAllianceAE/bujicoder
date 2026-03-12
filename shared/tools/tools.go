@@ -14,7 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/TechnoAllianceAE/bujicoder/shared/codeintel"
 	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
+	"github.com/TechnoAllianceAE/bujicoder/shared/lsp"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools/editmatch"
 )
 
@@ -37,6 +39,7 @@ type contextKey string
 const workDirCtxKey contextKey = "tools_work_dir"
 const planModeCtxKey contextKey = "tools_plan_mode"
 const cacheCtxKey contextKey = "tools_context_cache"
+const lspMgrCtxKey contextKey = "tools_lsp_manager"
 
 // WithPlanMode returns a child context with plan mode enabled.
 // When plan mode is active, write operations (write_file, str_replace,
@@ -66,6 +69,17 @@ func WithContextCache(ctx context.Context, cache *contextcache.Cache) context.Co
 func getContextCache(ctx context.Context) *contextcache.Cache {
 	c, _ := ctx.Value(cacheCtxKey).(*contextcache.Cache)
 	return c
+}
+
+// WithLSPManager returns a child context carrying an LSP manager.
+func WithLSPManager(ctx context.Context, mgr *lsp.Manager) context.Context {
+	return context.WithValue(ctx, lspMgrCtxKey, mgr)
+}
+
+// getLSPManager returns the LSP manager if set.
+func getLSPManager(ctx context.Context) *lsp.Manager {
+	m, _ := ctx.Value(lspMgrCtxKey).(*lsp.Manager)
+	return m
 }
 
 // WithWorkDir returns a child context carrying a per-request working directory.
@@ -173,6 +187,36 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 		Description: "Propose writing a file without writing to disk. Used by implementor agents in parallel evolution mode.",
 		Execute:     proposeWriteFile(workDir),
 	})
+	r.Register(&Tool{
+		Name:        "todo_write",
+		Description: "Set or update the task list. Items have id, task, status (pending/in_progress/done/blocked), and optional note.",
+		Execute:     todoWrite(),
+	})
+	r.Register(&Tool{
+		Name:        "todo_read",
+		Description: "Read the current task list as JSON.",
+		Execute:     todoRead(),
+	})
+	r.Register(&Tool{
+		Name:        "multi_edit",
+		Description: "Apply multiple str_replace edits in a single call. Edits within a file are applied sequentially.",
+		Execute:     multiEdit(workDir, o.Permissions),
+	})
+	r.Register(&Tool{
+		Name:        "apply_patch",
+		Description: "Apply a unified diff/patch to the project. Supports add, update, move, and delete operations.",
+		Execute:     applyPatch(workDir, o.Permissions),
+	})
+	r.Register(&Tool{
+		Name:        "symbols",
+		Description: "Extract code symbols (functions, classes, types, methods) from files. Returns a structured index of the codebase.",
+		Execute:     symbols(workDir),
+	})
+	r.Register(&Tool{
+		Name:        "structured_output",
+		Description: "Validate and return structured JSON data against a provided schema. Use when producing structured plans, configs, or decisions.",
+		Execute:     structuredOutput(),
+	})
 
 	return r
 }
@@ -273,7 +317,14 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		if cache := getContextCache(ctx); cache != nil {
 			cache.Invalidate(params.Path)
 		}
-		return fmt.Sprintf("Wrote %d bytes to %s", len(params.Content), params.Path), nil
+		result := fmt.Sprintf("Wrote %d bytes to %s", len(params.Content), params.Path)
+		// Run LSP diagnostics if available.
+		if mgr := getLSPManager(ctx); mgr != nil {
+			if diags := mgr.Diagnose(absPath, params.Content); len(diags) > 0 {
+				result += lsp.FormatDiagnostics(diags, 10)
+			}
+		}
+		return result, nil
 	}
 }
 
@@ -324,6 +375,12 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		result := "Replacement applied"
 		if match.Strategy != "exact" {
 			result = fmt.Sprintf("Replacement applied (fuzzy match: %s)", match.Strategy)
+		}
+		// Run LSP diagnostics if available.
+		if mgr := getLSPManager(ctx); mgr != nil {
+			if diags := mgr.Diagnose(absPath, newContent); len(diags) > 0 {
+				result += lsp.FormatDiagnostics(diags, 10)
+			}
 		}
 		return result, nil
 	}
@@ -709,6 +766,36 @@ func askUser(promptFn UserPromptFunc) func(ctx context.Context, args json.RawMes
 		}
 
 		return promptFn(params.Question)
+	}
+}
+
+func symbols(workDir string) func(ctx context.Context, args json.RawMessage) (string, error) {
+	return func(ctx context.Context, args json.RawMessage) (string, error) {
+		var params struct {
+			Paths []string `json:"paths"` // optional: specific file paths to analyze
+		}
+		if err := json.Unmarshal(args, &params); err != nil {
+			return "", err
+		}
+
+		wd := effectiveWorkDir(ctx, workDir)
+		parser := codeintel.NewParser()
+
+		if len(params.Paths) > 0 {
+			// Index specific files.
+			index := parser.IndexProject(wd, params.Paths)
+			if len(index) == 0 {
+				return "No symbols found in the specified files.", nil
+			}
+			return codeintel.FormatIndex(index), nil
+		}
+
+		// Index the entire project (up to 100 files).
+		index := parser.IndexProject(wd, nil)
+		if len(index) == 0 {
+			return "No supported source files found in the project.", nil
+		}
+		return codeintel.FormatIndex(index), nil
 	}
 }
 

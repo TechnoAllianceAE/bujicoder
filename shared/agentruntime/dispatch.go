@@ -17,7 +17,7 @@ import (
 // isSafeTool returns true if the tool is read-only and can safely run in parallel.
 func isSafeTool(name string) bool {
 	switch name {
-	case "read_files", "list_directory", "glob", "find_files", "code_search", "web_search":
+	case "read_files", "list_directory", "glob", "find_files", "code_search", "web_search", "symbols":
 		return true
 	default:
 		return false
@@ -49,6 +49,16 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 	// Inject context cache for faster repeated file reads.
 	if cfg.ContextCache != nil {
 		ctx = tools.WithContextCache(ctx, cfg.ContextCache)
+	}
+
+	// Inject LSP manager for post-edit diagnostics.
+	if cfg.LSPManager != nil {
+		ctx = tools.WithLSPManager(ctx, cfg.LSPManager)
+	}
+
+	// Inject todo list for task tracking.
+	if cfg.TodoList != nil {
+		ctx = tools.WithTodoList(ctx, cfg.TodoList)
 	}
 
 	// Partition tool calls into safe (parallelizable) and unsafe (sequential).
@@ -184,6 +194,35 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 			}
 		}
 
+	case "revert_snapshot":
+		if cfg.SnapshotManager == nil {
+			resultText = "Snapshot system is not available."
+			isError = true
+		} else {
+			result, err := handleRevertSnapshot(tc.ArgumentsJSON, cfg)
+			if err != nil {
+				rt.log.Error().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Err(err).Msg("revert_snapshot failed")
+				resultText = fmt.Sprintf("Error: %v", err)
+				isError = true
+			} else {
+				resultText = result
+			}
+		}
+
+	case "list_snapshots":
+		if cfg.SnapshotManager == nil {
+			resultText = "Snapshot system is not available."
+			isError = true
+		} else {
+			result, err := handleListSnapshots(cfg)
+			if err != nil {
+				resultText = fmt.Sprintf("Error: %v", err)
+				isError = true
+			} else {
+				resultText = result
+			}
+		}
+
 	default:
 		tool, ok := rt.toolRegistry.Get(tc.Name)
 		if !ok {
@@ -202,7 +241,56 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 		}
 	}
 
+	// Auto-snapshot after write tools succeed.
+	if !isError && cfg.SnapshotManager != nil && isWriteTool(tc.Name) {
+		files := extractFilePaths(tc.Name, tc.ArgumentsJSON)
+		if len(files) > 0 {
+			cfg.SnapshotManager.Take(0, cfg.AgentDef.ID, tc.Name, files)
+		}
+	}
+
 	return resultText, isError
+}
+
+// isWriteTool returns true if the tool modifies files on disk.
+func isWriteTool(name string) bool {
+	switch name {
+	case "write_file", "str_replace", "apply_proposals", "multi_edit", "apply_patch":
+		return true
+	default:
+		return false
+	}
+}
+
+// extractFilePaths tries to extract file paths from tool arguments.
+func extractFilePaths(toolName, argsJSON string) []string {
+	var paths []string
+	switch toolName {
+	case "write_file":
+		var a struct{ Path string `json:"path"` }
+		if json.Unmarshal([]byte(argsJSON), &a) == nil && a.Path != "" {
+			paths = append(paths, a.Path)
+		}
+	case "str_replace":
+		var a struct{ Path string `json:"path"` }
+		if json.Unmarshal([]byte(argsJSON), &a) == nil && a.Path != "" {
+			paths = append(paths, a.Path)
+		}
+	case "multi_edit":
+		var a struct {
+			Edits []struct{ Path string `json:"path"` } `json:"edits"`
+		}
+		if json.Unmarshal([]byte(argsJSON), &a) == nil {
+			seen := map[string]bool{}
+			for _, e := range a.Edits {
+				if e.Path != "" && !seen[e.Path] {
+					paths = append(paths, e.Path)
+					seen[e.Path] = true
+				}
+			}
+		}
+	}
+	return paths
 }
 
 // handleApplyProposals applies a set of proposed file changes to disk.
@@ -277,7 +365,6 @@ func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (st
 }
 
 // handleThinkDeeply sends the question to a thinker model for extended reasoning.
-// If the primary model fails, it retries with the parent agent's model as fallback.
 func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg RunConfig) (string, error) {
 	var args struct {
 		Question string `json:"question"`
@@ -286,60 +373,20 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 		return "", fmt.Errorf("parse think_deeply args: %w", err)
 	}
 
-	// Build a list of models to try: thinker model first, then parent agent's model as fallback.
-	var models []string
+	// Use the thinker agent if available, otherwise use the current agent's model.
+	// Apply cost mode so the thinker respects the server-resolved model.
+	model := cfg.AgentDef.Model
 	if thinker, ok := rt.agentRegistry.Get("thinker"); ok {
 		resolved := thinker
 		if cfg.CostMode != "" && cfg.ModelResolver != nil {
 			resolved = thinker.WithCostMode(cfg.CostMode, cfg.ModelResolver)
 		}
-		models = append(models, resolved.Model)
-	}
-	// Add parent model as fallback (if different from thinker model).
-	if len(models) == 0 || models[0] != cfg.AgentDef.Model {
-		models = append(models, cfg.AgentDef.Model)
+		model = resolved.Model
 	}
 
-	var lastErr error
-	for _, model := range models {
-		result, err := runThinkCompletion(ctx, rt, model, args.Question, cfg)
-		if err != nil {
-			rt.log.Warn().
-				Str("model", model).
-				Err(err).
-				Msg("think_deeply model failed, trying fallback")
-			lastErr = err
-			continue
-		}
-		if strings.TrimSpace(result) == "" {
-			rt.log.Warn().
-				Str("model", model).
-				Msg("think_deeply model returned empty response, trying fallback")
-			lastErr = fmt.Errorf("model %q returned empty response", model)
-			continue
-		}
-		return result, nil
-	}
-
-	return "", fmt.Errorf("think_deeply failed on all models: %w", lastErr)
-}
-
-// runThinkCompletion performs a single thinking completion against a specific model.
-func runThinkCompletion(ctx context.Context, rt *Runtime, model, question string, cfg RunConfig) (string, error) {
 	provider, _, err := rt.llmRegistry.Route(model)
 	if err != nil {
-		return "", fmt.Errorf("route model %q: %w", model, err)
-	}
-
-	rt.log.Info().Str("model", model).Str("provider", provider.Name()).Msg("think_deeply using model")
-
-	// Emit status so the TUI shows which model is being used.
-	if cfg.OnEvent != nil {
-		cfg.OnEvent(Event{
-			Type:    EventStatus,
-			AgentID: cfg.AgentDef.ID,
-			Text:    fmt.Sprintf("Thinking with %s...", model),
-		})
+		return "", fmt.Errorf("route thinker model: %w", err)
 	}
 
 	systemPrompt := "You are a deep thinking assistant. Analyze the following question thoroughly. Consider edge cases, trade-offs, and multiple perspectives. Think step by step."
@@ -348,7 +395,7 @@ func runThinkCompletion(ctx context.Context, rt *Runtime, model, question string
 		Messages: []llm.Message{
 			{
 				Role:    "user",
-				Content: []llm.ContentPart{{Type: "text", Text: question}},
+				Content: []llm.ContentPart{{Type: "text", Text: args.Question}},
 			},
 		},
 		SystemPrompt: &systemPrompt,
@@ -362,15 +409,57 @@ func runThinkCompletion(ctx context.Context, rt *Runtime, model, question string
 		return "", fmt.Errorf("start thinking: %w", err)
 	}
 
-	var result strings.Builder
+	var result string
 	for ev := range ch {
 		if ev.Delta != nil {
-			result.WriteString(ev.Delta.Text)
+			result += ev.Delta.Text
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
-			return "", fmt.Errorf("provider error [%s]: %s", ev.Error.Code, ev.Error.Message)
+			return "", fmt.Errorf("thinking error: %s", ev.Error.Message)
 		}
 	}
 
-	return result.String(), nil
+	return result, nil
+}
+
+// handleRevertSnapshot reverts project files to a previous snapshot state.
+func handleRevertSnapshot(argsJSON string, cfg RunConfig) (string, error) {
+	var args struct {
+		SnapshotID string `json:"snapshot_id"`
+	}
+	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+		return "", fmt.Errorf("parse revert_snapshot args: %w", err)
+	}
+	if args.SnapshotID == "" {
+		return "", fmt.Errorf("snapshot_id is required")
+	}
+
+	if err := cfg.SnapshotManager.Revert(args.SnapshotID); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Reverted to snapshot %s", args.SnapshotID), nil
+}
+
+// handleListSnapshots returns a formatted list of recent snapshots.
+func handleListSnapshots(cfg RunConfig) (string, error) {
+	snaps, err := cfg.SnapshotManager.List(20)
+	if err != nil {
+		return "", err
+	}
+	if len(snaps) == 0 {
+		return "No snapshots available.", nil
+	}
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Recent snapshots (%d):\n\n", len(snaps)))
+	for _, s := range snaps {
+		files := strings.Join(s.Files, ", ")
+		if len(files) > 60 {
+			files = files[:60] + "..."
+		}
+		sb.WriteString(fmt.Sprintf("  %s  step:%d  agent:%s  tool:%s  %s\n    files: %s\n",
+			s.ID, s.StepNum, s.AgentID, s.ToolName,
+			s.Timestamp.Format("15:04:05"), files))
+	}
+	return sb.String(), nil
 }
