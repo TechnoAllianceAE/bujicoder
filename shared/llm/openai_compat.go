@@ -184,6 +184,14 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 	var usage UsageInfo
 	usage.Provider = p.cfg.ProviderName
 
+	// Accumulate tool call chunks before emitting complete tool calls.
+	type pendingToolCall struct {
+		id   string
+		name string
+		args strings.Builder
+	}
+	pendingTools := make(map[int]*pendingToolCall)
+
 	var completeEmitted bool
 	var lastFinishReason string
 
@@ -235,19 +243,63 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 			ch <- StreamEvent{Delta: &DeltaEvent{Text: content}}
 		}
 
+		// Accumulate tool call deltas (name and args arrive in separate chunks).
 		if toolCalls, ok := delta["tool_calls"].([]any); ok {
 			for _, tc := range toolCalls {
 				tcMap, _ := tc.(map[string]any)
-				fn, _ := tcMap["function"].(map[string]any)
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
-					ID:            fmt.Sprintf("%v", tcMap["id"]),
-					Name:          fmt.Sprintf("%v", fn["name"]),
-					ArgumentsJSON: fmt.Sprintf("%v", fn["arguments"]),
-				}}
+				idx := 0
+				if v, ok := tcMap["index"].(float64); ok {
+					idx = int(v)
+				}
+
+				pt := pendingTools[idx]
+				if pt == nil {
+					pt = &pendingToolCall{}
+					pendingTools[idx] = pt
+				}
+
+				if id, ok := tcMap["id"].(string); ok && id != "" {
+					pt.id = id
+				}
+				if fn, ok := tcMap["function"].(map[string]any); ok {
+					if name, ok := fn["name"].(string); ok && name != "" {
+						pt.name = name
+					}
+					if args, ok := fn["arguments"].(string); ok {
+						pt.args.WriteString(args)
+					}
+				}
 			}
 		}
 
 		if finishReason != "" {
+			// Emit accumulated tool calls.
+			maxIdx := -1
+			for idx := range pendingTools {
+				if idx > maxIdx {
+					maxIdx = idx
+				}
+			}
+			for idx := 0; idx <= maxIdx; idx++ {
+				pt := pendingTools[idx]
+				if pt == nil || pt.id == "" || pt.name == "" {
+					continue
+				}
+				args := pt.args.String()
+				if args == "" {
+					args = "{}"
+				}
+				if !json.Valid([]byte(args)) {
+					continue
+				}
+				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+					ID:            pt.id,
+					Name:          pt.name,
+					ArgumentsJSON: args,
+				}}
+			}
+			pendingTools = make(map[int]*pendingToolCall)
+
 			fr := "stop"
 			if finishReason == "tool_calls" {
 				fr = "tool_calls"
