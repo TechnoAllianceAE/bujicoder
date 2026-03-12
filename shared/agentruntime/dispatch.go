@@ -277,6 +277,7 @@ func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (st
 }
 
 // handleThinkDeeply sends the question to a thinker model for extended reasoning.
+// If the primary model fails, it retries with the parent agent's model as fallback.
 func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg RunConfig) (string, error) {
 	var args struct {
 		Question string `json:"question"`
@@ -285,20 +286,60 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 		return "", fmt.Errorf("parse think_deeply args: %w", err)
 	}
 
-	// Use the thinker agent if available, otherwise use the current agent's model.
-	// Apply cost mode so the thinker respects the server-resolved model.
-	model := cfg.AgentDef.Model
+	// Build a list of models to try: thinker model first, then parent agent's model as fallback.
+	var models []string
 	if thinker, ok := rt.agentRegistry.Get("thinker"); ok {
 		resolved := thinker
 		if cfg.CostMode != "" && cfg.ModelResolver != nil {
 			resolved = thinker.WithCostMode(cfg.CostMode, cfg.ModelResolver)
 		}
-		model = resolved.Model
+		models = append(models, resolved.Model)
+	}
+	// Add parent model as fallback (if different from thinker model).
+	if len(models) == 0 || models[0] != cfg.AgentDef.Model {
+		models = append(models, cfg.AgentDef.Model)
 	}
 
+	var lastErr error
+	for _, model := range models {
+		result, err := runThinkCompletion(ctx, rt, model, args.Question, cfg)
+		if err != nil {
+			rt.log.Warn().
+				Str("model", model).
+				Err(err).
+				Msg("think_deeply model failed, trying fallback")
+			lastErr = err
+			continue
+		}
+		if strings.TrimSpace(result) == "" {
+			rt.log.Warn().
+				Str("model", model).
+				Msg("think_deeply model returned empty response, trying fallback")
+			lastErr = fmt.Errorf("model %q returned empty response", model)
+			continue
+		}
+		return result, nil
+	}
+
+	return "", fmt.Errorf("think_deeply failed on all models: %w", lastErr)
+}
+
+// runThinkCompletion performs a single thinking completion against a specific model.
+func runThinkCompletion(ctx context.Context, rt *Runtime, model, question string, cfg RunConfig) (string, error) {
 	provider, _, err := rt.llmRegistry.Route(model)
 	if err != nil {
-		return "", fmt.Errorf("route thinker model: %w", err)
+		return "", fmt.Errorf("route model %q: %w", model, err)
+	}
+
+	rt.log.Info().Str("model", model).Str("provider", provider.Name()).Msg("think_deeply using model")
+
+	// Emit status so the TUI shows which model is being used.
+	if cfg.OnEvent != nil {
+		cfg.OnEvent(Event{
+			Type:    EventStatus,
+			AgentID: cfg.AgentDef.ID,
+			Text:    fmt.Sprintf("Thinking with %s...", model),
+		})
 	}
 
 	systemPrompt := "You are a deep thinking assistant. Analyze the following question thoroughly. Consider edge cases, trade-offs, and multiple perspectives. Think step by step."
@@ -307,7 +348,7 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 		Messages: []llm.Message{
 			{
 				Role:    "user",
-				Content: []llm.ContentPart{{Type: "text", Text: args.Question}},
+				Content: []llm.ContentPart{{Type: "text", Text: question}},
 			},
 		},
 		SystemPrompt: &systemPrompt,
@@ -321,15 +362,15 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 		return "", fmt.Errorf("start thinking: %w", err)
 	}
 
-	var result string
+	var result strings.Builder
 	for ev := range ch {
 		if ev.Delta != nil {
-			result += ev.Delta.Text
+			result.WriteString(ev.Delta.Text)
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
-			return "", fmt.Errorf("thinking error: %s", ev.Error.Message)
+			return "", fmt.Errorf("provider error [%s]: %s", ev.Error.Code, ev.Error.Message)
 		}
 	}
 
-	return result, nil
+	return result.String(), nil
 }

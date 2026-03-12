@@ -111,6 +111,7 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	}
 
 	result := &RunResult{}
+	var lastStepText string
 
 	for step := 0; step < cfg.AgentDef.MaxSteps; step++ {
 		select {
@@ -151,9 +152,25 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		if stepResult.model != "" {
 			result.Model = stepResult.model
 		}
+		if stepResult.text != "" {
+			lastStepText = stepResult.text
+		}
 
-		// If no tool calls were made, the agent is done
+		// If no tool calls were made, check if the response was truncated
 		if !stepResult.hasToolCalls {
+			// If finish_reason is "length", the model hit max_tokens and the
+			// response was cut off. Continue the loop so the model can pick up
+			// where it left off in the next step.
+			if stepResult.finishReason == "length" {
+				r.log.Info().
+					Str("agent", cfg.AgentDef.ID).
+					Int("step", step).
+					Msg("response truncated by max_tokens, continuing")
+				// The partial text was already appended to messages by executeStep.
+				// The next step will continue the response.
+				continue
+			}
+
 			result.FinalText = stepResult.text
 			result.FinishReason = stepResult.finishReason
 			result.Messages = state.messages
@@ -161,11 +178,12 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		}
 	}
 
-	// Hit max steps
+	// Hit max steps — use the last available text as the final response
 	r.log.Warn().
 		Str("agent", cfg.AgentDef.ID).
 		Int("max_steps", cfg.AgentDef.MaxSteps).
 		Msg("agent hit max steps limit")
+	result.FinalText = lastStepText
 	result.FinishReason = "max_steps"
 	result.Messages = state.messages
 	return result, nil
