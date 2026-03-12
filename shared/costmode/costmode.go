@@ -6,6 +6,9 @@
 package costmode
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -51,9 +54,10 @@ type ModelConfig struct {
 // It loads its mappings from a YAML config file on the server and supports
 // live updates via the admin API.
 type Resolver struct {
-	mu       sync.RWMutex
-	config   ModelConfig
-	filePath string
+	mu         sync.RWMutex
+	config     ModelConfig
+	configHash string
+	filePath   string
 }
 
 // NewResolver creates a Resolver from a YAML config file.
@@ -64,15 +68,19 @@ func NewResolver(filePath string) (*Resolver, error) {
 		return nil, err
 	}
 	return &Resolver{
-		config:   *cfg,
-		filePath: filePath,
+		config:     *cfg,
+		configHash: computeConfigHash(cfg),
+		filePath:   filePath,
 	}, nil
 }
 
 // NewResolverFromConfig creates a Resolver from an in-memory ModelConfig.
 // Useful for tests where no file is needed.
 func NewResolverFromConfig(cfg ModelConfig) *Resolver {
-	return &Resolver{config: cfg}
+	return &Resolver{
+		config:     cfg,
+		configHash: computeConfigHash(&cfg),
+	}
 }
 
 // ResolveModel returns the model string for a given cost mode and agent role.
@@ -164,6 +172,15 @@ func (r *Resolver) GetConfig() ModelConfig {
 	return copy
 }
 
+// ConfigHash returns a SHA-256 hash of the current model configuration.
+// Clients can use this to detect when the config has changed without
+// fetching the full configuration.
+func (r *Resolver) ConfigHash() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.configHash
+}
+
 // UpdateConfig replaces the in-memory config and persists it to disk.
 func (r *Resolver) UpdateConfig(cfg ModelConfig) error {
 	r.mu.Lock()
@@ -183,7 +200,18 @@ func (r *Resolver) UpdateConfig(cfg ModelConfig) error {
 		}
 	}
 	r.config = cfg
+	r.configHash = computeConfigHash(&cfg)
 	return nil
+}
+
+// computeConfigHash returns a deterministic SHA-256 hex digest of a ModelConfig.
+func computeConfigHash(cfg *ModelConfig) string {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }
 
 // LoadModelConfig reads a ModelConfig from a YAML file.
