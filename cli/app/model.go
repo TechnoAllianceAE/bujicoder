@@ -25,7 +25,7 @@ import (
 	agentdata "github.com/TechnoAllianceAE/bujicoder/agents"
 	"github.com/TechnoAllianceAE/bujicoder/shared/logging"
 	cliconfig "github.com/TechnoAllianceAE/bujicoder/cli/config"
-	"github.com/TechnoAllianceAE/bujicoder/cli/localstore"
+	"github.com/TechnoAllianceAE/bujicoder/shared/store"
 	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
 	"github.com/TechnoAllianceAE/bujicoder/shared/agentruntime"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
@@ -57,6 +57,7 @@ var slashCommands = []struct{ cmd, desc string }{
 	{"/new", "Start a new conversation"},
 	{"/mode", "Switch mode (normal · heavy · max · plan)"},
 	{"/history", "Browse and resume conversations"},
+	{"/search", "Search conversation history"},
 	{"/copy", "Copy last response to clipboard"},
 	{"/about", "Show version and system info"},
 	{"/init", "Analyse project docs and explain codebase"},
@@ -204,7 +205,7 @@ type Model struct {
 	updateVersion string
 
 	// History browser state
-	historyItems  []localstore.ConversationSummary
+	historyItems  []store.ConversationSummary
 	historyCursor int
 	historyOffset int
 
@@ -214,7 +215,7 @@ type Model struct {
 	// Local mode config
 	localCfg   *cliconfig.Config        // cached config for local mode helpers
 	unifiedCfg *cliconfig.UnifiedConfig // unified YAML config
-	localStore *localstore.Store        // local conversation persistence
+	localStore *store.Store        // local conversation persistence
 
 	// Setup wizard state
 	setupStep       int            // setup step constant (see setup.go)
@@ -317,7 +318,7 @@ func NewModel(version, commit, buildTime string, verbose bool) Model {
 		mdRenderer:       mdRenderer,
 		localCfg:         legacyCfg,
 		unifiedCfg:       ucfg,
-		localStore:       localstore.NewStore(),
+		localStore:       openLocalStore(log),
 		welcomeCollapsed: true,
 		historyIdx:       -1,
 		log:              log,
@@ -377,7 +378,7 @@ type completeMsg struct {
 type tickMsg time.Time
 
 type historyResultMsg struct {
-	conversations []localstore.ConversationSummary
+	conversations []store.ConversationSummary
 	err           error
 }
 
@@ -385,6 +386,11 @@ type resumeResultMsg struct {
 	conversationID string
 	messages       []ConversationMessage
 	err            error
+}
+
+type searchResultMsg struct {
+	results []store.SearchResult
+	err     error
 }
 
 type updateCheckResultMsg struct {
@@ -1250,6 +1256,25 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 
+				if strings.HasPrefix(userMsg, "/search") {
+					m.input = ""
+					m.cursorPos = 0
+					parts := strings.Fields(userMsg)
+					if len(parts) < 2 {
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: "Usage: /search <query>",
+						})
+						return m, nil
+					}
+					query := strings.Join(parts[1:], " ")
+					if m.localStore != nil {
+						return m, searchConversations(m.localStore, query)
+					}
+					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "Search not available."})
+					return m, nil
+				}
+
 				if userMsg == "/models" {
 					m.input = ""
 				m.cursorPos = 0
@@ -2071,13 +2096,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					title = title[:100]
 				}
 				go func() {
-					var msgs []localstore.StoredMessage
+					var msgs []store.StoredMessage
 					if userContent != "" {
-						msgs = append(msgs, localstore.StoredMessage{
+						msgs = append(msgs, store.StoredMessage{
 							Role: "user", Content: userContent, CreatedAt: time.Now().UTC(),
 						})
 					}
-					msgs = append(msgs, localstore.StoredMessage{
+					msgs = append(msgs, store.StoredMessage{
 						Role: "assistant", Content: assistantContent, CreatedAt: time.Now().UTC(),
 					})
 					_ = m.localStore.AppendMessages(m.conversationID, title, msgs...)
@@ -2111,6 +2136,38 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		m.historyCursor = 0
 		m.historyOffset = 0
 		m.state = StateHistory
+		return m, nil
+
+	case searchResultMsg:
+		if msg.err != nil {
+			m.messages = append(m.messages, ChatMessage{
+				Role:    "assistant",
+				Content: fmt.Sprintf("Search failed: %v", msg.err),
+			})
+			return m, nil
+		}
+		if len(msg.results) == 0 {
+			m.messages = append(m.messages, ChatMessage{
+				Role:    "assistant",
+				Content: "No results found.",
+			})
+			return m, nil
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Found %d results:\n\n", len(msg.results)))
+		for i, r := range msg.results {
+			snippet := r.Snippet
+			if len(snippet) > 120 {
+				snippet = snippet[:120] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("%d. **%s** (`%s`)\n   %s\n\n",
+				i+1, r.ConversationTitle, r.ConversationID[:8], snippet))
+		}
+		sb.WriteString("Use `/resume <id>` to open a conversation.")
+		m.messages = append(m.messages, ChatMessage{
+			Role:    "assistant",
+			Content: sb.String(),
+		})
 		return m, nil
 
 	case clipboardResultMsg:
@@ -2266,7 +2323,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func fetchLocalHistory(store *localstore.Store) tea.Cmd {
+func fetchLocalHistory(store *store.Store) tea.Cmd {
 	return func() tea.Msg {
 		summaries, err := store.ListConversations(20, 0)
 		if err != nil {
@@ -2276,7 +2333,7 @@ func fetchLocalHistory(store *localstore.Store) tea.Cmd {
 	}
 }
 
-func resumeLocalConversation(store *localstore.Store, conversationID string) tea.Cmd {
+func resumeLocalConversation(store *store.Store, conversationID string) tea.Cmd {
 	return func() tea.Msg {
 		msgs, err := store.GetMessages(conversationID)
 		if err != nil {
@@ -2293,6 +2350,42 @@ func resumeLocalConversation(store *localstore.Store, conversationID string) tea
 			})
 		}
 		return resumeResultMsg{conversationID: conversationID, messages: convMsgs}
+	}
+}
+
+// openLocalStore opens the bbolt+Bleve store, auto-migrating from JSON if needed.
+func openLocalStore(log zerolog.Logger) *store.Store {
+	home, _ := os.UserHomeDir()
+	baseDir := filepath.Join(home, ".bujicoder")
+	dbPath := filepath.Join(baseDir, "bujicoder.db")
+	indexPath := filepath.Join(baseDir, "search.bleve")
+	jsonDir := filepath.Join(baseDir, "conversations")
+
+	s, err := store.Open(dbPath, indexPath)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to open store, falling back to nil")
+		return nil
+	}
+
+	// Auto-migrate from old JSON files if they exist.
+	if store.NeedsMigration(jsonDir, dbPath) {
+		// DB was just created by Open(), so migration check is on the JSON dir only.
+	}
+	// Always try migration — it's a no-op if jsonDir doesn't exist.
+	if err := store.MigrateFromJSON(jsonDir, s); err != nil {
+		log.Warn().Err(err).Msg("JSON migration failed (non-fatal)")
+	}
+
+	return s
+}
+
+func searchConversations(st *store.Store, query string) tea.Cmd {
+	return func() tea.Msg {
+		results, err := st.SearchMessages(query, 20)
+		if err != nil {
+			return searchResultMsg{err: err}
+		}
+		return searchResultMsg{results: results}
 	}
 }
 

@@ -1,0 +1,77 @@
+id: review
+display_name: Code Review
+description: >
+  Multi-perspective code review with parallel analysis tracks
+  for security, performance, and code quality.
+steps:
+  - agent: researcher
+    task: >
+      Gather context about the codebase and recent changes
+      relevant to this review.
+
+      Task: {{user_task}}
+    output_var: context
+
+  - parallel:
+      - agent: reviewer
+        task: >
+          Review the code for SECURITY issues. Check for:
+          - Input validation and sanitization
+          - Authentication and authorization flaws
+          - SQL injection, XSS, CSRF vulnerabilities
+          - Secrets or credentials in code
+          - Unsafe file operations
+
+          Context: {{context}}
+        output_var: security_review
+
+      - agent: reviewer
+        task: >
+          Review the code for PERFORMANCE issues. Check for:
+          - N+1 query patterns
+          - Missing indexes or inefficient queries
+          - Memory leaks or excessive allocations
+          - Blocking operations in hot paths
+          - Missing caching opportunities
+
+          Context: {{context}}
+        output_var: performance_review
+
+      - agent: reviewer
+        task: >
+          Review the code for QUALITY issues. Check for:
+          - Code duplication and DRY violations
+          - Function complexity and readability
+          - Error handling completeness
+          - Test coverage gaps
+          - Documentation quality
+
+          Context: {{context}}
+        output_var: quality_review
+
+  - agent: planner
+    task: >
+      Synthesize the three parallel review tracks into a unified
+      review report. Prioritize findings by severity (critical,
+      high, medium, low). Include actionable recommendations.
+
+      Security Review:
+      {{security_review}}
+
+      Performance Review:
+      {{performance_review}}
+
+      Quality Review:
+      {{quality_review}}
+    output_var: final_report
+
+  - agent: editor
+    task: >
+      Apply the critical and high-priority fixes from the review report.
+      Only fix issues that are clearly bugs or security vulnerabilities.
+      Do not make stylistic changes.
+
+      Report:
+      {{final_report}}
+    require_approval: true
+    condition: "{{final_report}} contains 'critical'"
