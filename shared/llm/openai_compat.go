@@ -231,6 +231,10 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		delta, _ := choice["delta"].(map[string]any)
 		finishReason, _ := choice["finish_reason"].(string)
 
+		// Handle reasoning_content (e.g. Z.AI GLM-5 chain-of-thought) as text delta.
+		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
+			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning}}
+		}
 		if content, ok := delta["content"].(string); ok && content != "" {
 			ch <- StreamEvent{Delta: &DeltaEvent{Text: content}}
 		}

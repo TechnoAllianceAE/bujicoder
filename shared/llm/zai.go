@@ -2,9 +2,18 @@ package llm
 
 import (
 	"context"
+	"os"
 )
 
-const zaiAPIURL = "https://api.z.ai/api/paas/v4/chat/completions"
+// Z.AI endpoint variants:
+//   - Standard (pay-as-you-go):  /api/paas/v4/chat/completions
+//   - Coding Plan (subscription): /api/coding/paas/v4/chat/completions
+//
+// Default to Coding Plan endpoint. Override with ZAI_API_URL env var.
+const (
+	zaiCodingURL  = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+	zaiPayGoURL   = "https://api.z.ai/api/paas/v4/chat/completions"
+)
 
 // ZAIProvider implements the Provider interface for Zhipu AI (GLM) models.
 type ZAIProvider struct {
@@ -12,10 +21,18 @@ type ZAIProvider struct {
 }
 
 // NewZAIProvider creates a new Zhipu AI provider.
+// Uses the Coding Plan endpoint by default. Set ZAI_API_URL env var to override,
+// or set ZAI_PAYGO=1 to use the pay-as-you-go endpoint.
 func NewZAIProvider(apiKey string) *ZAIProvider {
+	apiURL := zaiCodingURL
+	if u := os.Getenv("ZAI_API_URL"); u != "" {
+		apiURL = u
+	} else if os.Getenv("ZAI_PAYGO") == "1" {
+		apiURL = zaiPayGoURL
+	}
 	return &ZAIProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
-			APIURL:       zaiAPIURL,
+			APIURL:       apiURL,
 			APIKey:       apiKey,
 			ProviderName: "z-ai",
 		}),
