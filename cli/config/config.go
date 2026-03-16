@@ -94,6 +94,7 @@ type MCPServerConfig struct {
 // APIKeysConfig holds API keys for various LLM providers.
 type APIKeysConfig struct {
 	OpenRouter string `yaml:"openrouter,omitempty"`
+	Kilocode   string `yaml:"kilocode,omitempty"`
 	Anthropic  string `yaml:"anthropic,omitempty"`
 	OpenAI     string `yaml:"openai,omitempty"`
 	GoogleAI   string `yaml:"google_ai,omitempty"`
@@ -139,6 +140,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 	provider = strings.ToLower(provider)
 	var configVal string
 	switch provider {
+	case "kilocode", "kilo":
+		configVal = u.APIKeys.Kilocode
 	case "openrouter":
 		configVal = u.APIKeys.OpenRouter
 	case "anthropic":
@@ -165,6 +168,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 	}
 	// Fall back to env var.
 	envMap := map[string]string{
+		"kilocode":   "KILOCODE_API_KEY",
+		"kilo":       "KILOCODE_API_KEY",
 		"openrouter": "OPENROUTER_API_KEY",
 		"anthropic":  "ANTHROPIC_API_KEY",
 		"openai":     "OPENAI_API_KEY",
@@ -322,6 +327,40 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 	}
 
 	switch provider {
+	case "kilocode", "kilo":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {
+				Main:         "anthropic/claude-sonnet-4-20250514",
+				FileExplorer: "openai/gpt-4o-mini",
+				SubAgent:     "google/gemini-2.5-flash",
+				AgentOverrides: map[string]string{
+					"editor":        "anthropic/claude-sonnet-4-20250514",
+					"git_committer": "openai/gpt-4o-mini",
+					"thinker":       "google/gemini-2.5-pro",
+				},
+			},
+			"heavy": {
+				Main:         "anthropic/claude-sonnet-4-20250514",
+				FileExplorer: "openai/gpt-4o-mini",
+				SubAgent:     "anthropic/claude-sonnet-4-20250514",
+				AgentOverrides: map[string]string{
+					"editor":   "anthropic/claude-sonnet-4-20250514",
+					"thinker":  "google/gemini-2.5-pro",
+					"reviewer": "openai/gpt-4o",
+				},
+			},
+			"max": {
+				Main:         "anthropic/claude-opus-4-20250514",
+				FileExplorer: "openai/gpt-4o-mini",
+				SubAgent:     "anthropic/claude-sonnet-4-20250514",
+				AgentOverrides: map[string]string{
+					"editor":   "anthropic/claude-sonnet-4-20250514",
+					"thinker":  "anthropic/claude-opus-4-20250514",
+					"reviewer": "anthropic/claude-opus-4-20250514",
+					"planner":  "anthropic/claude-opus-4-20250514",
+				},
+			},
+		}
 	case "groq":
 		cfg.Modes = map[string]UnifiedModeMapping{
 			"normal": {Main: "groq/llama-3.3-70b-versatile", FileExplorer: "groq/llama-3.1-8b-instant", SubAgent: "groq/llama-3.3-70b-versatile"},

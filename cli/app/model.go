@@ -976,6 +976,14 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 	if key := getKey("cerebras", "CEREBRAS_API_KEY"); key != "" {
 		reg.Register(llm.NewCerebrasProvider(key))
 	}
+	if key := getKey("kilocode", "KILOCODE_API_KEY"); key != "" {
+		kiloProvider := llm.NewKilocodeProvider(key)
+		reg.Register(kiloProvider)
+		// If no OpenRouter key, Kilocode becomes the default fallback gateway.
+		if getKey("openrouter", "OPENROUTER_API_KEY") == "" {
+			reg.SetDefault(kiloProvider)
+		}
+	}
 	if key := getKey("openrouter", "OPENROUTER_API_KEY"); key != "" {
 		orProvider := llm.NewOpenRouterProvider(key)
 		reg.Register(orProvider)
