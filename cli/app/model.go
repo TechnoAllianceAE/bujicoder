@@ -901,6 +901,7 @@ func (m Model) localModelsInfo() string {
 		{"together", "together", "TOGETHER_API_KEY"},
 		{"openrouter", "openrouter", "OPENROUTER_API_KEY"},
 		{"ollama", "ollama", "OLLAMA_URL"},
+		{"llamacpp", "llamacpp", "LLAMACPP_URL"},
 	}
 
 	found := false
@@ -991,6 +992,9 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 	}
 	if u := getKey("ollama", "OLLAMA_URL"); u != "" {
 		reg.Register(llm.NewOllamaProvider(u))
+	}
+	if u := getKey("llamacpp", "LLAMACPP_URL"); u != "" {
+		reg.Register(llm.NewLlamaCppProvider(u))
 	}
 }
 
@@ -2825,6 +2829,7 @@ func detectTechnologies(content string) []string {
 		{"bubble tea", "Bubble Tea"}, {"bubbletea", "Bubble Tea"},
 		{"openai", "OpenAI"}, {"anthropic", "Anthropic"}, {"gemini", "Gemini"},
 		{"ollama", "Ollama"}, {"llm", "LLM"},
+		{"llamacpp", "Llama.cpp"},
 	}
 
 	seen := map[string]bool{}

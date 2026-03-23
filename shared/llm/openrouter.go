@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const openRouterAPIURL = "https://openrouter.ai/api/v1/chat/completions"
@@ -23,7 +24,9 @@ type OpenRouterProvider struct {
 func NewOpenRouterProvider(apiKey string) *OpenRouterProvider {
 	return &OpenRouterProvider{
 		apiKey: apiKey,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 90 * time.Second,
+		},
 	}
 }
 
@@ -57,7 +60,10 @@ func (o *OpenRouterProvider) StreamCompletion(ctx context.Context, req *Completi
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("openrouter API error (status %d): %s", resp.StatusCode, string(respBody))
+		// Parse Retry-After header for rate limit responses
+		headers := NormalizeHeaders(resp.Header)
+		retryAfter := ExtractRetryAfterFromHeaders(headers)
+		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)

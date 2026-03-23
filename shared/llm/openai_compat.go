@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // OpenAICompatConfig holds common configuration for OpenAI-compatible providers.
@@ -29,8 +30,10 @@ type openAICompatProvider struct {
 
 func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
 	return &openAICompatProvider{
-		cfg:    cfg,
-		client: &http.Client{},
+		cfg: cfg,
+		client: &http.Client{
+			Timeout: 90 * time.Second,
+		},
 	}
 }
 
@@ -63,7 +66,10 @@ func (p *openAICompatProvider) streamCompletion(ctx context.Context, req *Comple
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s API error (status %d): %s", p.cfg.ProviderName, resp.StatusCode, string(respBody))
+		// Parse Retry-After header for rate limit responses
+		headers := NormalizeHeaders(resp.Header)
+		retryAfter := ExtractRetryAfterFromHeaders(headers)
+		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)

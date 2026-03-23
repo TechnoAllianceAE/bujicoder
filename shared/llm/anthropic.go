@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const anthropicAPIURL = "https://api.anthropic.com/v1/messages"
@@ -23,7 +24,9 @@ type AnthropicProvider struct {
 func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 	return &AnthropicProvider{
 		apiKey: apiKey,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 90 * time.Second,
+		},
 	}
 }
 
@@ -56,7 +59,10 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("anthropic API error (status %d): %s", resp.StatusCode, string(body))
+		// Parse Retry-After header for rate limit responses
+		headers := NormalizeHeaders(resp.Header)
+		retryAfter := ExtractRetryAfterFromHeaders(headers)
+		return nil, NewProviderError(resp.StatusCode, string(body), retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)

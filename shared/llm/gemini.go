@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 const geminiAPIURL = "https://generativelanguage.googleapis.com/v1beta/models"
@@ -22,7 +23,9 @@ type GeminiProvider struct {
 func NewGeminiProvider(apiKey string) *GeminiProvider {
 	return &GeminiProvider{
 		apiKey: apiKey,
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 90 * time.Second,
+		},
 	}
 }
 
@@ -55,7 +58,10 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		return nil, fmt.Errorf("gemini API error (status %d): %s", resp.StatusCode, string(respBody))
+		// Parse Retry-After header for rate limit responses
+		headers := NormalizeHeaders(resp.Header)
+		retryAfter := ExtractRetryAfterFromHeaders(headers)
+		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)

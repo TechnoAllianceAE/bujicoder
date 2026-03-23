@@ -104,6 +104,7 @@ type APIKeysConfig struct {
 	Groq       string `yaml:"groq,omitempty"`
 	Cerebras   string `yaml:"cerebras,omitempty"`
 	OllamaURL  string `yaml:"ollama_url,omitempty"`
+	LlamacppURL string `yaml:"llamacpp_url,omitempty"`
 }
 
 // UnifiedModeMapping maps agent roles to models for a given cost mode.
@@ -162,6 +163,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		configVal = u.APIKeys.Cerebras
 	case "ollama":
 		configVal = u.APIKeys.OllamaURL
+	case "llamacpp":
+		configVal = u.APIKeys.LlamacppURL
 	}
 	if configVal != "" {
 		return configVal
@@ -183,6 +186,7 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		"groq":       "GROQ_API_KEY",
 		"cerebras":   "CEREBRAS_API_KEY",
 		"ollama":     "OLLAMA_URL",
+		"llamacpp":   "LLAMACPP_URL",
 	}
 	if envVar, ok := envMap[provider]; ok {
 		return os.Getenv(envVar)
