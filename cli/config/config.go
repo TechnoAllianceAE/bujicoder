@@ -395,6 +395,18 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 			"heavy":  {Main: "openai/gpt-oss-120b:free", FileExplorer: "openai/gpt-oss-120b", SubAgent: "openai/gpt-oss-120b:free"},
 			"max":    {Main: "openai/gpt-oss-120b:free", FileExplorer: "openai/gpt-oss-120b", SubAgent: "openai/gpt-oss-120b:free"},
 		}
+	case "ollama":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
+			"heavy":  {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
+			"max":    {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
+		}
+	case "llamacpp":
+		cfg.Modes = map[string]UnifiedModeMapping{
+			"normal": {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
+			"heavy":  {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
+			"max":    {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
+		}
 	default: // openrouter — use current production defaults
 		cfg.Modes = map[string]UnifiedModeMapping{
 			"normal": {

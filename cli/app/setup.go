@@ -44,6 +44,8 @@ var setupProviders = []setupProviderInfo{
 	{"together", "Together AI", "Open-source models", "api.together.ai"},
 	{"openai", "OpenAI", "GPT-4o and more", "platform.openai.com/api-keys"},
 	{"anthropic", "Anthropic", "Claude models", "console.anthropic.com"},
+	{"ollama", "Ollama", "Local LLMs", "ollama.com"},
+	{"llamacpp", "Llama.cpp", "Local LLMs (OpenAI compat)", "Base URL (e.g. http://localhost:8080)"},
 }
 
 var setupModeNames = [3]string{"normal", "heavy", "max"}
@@ -430,6 +432,16 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 		ep.authKey = "x-api-key"
 		ep.authVal = apiKey
 		ep.extra = map[string]string{"anthropic-version": "2023-06-01"}
+	case "ollama":
+		if apiKey == "" {
+			apiKey = "http://localhost:11434"
+		}
+		ep.url = strings.TrimRight(apiKey, "/") + "/api/tags"
+	case "llamacpp":
+		if apiKey == "" {
+			apiKey = "http://localhost:8080"
+		}
+		ep.url = strings.TrimRight(apiKey, "/") + "/v1/models"
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", provider)
 	}
@@ -471,16 +483,32 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
 
-	if len(result.Data) == 0 {
-		return nil, fmt.Errorf("no models returned by %s", provider)
-	}
-
 	models := make([]string, 0, len(result.Data))
 	for _, m := range result.Data {
 		if m.ID != "" {
 			models = append(models, m.ID)
 		}
 	}
+
+	// Ollama uses a different JSON structure for tags: {"models": [{"name": "..."}]}
+	if provider == "ollama" && len(models) == 0 {
+		var ollamaResult struct {
+			Models []struct {
+				Name string `json:"name"`
+			} `json:"models"`
+		}
+		_ = json.Unmarshal(body, &ollamaResult)
+		for _, m := range ollamaResult.Models {
+			if m.Name != "" {
+				models = append(models, m.Name)
+			}
+		}
+	}
+	
+	if len(models) == 0 {
+		return nil, fmt.Errorf("no models returned by %s", provider)
+	}
+
 	sort.Strings(models)
 	return models, nil
 }
@@ -582,6 +610,10 @@ func setProviderAPIKey(cfg *cliconfig.UnifiedConfig, provider, key string) {
 		cfg.APIKeys.OpenAI = key
 	case "anthropic":
 		cfg.APIKeys.Anthropic = key
+	case "ollama":
+		cfg.APIKeys.OllamaURL = key
+	case "llamacpp":
+		cfg.APIKeys.LlamacppURL = key
 	}
 }
 
