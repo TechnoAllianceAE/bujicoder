@@ -155,11 +155,14 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 			msg["content"] = contentParts
 		} else if textBuf.Len() > 0 {
 			msg["content"] = textBuf.String()
-		} else {
-			// Assistant messages with only tool_calls need content: null.
-			// Other messages need at least empty content.
-			msg["content"] = nil
+		} else if len(toolCalls) == 0 {
+			// Non-assistant messages without content: set empty string.
+			// Assistant messages with tool_calls: omit content entirely
+			// (matches Bifrost/Portkey behavior — most providers accept this).
+			msg["content"] = ""
 		}
+		// When only tool_calls present (no text, no images): content key is
+		// intentionally omitted. Providers accept tool_calls without content.
 		if len(toolCalls) > 0 {
 			msg["tool_calls"] = toolCalls
 		}
