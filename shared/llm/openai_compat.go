@@ -156,9 +156,9 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 		} else if textBuf.Len() > 0 {
 			msg["content"] = textBuf.String()
 		} else {
-			// Providers require content field even when empty (e.g., assistant
-			// messages with only tool_calls). Set to empty string.
-			msg["content"] = ""
+			// Assistant messages with only tool_calls need content: null.
+			// Other messages need at least empty content.
+			msg["content"] = nil
 		}
 		if len(toolCalls) > 0 {
 			msg["tool_calls"] = toolCalls
