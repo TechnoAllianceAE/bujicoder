@@ -17,19 +17,24 @@ import (
 // ModelInfo holds metadata about an available model.
 type ModelInfo struct {
 	ID              string   `json:"id"`
-	Name            string   `json:"name"`
-	Source          string   `json:"source"`
-	ContextLength   int      `json:"context_length"`
-	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
-	PromptCost      float64  `json:"prompt_cost"`
-	CompletionCost  float64  `json:"completion_cost"`
-	Created         int64    `json:"created,omitempty"`
-	InputModalities []string `json:"input_modalities,omitempty"`
+	Name                string   `json:"name"`
+	Source              string   `json:"source"`
+	ContextLength       int      `json:"context_length"`
+	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
+	PromptCost          float64  `json:"prompt_cost"`
+	CompletionCost      float64  `json:"completion_cost"`
+	Created             int64    `json:"created,omitempty"`
+	InputModalities     []string `json:"input_modalities,omitempty"`
+	SupportedParams     []string `json:"supported_parameters,omitempty"`
+	SupportsTools       bool     `json:"supports_tools,omitempty"`
+	Description         string   `json:"description,omitempty"`
+	KnowledgeCutoff     string   `json:"knowledge_cutoff,omitempty"`
 }
 
 type modelEntry struct {
 	ID            string `json:"id"`
 	Name          string `json:"name"`
+	Description   string `json:"description"`
 	ContextLength int    `json:"context_length"`
 	Created       int64  `json:"created"`
 	TopProvider   struct {
@@ -42,6 +47,8 @@ type modelEntry struct {
 	Architecture struct {
 		InputModalities []string `json:"input_modalities"`
 	} `json:"architecture"`
+	SupportedParams []string `json:"supported_parameters"`
+	KnowledgeCutoff *string  `json:"knowledge_cutoff"`
 }
 
 type modelsFile struct {
@@ -127,6 +134,19 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 		info.Created = entry.Created
 		if len(entry.Architecture.InputModalities) > 0 {
 			info.InputModalities = entry.Architecture.InputModalities
+		}
+		if len(entry.SupportedParams) > 0 {
+			info.SupportedParams = entry.SupportedParams
+			for _, p := range entry.SupportedParams {
+				if p == "tools" || p == "tool_choice" {
+					info.SupportsTools = true
+					break
+				}
+			}
+		}
+		info.Description = entry.Description
+		if entry.KnowledgeCutoff != nil {
+			info.KnowledgeCutoff = *entry.KnowledgeCutoff
 		}
 		models[entry.ID] = info
 	}
