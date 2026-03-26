@@ -137,12 +137,14 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 		})
 	}
 
-	// Route to the LLM provider
-	provider, _, err := rt.llmRegistry.Route(req.Model)
+	// Route to the LLM provider and use the stripped model name
+	// (e.g. "ollama/qooba/model" → provider=ollama, model="qooba/model").
+	provider, routedModel, err := rt.llmRegistry.Route(req.Model)
 	if err != nil {
 		rt.log.Error().Str("model", req.Model).Str("agent", cfg.AgentDef.ID).Err(err).Msg("model routing failed")
 		return nil, fmt.Errorf("route model %q: %w", req.Model, err)
 	}
+	req.Model = routedModel
 
 	// Start streaming
 	eventCh, err := provider.StreamCompletion(ctx, req)

@@ -384,14 +384,14 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 		model = resolved.Model
 	}
 
-	provider, _, err := rt.llmRegistry.Route(model)
+	provider, routedModel, err := rt.llmRegistry.Route(model)
 	if err != nil {
 		return "", fmt.Errorf("route thinker model: %w", err)
 	}
 
 	systemPrompt := "You are a deep thinking assistant. Analyze the following question thoroughly. Consider edge cases, trade-offs, and multiple perspectives. Think step by step."
 	thinkReq := &llm.CompletionRequest{
-		Model: model,
+		Model: routedModel,
 		Messages: []llm.Message{
 			{
 				Role:    "user",
