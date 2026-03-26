@@ -38,7 +38,14 @@ func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
 }
 
 func (p *openAICompatProvider) streamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
+	return p.doStreamRequest(ctx, req, false)
+}
+
+func (p *openAICompatProvider) doStreamRequest(ctx context.Context, req *CompletionRequest, stripTools bool) (<-chan StreamEvent, error) {
 	body := p.buildRequest(req)
+	if stripTools {
+		delete(body, "tools")
+	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -66,6 +73,14 @@ func (p *openAICompatProvider) streamCompletion(ctx context.Context, req *Comple
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+
+		// If the model doesn't support tools, retry without them so the
+		// model can still participate in conversation (just no tool use).
+		if !stripTools && resp.StatusCode == http.StatusBadRequest &&
+			strings.Contains(string(respBody), "does not support tools") {
+			return p.doStreamRequest(ctx, req, true)
+		}
+
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
