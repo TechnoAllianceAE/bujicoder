@@ -92,6 +92,17 @@ buji
 # Choose Advanced Setup → Ollama or Llama.cpp
 # Press Enter to use the default URL (localhost:11434 / localhost:8080)</code></pre>
 
+        <div class="docs-callout tip">
+            <strong>Tool support matters.</strong> BujiCoder's agents use tool/function calling to read files, edit code, run commands, and search your codebase. Not all local models support this. Recommended models with tool support:
+            <ul>
+                <li><code>llama3.1:8b</code> / <code>llama3.1:70b</code></li>
+                <li><code>qwen2.5-coder:7b</code> / <code>qwen2.5-coder:32b</code></li>
+                <li><code>mistral:7b</code></li>
+                <li><code>qwen3:8b</code></li>
+            </ul>
+            Models without tool support can still chat, but won't be able to use any agent tools.
+        </div>
+
         <div class="docs-callout info">
             <strong>Note:</strong> You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.
         </div>
