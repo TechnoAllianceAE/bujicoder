@@ -55,7 +55,7 @@ install_binary() {
   local download_url="https://github.com/${REPO}/releases/download/${VERSION}/${asset}"
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
+  trap "rm -rf \"$tmp\"" EXIT
 
   info "Downloading BujiCoder ${VERSION} for ${PLATFORM}…"
   curl -fsSL -o "${tmp}/${BINARY}" "$download_url" || err "Download failed — check that a release exists for ${PLATFORM}."

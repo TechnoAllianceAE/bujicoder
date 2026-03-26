@@ -397,15 +397,15 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 		}
 	case "ollama":
 		cfg.Modes = map[string]UnifiedModeMapping{
-			"normal": {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
-			"heavy":  {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
-			"max":    {Main: "llama3:latest", FileExplorer: "llama3:latest", SubAgent: "llama3:latest"},
+			"normal": {Main: "ollama/llama3:latest", FileExplorer: "ollama/llama3:latest", SubAgent: "ollama/llama3:latest"},
+			"heavy":  {Main: "ollama/llama3:latest", FileExplorer: "ollama/llama3:latest", SubAgent: "ollama/llama3:latest"},
+			"max":    {Main: "ollama/llama3:latest", FileExplorer: "ollama/llama3:latest", SubAgent: "ollama/llama3:latest"},
 		}
 	case "llamacpp":
 		cfg.Modes = map[string]UnifiedModeMapping{
-			"normal": {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
-			"heavy":  {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
-			"max":    {Main: "local-model", FileExplorer: "local-model", SubAgent: "local-model"},
+			"normal": {Main: "llamacpp/local-model", FileExplorer: "llamacpp/local-model", SubAgent: "llamacpp/local-model"},
+			"heavy":  {Main: "llamacpp/local-model", FileExplorer: "llamacpp/local-model", SubAgent: "llamacpp/local-model"},
+			"max":    {Main: "llamacpp/local-model", FileExplorer: "llamacpp/local-model", SubAgent: "llamacpp/local-model"},
 		}
 	default: // openrouter — use current production defaults
 		cfg.Modes = map[string]UnifiedModeMapping{

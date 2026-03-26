@@ -117,12 +117,25 @@ func (m Model) handleSetupKeys(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case setupStepAdvKey:
+		provider := setupProviders[m.setupProvider].key
+		isLocal := provider == "llamacpp" || provider == "ollama"
+		if isLocal && key == "enter" {
+			// Allow empty input — fetchProviderModels fills in the default URL.
+			apiKey := strings.TrimSpace(m.setupAPIKey)
+			m.setupAPIKey = apiKey
+			m.setupStep = setupStepAdvFetching
+			m.setupFetching = true
+			m.setupFetchErr = ""
+			return m, tea.Batch(
+				fetchProviderModelsCmd(provider, apiKey),
+				tickCmd(),
+			)
+		}
 		return m.handleKeyEntry(key, setupStepAdvProvider, func(apiKey string) (Model, tea.Cmd) {
 			m.setupAPIKey = apiKey
 			m.setupStep = setupStepAdvFetching
 			m.setupFetching = true
 			m.setupFetchErr = ""
-			provider := setupProviders[m.setupProvider].key
 			return m, tea.Batch(
 				fetchProviderModelsCmd(provider, apiKey),
 				tickCmd(),
@@ -337,12 +350,22 @@ func (m Model) renderSetupView() string {
 
 	case setupStepAdvKey:
 		chosen := setupProviders[m.setupProvider]
-		b.WriteString("  " + sectionStyle.Render("API Key Setup") + "\n")
-		b.WriteString(sep + "\n\n")
-		b.WriteString(descStyle.Render(fmt.Sprintf("  Enter your %s API key.", chosen.label)) + "\n")
-		b.WriteString(descStyle.Render("  Get one at: ") + cmdStyle.Render(chosen.signUp) + "\n\n")
-		b.WriteString(promptStyle.Render(fmt.Sprintf("  %s API Key:  ", chosen.label)) + m.setupAPIKey + dimStyle.Render("|") + "\n\n")
-		b.WriteString(dimStyle.Render("  Enter: continue . Backspace: go back . Ctrl+C: quit") + "\n")
+		isLocal := chosen.key == "llamacpp" || chosen.key == "ollama"
+		if isLocal {
+			b.WriteString("  " + sectionStyle.Render("Server URL Setup") + "\n")
+			b.WriteString(sep + "\n\n")
+			b.WriteString(descStyle.Render(fmt.Sprintf("  Enter your %s server URL (or press Enter for default).", chosen.label)) + "\n")
+			b.WriteString(descStyle.Render("  Info: ") + cmdStyle.Render(chosen.signUp) + "\n\n")
+			b.WriteString(promptStyle.Render(fmt.Sprintf("  %s URL:  ", chosen.label)) + m.setupAPIKey + dimStyle.Render("|") + "\n\n")
+			b.WriteString(dimStyle.Render("  Enter: continue . Backspace: go back . Ctrl+C: quit") + "\n")
+		} else {
+			b.WriteString("  " + sectionStyle.Render("API Key Setup") + "\n")
+			b.WriteString(sep + "\n\n")
+			b.WriteString(descStyle.Render(fmt.Sprintf("  Enter your %s API key.", chosen.label)) + "\n")
+			b.WriteString(descStyle.Render("  Get one at: ") + cmdStyle.Render(chosen.signUp) + "\n\n")
+			b.WriteString(promptStyle.Render(fmt.Sprintf("  %s API Key:  ", chosen.label)) + m.setupAPIKey + dimStyle.Render("|") + "\n\n")
+			b.WriteString(dimStyle.Render("  Enter: continue . Backspace: go back . Ctrl+C: quit") + "\n")
+		}
 
 	case setupStepAdvFetching:
 		if m.setupFetchErr != "" {
@@ -507,6 +530,15 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 	
 	if len(models) == 0 {
 		return nil, fmt.Errorf("no models returned by %s", provider)
+	}
+
+	// Local providers need the provider/ prefix for model routing.
+	if provider == "llamacpp" || provider == "ollama" {
+		for i, m := range models {
+			if !strings.Contains(m, "/") {
+				models[i] = provider + "/" + m
+			}
+		}
 	}
 
 	sort.Strings(models)
