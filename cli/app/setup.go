@@ -44,8 +44,8 @@ var setupProviders = []setupProviderInfo{
 	{"together", "Together AI", "Open-source models", "api.together.ai"},
 	{"openai", "OpenAI", "GPT-4o and more", "platform.openai.com/api-keys"},
 	{"anthropic", "Anthropic", "Claude models", "console.anthropic.com"},
-	{"ollama", "Ollama", "Local LLMs", "ollama.com"},
-	{"llamacpp", "Llama.cpp", "Local LLMs (OpenAI compat)", "Base URL (e.g. http://localhost:8080)"},
+	{"ollama", "Ollama", "Local or remote LLMs", "Default: http://localhost:11434"},
+	{"llamacpp", "Llama.cpp", "Local LLMs (OpenAI compat)", "Default: http://localhost:8080"},
 }
 
 var setupModeNames = [3]string{"normal", "heavy", "max"}
