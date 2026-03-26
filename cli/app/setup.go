@@ -643,8 +643,14 @@ func setProviderAPIKey(cfg *cliconfig.UnifiedConfig, provider, key string) {
 	case "anthropic":
 		cfg.APIKeys.Anthropic = key
 	case "ollama":
+		if key == "" {
+			key = "http://localhost:11434"
+		}
 		cfg.APIKeys.OllamaURL = key
 	case "llamacpp":
+		if key == "" {
+			key = "http://localhost:8080"
+		}
 		cfg.APIKeys.LlamacppURL = key
 	}
 }
