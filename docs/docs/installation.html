@@ -85,6 +85,13 @@ go build -o buji ./cli/cmd/buji
             <li>Run <code>buji</code> and paste your key when prompted — that's it!</li>
         </ol>
 
+        <h3>Local Models (Ollama / Llama.cpp)</h3>
+        <p>BujiCoder works with local LLMs via Ollama or any llama.cpp server. In Advanced Setup, select <strong>Ollama</strong> or <strong>Llama.cpp</strong> and enter your server URL (or press Enter to use the default). BujiCoder will fetch available models from your server and let you assign them to agent roles.</p>
+<pre><code># Start your local server first, then run:
+buji
+# Choose Advanced Setup → Ollama or Llama.cpp
+# Press Enter to use the default URL (localhost:11434 / localhost:8080)</code></pre>
+
         <div class="docs-callout info">
             <strong>Note:</strong> You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.
         </div>
