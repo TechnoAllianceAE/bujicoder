@@ -533,11 +533,11 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 	}
 
 	// Local providers need the provider/ prefix for model routing.
+	// Always prefix — Ollama model names can contain "/" as a namespace
+	// separator (e.g. "qooba/qwen3-coder"), which is NOT a provider prefix.
 	if provider == "llamacpp" || provider == "ollama" {
 		for i, m := range models {
-			if !strings.Contains(m, "/") {
-				models[i] = provider + "/" + m
-			}
+			models[i] = provider + "/" + m
 		}
 	}
 
