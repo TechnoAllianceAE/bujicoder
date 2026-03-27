@@ -1,3 +1,23 @@
+# v0.8.4
+
+## SDK Improvements
+
+- **feat: static cost registry with 80+ models** — Hardcoded pricing for 8 providers (Anthropic, OpenAI, Google, xAI, Meta, DeepSeek, Mistral, Qwen). The pricing service now loads a static baseline at startup before fetching from APIs, so cost tracking works even when OpenRouter is unreachable.
+
+- **feat: resilient pricing startup** — The gateway/CLI no longer fails if the initial OpenRouter API fetch fails. Static prices serve as fallback until the next successful refresh. API prices overlay the static baseline (merge, don't replace).
+
+- **feat: pricing accessors** — New `ModelCount()` and `GetPricing()` methods on PricingService for monitoring and dashboard integrations.
+
+## Upgrade
+
+```bash
+curl -fsSL https://bujicoder.com/install.sh | bash
+```
+
+**Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.8.3...v0.8.4
+
+---
+
 # v0.8.3
 
 ## Bug Fixes

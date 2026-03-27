@@ -38,6 +38,7 @@ Your config is saved to `~/.bujicoder/bujicoder.yaml`. You can edit it anytime t
 - **Local tools** — File read/write, code search, terminal commands executed on your machine
 - **MCP support** — Extend with Model Context Protocol servers
 - **Cost modes** — Switch between normal / heavy / max to control model quality and spending
+- **Built-in cost tracking** — Static pricing registry for 80+ models across 8 providers, works offline
 - **Vision** — Attach images with `@path/to/image.png`
 - **Self-updating** — Run `buji update` to get the latest version
 
