@@ -45,11 +45,24 @@ func NewPricingService(apiKey string, log zerolog.Logger) *PricingService {
 	}
 }
 
-// Start fetches pricing immediately and starts a background goroutine that
-// refreshes every 6 hours. Returns an error only if the initial fetch fails.
+// Start loads static baseline pricing, then fetches fresh pricing from APIs
+// and starts a background goroutine that refreshes every 6 hours.
+// The gateway starts successfully even if the API fetch fails — the static
+// registry ensures pricing is always available.
 func (p *PricingService) Start(ctx context.Context) error {
+	// Load static baseline first — always available, zero network dependency.
+	baseline := GetStaticPricing()
+	p.mu.Lock()
+	for id, pricing := range baseline {
+		p.prices[id] = pricing
+	}
+	p.mu.Unlock()
+	p.log.Info().Int("models", len(baseline)).Msg("loaded static cost registry")
+
+	// Overlay fresh API pricing on top. Non-fatal on failure — static prices
+	// serve as fallback until the next successful refresh.
 	if err := p.fetchPricing(ctx); err != nil {
-		return fmt.Errorf("initial pricing fetch: %w", err)
+		p.log.Warn().Err(err).Msg("initial API pricing fetch failed, using static registry")
 	}
 
 	go p.refreshLoop()
@@ -59,6 +72,21 @@ func (p *PricingService) Start(ctx context.Context) error {
 // Stop signals the background refresh goroutine to exit.
 func (p *PricingService) Stop() {
 	close(p.stopCh)
+}
+
+// ModelCount returns the number of models with known pricing.
+func (p *PricingService) ModelCount() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return len(p.prices)
+}
+
+// GetPricing returns the pricing for a specific model, or false if unknown.
+func (p *PricingService) GetPricing(model string) (ModelPricing, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	pricing, ok := p.prices[model]
+	return pricing, ok
 }
 
 // CalculateCostCents computes the cost in cents for a given model and token
@@ -170,11 +198,15 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 		p.mergeZAIPricing(prices)
 	}
 
+	// Merge API prices on top of existing map (preserves static baseline for
+	// models not returned by the API).
 	p.mu.Lock()
-	p.prices = prices
+	for id, pricing := range prices {
+		p.prices[id] = pricing
+	}
 	p.mu.Unlock()
 
-	p.log.Info().Int("models", len(prices)).Int("skipped", skipped).Msg("loaded model prices")
+	p.log.Info().Int("api_models", len(prices)).Int("total_models", len(p.prices)).Int("skipped", skipped).Msg("refreshed model prices")
 	return nil
 }
 
