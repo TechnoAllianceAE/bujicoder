@@ -48,8 +48,14 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", a.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	if req.OAuthToken != "" {
+		// OAuth subscription mode: charged against user's Claude Pro/Max/Team plan.
+		httpReq.Header.Set("Authorization", "Bearer "+req.OAuthToken)
+		httpReq.Header.Set("Anthropic-Beta", "oauth-2025-04-20")
+	} else {
+		httpReq.Header.Set("x-api-key", a.apiKey)
+	}
 
 	resp, err := a.client.Do(httpReq)
 	if err != nil {

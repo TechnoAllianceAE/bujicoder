@@ -134,6 +134,9 @@ type CompletionRequest struct {
 	CostMode       string          // Cost mode for model routing (normal, heavy, max)
 	AgentID        string          // Agent ID for per-agent model overrides (e.g., "base", "editor")
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"` // When set, forces structured JSON output
+	// OAuthToken, when set on an Anthropic request, uses Bearer auth charged against the
+	// user's Claude subscription instead of the server-side API key (per-token billing).
+	OAuthToken string
 }
 
 // Provider is the interface that LLM provider adapters must implement.
