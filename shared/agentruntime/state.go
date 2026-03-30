@@ -8,12 +8,15 @@ import (
 
 // state holds the mutable conversation state for a single agent run.
 type state struct {
-	messages   []llm.Message
-	dynamicCtx string // cached dynamic context (file tree, git, knowledge) built once per run
+	messages       []llm.Message
+	dynamicCtx     string // cached dynamic context (file tree, git, knowledge) built once per run
+	toolCallCounts map[string]int // track repeated tool calls: "toolName:argsHash" -> count
 }
 
 func newState(cfg RunConfig) *state {
-	s := &state{}
+	s := &state{
+		toolCallCounts: make(map[string]int),
+	}
 
 	// Copy existing history
 	if len(cfg.History) > 0 {

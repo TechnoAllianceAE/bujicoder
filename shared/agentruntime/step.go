@@ -234,9 +234,40 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 	st.appendAssistantToolCalls(result.text, toolCallParts)
 
 	// Execute tools and collect results
-	toolResults, err := dispatchToolCalls(ctx, rt, toolCalls, cfg)
-	if err != nil {
-		return nil, fmt.Errorf("dispatch tool calls: %w", err)
+	// First, check for repeated tool calls (loop guard)
+	var toolResults []llm.ContentPart
+	var toolCallsToDispatch []llm.ToolCallEvent
+
+	for _, tc := range toolCalls {
+		// Hash the arguments to detect identical calls
+		argsHash := hashArgs(tc.ArgumentsJSON)
+		toolKey := fmt.Sprintf("%s:%s", tc.Name, argsHash)
+
+		st.toolCallCounts[toolKey]++
+		count := st.toolCallCounts[toolKey]
+
+		if count > MaxIdenticalToolCalls {
+			// Tool called too many times - return error instead of executing
+			toolResults = append(toolResults, llm.ContentPart{
+				Type:       "tool_result",
+				ToolCallID: tc.ID,
+				ToolName:   tc.Name,
+				Text:       fmt.Sprintf("[Loop Guard] Tool %q called %d times with identical arguments. Breaking loop to prevent token waste.", tc.Name, count),
+				IsError:    true,
+			})
+		} else {
+			// Tool call is within limits - dispatch it
+			toolCallsToDispatch = append(toolCallsToDispatch, tc)
+		}
+	}
+
+	// Dispatch the non-exceeded tool calls
+	if len(toolCallsToDispatch) > 0 {
+		dispatchedResults, err := dispatchToolCalls(ctx, rt, toolCallsToDispatch, cfg)
+		if err != nil {
+			return nil, fmt.Errorf("dispatch tool calls: %w", err)
+		}
+		toolResults = append(toolResults, dispatchedResults...)
 	}
 
 	st.appendToolResults(toolResults)
@@ -378,4 +409,17 @@ func toolInputSchema(toolName string) map[string]any {
 	default:
 		return map[string]any{"type": "object", "properties": map[string]any{}}
 	}
+}
+
+// hashArgs creates a hash of tool arguments for loop detection.
+// Uses a simple hash to detect identical tool calls.
+func hashArgs(argsJSON string) string {
+	// Simple hash: normalize JSON and compute a hash
+	// For simplicity, we just use the first 16 chars of a basic hash
+	// A more robust implementation would use cryptographic hash
+	h := uint32(0)
+	for _, c := range argsJSON {
+		h = h*31 + uint32(c)
+	}
+	return fmt.Sprintf("%x", h)[:16]
 }

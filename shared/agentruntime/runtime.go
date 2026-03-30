@@ -31,6 +31,12 @@ const (
 	EventStatus     EventType = "status"
 )
 
+// Loop guard constants
+const (
+	MaxIdenticalToolCalls = 10   // Allow up to 10 identical tool calls before breaking
+	MaxRunInputTokens     = 200000 // 200K input token budget per agent run
+)
+
 // Event is a runtime event emitted during an agent run.
 type Event struct {
 	Type       EventType
@@ -156,6 +162,18 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		result.TotalOutputTokens += stepResult.outputTokens
 		if stepResult.model != "" {
 			result.Model = stepResult.model
+		}
+
+		// Check token budget
+		if result.TotalInputTokens > MaxRunInputTokens {
+			r.log.Warn().
+				Str("agent", cfg.AgentDef.ID).
+				Int("total_input_tokens", result.TotalInputTokens).
+				Int("budget", MaxRunInputTokens).
+				Msg("agent exceeded input token budget")
+			result.FinishReason = "token_budget_exceeded"
+			result.Messages = state.messages
+			return result, nil
 		}
 
 		// If no tool calls were made, the agent is done
