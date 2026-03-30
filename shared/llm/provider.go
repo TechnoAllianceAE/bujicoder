@@ -137,6 +137,8 @@ type CompletionRequest struct {
 	// OAuthToken, when set on an Anthropic request, uses Bearer auth charged against the
 	// user's Claude subscription instead of the server-side API key (per-token billing).
 	OAuthToken string
+	// KiroToken, when set, uses AWS CodeWhisperer's token for authentication instead of the server API key.
+	KiroToken string
 }
 
 // Provider is the interface that LLM provider adapters must implement.
