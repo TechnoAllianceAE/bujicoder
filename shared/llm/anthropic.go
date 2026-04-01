@@ -33,6 +33,9 @@ func NewAnthropicProvider(apiKey string) *AnthropicProvider {
 // Name returns "anthropic".
 func (a *AnthropicProvider) Name() string { return "anthropic" }
 
+// APIKey returns the provider's API key for direct passthrough proxying.
+func (a *AnthropicProvider) APIKey() string { return a.apiKey }
+
 // StreamCompletion sends a streaming request to the Anthropic Messages API.
 func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
 	body := a.buildRequest(req)

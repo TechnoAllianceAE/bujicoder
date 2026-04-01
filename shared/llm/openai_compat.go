@@ -343,10 +343,17 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 	}
 
 	// If stream ended without [DONE] and we haven't emitted Complete, do it now.
-	if !completeEmitted && lastFinishReason != "" {
+	// Always emit a Complete event — even if no finish_reason was received.
+	// Without this, downstream formatters (especially Anthropic) can't finalize
+	// the message, causing 'undefined is not an object' errors in Claude Code.
+	if !completeEmitted {
+		fr := lastFinishReason
+		if fr == "" {
+			fr = "stop" // default to "stop" if provider never sent finish_reason
+		}
 		if p.cfg.ZeroCost {
 			usage.CostCents = 0
 		}
-		ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}}
+		ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
 	}
 }
