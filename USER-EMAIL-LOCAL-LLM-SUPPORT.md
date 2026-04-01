@@ -203,7 +203,7 @@ We're working on:
 
 **macOS/Linux:**
 ```bash
-curl -fsSL https://bujicoder.com/install.sh | sh
+curl -fsSL https://community.bujicoder.com/install.sh | sh
 ```
 
 **Or manually:**

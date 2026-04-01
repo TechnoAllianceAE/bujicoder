@@ -17,7 +17,7 @@ Use Ollama or llama.cpp for free, offline coding.
 ✅ Works offline
 ✅ Completely free
 
-Run: curl https://bujicoder.com/install.sh | sh
+Run: curl https://community.bujicoder.com/install.sh | sh
 
 Then: buji
 ```
@@ -168,7 +168,7 @@ of them. Use local for quick tasks, cloud for complex work.
 
 **Get Started**
 
-1. Update: curl https://bujicoder.com/install.sh | sh
+1. Update: curl https://community.bujicoder.com/install.sh | sh
 2. Install Ollama: https://ollama.com
 3. Run: buji
 4. Select local LLM option
@@ -265,7 +265,7 @@ BujiCoder + local LLMs (Ollama or llama.cpp):
 
 3. **Update BujiCoder**
    ```bash
-   curl -fsSL https://bujicoder.com/install.sh | sh
+   curl -fsSL https://community.bujicoder.com/install.sh | sh
    ```
 
 4. **Run BujiCoder**
@@ -413,7 +413,7 @@ brew install ollama  # or download from ollama.com
 ollama pull mistral
 
 # Update BujiCoder
-curl -fsSL https://bujicoder.com/install.sh | sh
+curl -fsSL https://community.bujicoder.com/install.sh | sh
 
 # Run
 buji

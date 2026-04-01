@@ -68,7 +68,7 @@ See [docs/CONFIGURATION.md](docs/CONFIGURATION.md) for the full configuration re
 
 ## Enterprise
 
-Need team features like centralized billing, usage analytics, SSO, and shared agent configs? Visit [bujicoder.com](https://bujicoder.com).
+Need team features like centralized billing, usage analytics, SSO, and shared agent configs? Visit [community.bujicoder.com](https://community.bujicoder.com).
 
 ## Contributing
 

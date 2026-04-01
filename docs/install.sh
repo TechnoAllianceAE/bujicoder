@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BujiCoder installer — downloads the latest release binary for macOS or Linux.
-# Usage: curl -fsSL https://bujicoder.com/install.sh | bash
+# Usage: curl -fsSL https://community.bujicoder.com/install.sh | bash
 set -euo pipefail
 
 REPO="TechnoAllianceAE/bujicoder"

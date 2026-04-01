@@ -11,7 +11,7 @@
 ## Upgrade
 
 ```bash
-curl -fsSL https://bujicoder.com/install.sh | bash
+curl -fsSL https://community.bujicoder.com/install.sh | bash
 ```
 
 **Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.8.3...v0.8.4
@@ -32,7 +32,7 @@ curl -fsSL https://bujicoder.com/install.sh | bash
 
 ## Docs
 
-- All install URLs now point to `https://bujicoder.com/install.sh` instead of raw GitHub links.
+- All install URLs now point to `https://community.bujicoder.com/install.sh` instead of raw GitHub links.
 - Installation docs updated with local LLM setup guide (Ollama + Llama.cpp).
 - Landing page updated: Llama.cpp added to providers grid, version corrected.
 
@@ -49,7 +49,7 @@ Models **without** tool support will still work for conversation, but cannot rea
 ## Upgrade
 
 ```bash
-curl -fsSL https://bujicoder.com/install.sh | bash
+curl -fsSL https://community.bujicoder.com/install.sh | bash
 rm ~/.bujicoder/bujicoder.yaml
 buji
 ```
