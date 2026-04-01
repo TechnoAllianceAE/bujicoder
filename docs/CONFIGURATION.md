@@ -98,17 +98,39 @@ BujiCoder uses a multi-agent system. Each agent has a specialized role, its own 
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| **base** | Orchestrator — routes tasks to sub-agents | All tools + spawns sub-agents |
-| **editor** | Precise file modifications | edit_file, write_file, read_files |
+| **base** | Orchestrator — routes tasks to sub-agents | All tools + spawns sub-agents + memory_read/write |
+| **editor** | Precise file modifications | edit_file, write_file, read_files, shared_memory_read |
 | **file_explorer** | Fast codebase navigation | read_files, glob, list_directory |
-| **planner** | Task decomposition and planning | read_files, code_search, think_deeply |
-| **researcher** | Deep research and analysis | read_files, web_search, think_deeply |
+| **planner** | Task decomposition and planning | read_files, code_search, think_deeply, shared_memory_read/write |
+| **researcher** | Deep research and analysis | read_files, web_search, think_deeply, shared_memory_read/write |
 | **reviewer** | Code quality evaluation | read_files, code_search, glob |
 | **thinker** | Pure reasoning (no file access) | think_deeply |
 | **git_committer** | Git staging and commits | run_terminal_command, read_files |
 | **parallel_editor** | Max-mode parallel implementation | spawn_agents, apply_proposals |
 
 Agent definitions live in `agents/*.yaml`. You can customize them or add your own.
+
+## Project Memory
+
+BujiCoder can persist knowledge across sessions in `.bujicoder/BUJI.md`:
+
+- **memory_read** / **memory_write** tools let agents store architecture notes, conventions, and learnings
+- Content is organized under `## Section` headers
+- Automatically loaded into the system prompt at session start (capped at 6KB)
+- View with `/memory` in the TUI
+- File size capped at 32KB
+
+## Goal Coordinator
+
+The `/goal <description>` command decomposes complex goals into a task DAG:
+
+1. The planner agent generates tasks with dependencies
+2. Independent tasks run in parallel (up to 6 concurrent)
+3. Dependent tasks wait for prerequisites and receive their results as context
+4. All tasks share an ephemeral shared memory store
+5. Results are synthesized into a coherent final response
+
+Includes cycle detection, cascade failure, and a 20-task limit.
 
 ## MCP Servers
 

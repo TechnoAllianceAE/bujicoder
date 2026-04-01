@@ -37,6 +37,10 @@
         <a href="mcp-servers.html">MCP Servers</a>
         <a href="agents.html" class="active">Agent Architecture</a>
         <a href="commands.html">Slash Commands</a>
+        <h3>v0.8.4</h3>
+        <a href="security.html">Command Security</a>
+        <a href="memory.html">Project Memory</a>
+        <a href="coordinator.html">Goal Coordinator</a>
     </aside>
 
     <main class="docs-content">
@@ -101,6 +105,18 @@ agents_dir: /path/to/my/agents</code></pre>
         <div class="docs-callout info">
             <strong>Note:</strong> Use <code>/models</code> in the TUI to see which models are currently assigned to each agent role.
         </div>
+
+        <h2>Shared Agent Memory</h2>
+        <p>Agents can share knowledge within a session using <strong>shared memory</strong>. When a researcher agent discovers something important, it writes to shared memory so the editor agent can read it later.</p>
+        <ul>
+            <li><strong>researcher</strong> and <strong>planner</strong> agents have <code>shared_memory_write</code> + <code>shared_memory_read</code></li>
+            <li><strong>editor</strong> has <code>shared_memory_read</code> only (consumes knowledge, doesn't produce research)</li>
+            <li>The shared memory summary is injected into every agent's system prompt automatically</li>
+        </ul>
+        <p>See <a href="memory.html">Project Memory</a> for full details on both persistent and session memory.</p>
+
+        <h2>Context Compaction</h2>
+        <p>During long-running agent tasks, BujiCoder automatically compacts conversation history when approaching the model's context window limit (70% threshold). It uses a lightweight model to summarize older messages while keeping the most recent 8 messages verbatim. If the LLM summarization fails, it falls back to extractive truncation.</p>
 
         <h2>Max Mode — Parallel Evolution</h2>
         <p>In Max mode, when editing files, the <strong>parallel_editor</strong> agent can spawn multiple competing implementations simultaneously. A judge evaluates all proposals and picks the best one, resulting in higher quality output at the cost of more API calls.</p>

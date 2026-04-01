@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goal Coordinator — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+        <h3>v0.8.4</h3>
+        <a href="security.html">Command Security</a>
+        <a href="memory.html">Project Memory</a>
+        <a href="coordinator.html" class="active">Goal Coordinator</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Goal Coordinator</h1>
+        <p class="docs-subtitle">The <code>/goal</code> command decomposes high-level goals into a task DAG (directed acyclic graph), executes tasks in dependency order with specialist agents, and synthesizes the results into a coherent response.</p>
+
+        <h2>Usage</h2>
+        <p>Invoke the goal coordinator by typing <code>/goal</code> followed by a description of what you want to accomplish:</p>
+<pre><code>/goal Add authentication with JWT login and protected routes
+/goal Refactor the database layer to use connection pooling
+/goal Set up CI/CD with GitHub Actions for this Go project</code></pre>
+
+        <div class="callout">
+            <strong>Tip:</strong> The <code>/goal</code> command works best with complex, multi-step tasks. For simple single-file edits, just describe what you want directly.
+        </div>
+
+        <h2>How It Works</h2>
+        <p>When you run <code>/goal</code>, BujiCoder follows a structured pipeline to break down and execute your request:</p>
+        <ol>
+            <li>The <strong>planner agent</strong> analyzes your goal and generates a JSON task plan.</li>
+            <li>Each task specifies: <code>id</code>, <code>title</code>, <code>description</code>, <code>agent_id</code>, and <code>depends_on</code> (optional).</li>
+            <li>Tasks with no dependencies start immediately in parallel.</li>
+            <li>Tasks with dependencies wait for their prerequisites to complete.</li>
+            <li>Results from completed prerequisites are injected as context into dependent tasks.</li>
+            <li>All tasks share memory via the shared agent memory system.</li>
+            <li>After all tasks complete, a synthesis step combines outputs into a coherent response.</li>
+        </ol>
+
+        <h2>Available Agents for Tasks</h2>
+        <p>The planner assigns each task to a specialist agent based on the nature of the work:</p>
+        <table>
+            <thead>
+                <tr><th>Agent</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>researcher</code></td><td>Read-only investigation of code, docs, web</td></tr>
+                <tr><td><code>editor</code></td><td>File editing and code changes</td></tr>
+                <tr><td><code>file_explorer</code></td><td>Fast, lightweight file discovery</td></tr>
+                <tr><td><code>planner</code></td><td>Further task decomposition</td></tr>
+                <tr><td><code>reviewer</code></td><td>Code review for correctness and style</td></tr>
+                <tr><td><code>thinker</code></td><td>Deep reasoning about complex problems</td></tr>
+                <tr><td><code>git_committer</code></td><td>Git operations with proper commits</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Dependency Resolution</h2>
+        <p>The coordinator manages task execution order using the dependency graph:</p>
+        <ul>
+            <li><strong>Parallel execution:</strong> Independent tasks run concurrently, up to 6 at a time.</li>
+            <li><strong>Cycle detection:</strong> The coordinator validates the task graph before execution and rejects plans with circular dependencies.</li>
+            <li><strong>Cascade failure:</strong> If a task fails, all downstream dependents are automatically marked as failed.</li>
+            <li><strong>Plan size limit:</strong> A maximum of 20 tasks per goal prevents runaway plans.</li>
+        </ul>
+
+        <h2>Example Task Plan</h2>
+        <p>For a goal like "Add authentication with JWT login and protected routes", the planner might generate:</p>
+<pre><code>[
+  {"id": "t1", "title": "Research current auth setup", "agent_id": "researcher", "depends_on": []},
+  {"id": "t2", "title": "Plan JWT implementation", "agent_id": "planner", "depends_on": ["t1"]},
+  {"id": "t3", "title": "Implement JWT middleware", "agent_id": "editor", "depends_on": ["t2"]},
+  {"id": "t4", "title": "Add login endpoint", "agent_id": "editor", "depends_on": ["t2"]},
+  {"id": "t5", "title": "Review changes", "agent_id": "reviewer", "depends_on": ["t3", "t4"]}
+]</code></pre>
+        <p>In this plan, <code>t3</code> and <code>t4</code> run in parallel since they both only depend on <code>t2</code>. The reviewer in <code>t5</code> waits for both editing tasks to finish before inspecting the combined changes.</p>
+
+        <h2>Context Compaction</h2>
+        <p>During long-running agent tasks, BujiCoder automatically compacts conversation history when approaching context window limits. This uses a lightweight model to summarize older messages while keeping recent context verbatim, ensuring that even large multi-task goals complete without running out of context.</p>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

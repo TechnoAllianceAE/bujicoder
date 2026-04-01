@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command Security — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+        <h3>v0.8.4</h3>
+        <a href="security.html" class="active">Command Security</a>
+        <a href="memory.html">Project Memory</a>
+        <a href="coordinator.html">Goal Coordinator</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Command Security</h1>
+        <p class="docs-subtitle">BujiCoder v0.8.4 introduces a 4-level threat classification system that analyses every shell command before execution, preventing destructive operations from running unchecked.</p>
+
+        <h2>Overview</h2>
+        <p>When an agent calls <code>run_terminal_command</code>, BujiCoder parses the command string, splits it into individual statements, and assigns each a threat level. The threat level determines whether the command runs immediately, requires user approval, or is blocked outright.</p>
+        <p>This system protects against both direct destructive commands and indirect execution techniques such as <code>eval</code>, <code>$()</code>, and piped installers.</p>
+
+        <h2>Threat Levels</h2>
+        <table>
+            <thead>
+                <tr><th>Level</th><th>Description</th><th>Examples</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>None</strong></td><td>Safe, read-only commands</td><td><code>ls</code>, <code>git status</code>, <code>cat file.txt</code>, <code>pwd</code></td></tr>
+                <tr><td><strong>Low</strong></td><td>Mildly risky, local side effects</td><td><code>npm install</code> (local), <code>go build</code></td></tr>
+                <tr><td><strong>Medium</strong></td><td>Potentially destructive, reversible</td><td><code>rm file.txt</code>, <code>git push</code>, <code>chmod 755</code>, <code>docker rm</code></td></tr>
+                <tr><td><strong>High</strong></td><td>Destructive, difficult to reverse</td><td><code>rm -rf dir/</code>, <code>git push --force</code>, <code>git reset --hard</code>, <code>kill -9</code>, <code>DROP TABLE</code></td></tr>
+                <tr><td><strong>Critical</strong></td><td>System-destroying, unrecoverable</td><td><code>mkfs</code>, <code>dd if=... of=/dev/</code>, <code>rm -rf /</code>, fork bombs</td></tr>
+            </tbody>
+        </table>
+
+        <h2>What Gets Detected</h2>
+        <p>The classifier checks each command statement against the following categories:</p>
+
+        <table>
+            <thead>
+                <tr><th>Category</th><th>Detected Patterns</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>Meta-execution</strong></td><td><code>$()</code>, backticks, <code>eval</code>, <code>bash -c</code>, <code>sh -c</code> — prevents bypass via indirect execution</td></tr>
+                <tr><td><strong>Filesystem destruction</strong></td><td><code>rm -rf</code>, recursive deletes, <code>rm -r</code></td></tr>
+                <tr><td><strong>Git destructive ops</strong></td><td><code>git push --force</code>, <code>git reset --hard</code>, <code>git clean -f</code>, <code>git branch -D</code></td></tr>
+                <tr><td><strong>SQL destructive</strong></td><td><code>DROP TABLE</code>, <code>TRUNCATE</code>, <code>DELETE</code> without <code>WHERE</code></td></tr>
+                <tr><td><strong>Process killing</strong></td><td><code>kill -9</code>, <code>pkill</code>, <code>killall</code></td></tr>
+                <tr><td><strong>System services</strong></td><td><code>systemctl stop</code>, <code>systemctl restart</code></td></tr>
+                <tr><td><strong>Sensitive paths</strong></td><td><code>~/.ssh</code>, <code>~/.aws</code>, <code>/etc/shadow</code>, and other credential stores</td></tr>
+                <tr><td><strong>Remote code execution</strong></td><td><code>curl | sh</code>, <code>wget | bash</code>, and similar piped installers</td></tr>
+                <tr><td><strong>find -exec</strong></td><td><code>find ... -exec</code> with destructive sub-commands</td></tr>
+            </tbody>
+        </table>
+
+        <h2>Permission Modes</h2>
+        <p>The permission mode controls how threat levels translate into action. Set the mode in <code>~/.bujicoder/permissions.yaml</code> or via the <code>/permissions</code> slash command.</p>
+
+        <table>
+            <thead>
+                <tr><th>Mode</th><th>None / Low</th><th>Medium</th><th>High</th><th>Critical</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>strict</strong></td><td>Auto-approve</td><td>Blocked</td><td>Blocked</td><td>Blocked</td></tr>
+                <tr><td><strong>ask</strong> (default)</td><td>Auto-approve</td><td>Prompt user</td><td>Prompt user</td><td>Blocked</td></tr>
+                <tr><td><strong>yolo</strong></td><td>Auto-approve</td><td>Auto-approve</td><td>Auto-approve</td><td>Blocked</td></tr>
+            </tbody>
+        </table>
+
+        <div class="docs-callout info">
+            <strong>Note:</strong> Critical-level commands are always blocked regardless of the permission mode. There is no override for commands classified as Critical.
+        </div>
+
+        <h2>permissions.yaml</h2>
+        <p>You can define per-command overrides in <code>~/.bujicoder/permissions.yaml</code> to allow or deny specific patterns without changing the global mode:</p>
+
+<pre><code>mode: ask
+commands:
+  - pattern: "go test*"
+    action: allow
+  - pattern: "git push --force*"
+    action: deny</code></pre>
+
+        <p>Rules are evaluated top-to-bottom. The first matching pattern wins. If no rule matches, the global mode applies.</p>
+
+        <ul>
+            <li><code>allow</code> — auto-approve the command without prompting, regardless of threat level</li>
+            <li><code>deny</code> — block the command outright, regardless of threat level</li>
+        </ul>
+
+        <div class="docs-callout info">
+            <strong>Important:</strong> Even an <code>allow</code> rule cannot override a Critical-level block. Critical commands are unconditionally blocked by the classifier before permission rules are evaluated.
+        </div>
+
+        <h2>Quote-Aware Parsing</h2>
+        <p>BujiCoder splits compound commands on <code>|</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>;</code>, and newlines to classify each statement independently. The parser respects quoted strings, so content inside single or double quotes is not treated as a command separator.</p>
+
+<pre><code># Correctly treated as a SINGLE command (no split on the semicolon):
+echo "hello; world"
+
+# Correctly treated as TWO commands (split on the unquoted semicolon):
+echo hello; rm -rf /tmp/build</code></pre>
+
+        <p>This prevents false positives where string literals contain characters that look like shell operators.</p>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>

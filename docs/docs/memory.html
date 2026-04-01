@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Memory — BujiCoder Docs</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="docs.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav scrolled">
+    <div class="nav-inner">
+        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <div class="nav-links">
+            <a href="../#features">Features</a>
+            <a href="./">Docs</a>
+            <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
+            <a href="../#install" class="nav-cta">Install</a>
+        </div>
+        <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+</nav>
+
+<div class="docs-layout">
+    <aside class="docs-sidebar">
+        <h3>Getting Started</h3>
+        <a href="./">Overview</a>
+        <a href="installation.html">Installation</a>
+        <a href="configuration.html">Configuration</a>
+        <a href="api-keys.html">API Keys</a>
+        <h3>Features</h3>
+        <a href="modes.html">Cost Modes</a>
+        <a href="mcp-servers.html">MCP Servers</a>
+        <a href="agents.html">Agent Architecture</a>
+        <a href="commands.html">Slash Commands</a>
+        <h3>v0.8.4</h3>
+        <a href="security.html">Command Security</a>
+        <a href="memory.html" class="active">Project Memory</a>
+        <a href="coordinator.html">Goal Coordinator</a>
+    </aside>
+
+    <main class="docs-content">
+        <h1>Project Memory</h1>
+        <p class="docs-subtitle">BujiCoder has two memory systems: persistent project memory that survives across sessions, and shared agent memory for inter-agent communication within a single session.</p>
+
+        <h2>Persistent Project Memory (BUJI.md)</h2>
+        <p>Persistent memory lets agents store and recall knowledge across sessions. Architecture decisions, naming conventions, common pitfalls, and project-specific patterns all survive between runs so the agent does not have to re-discover them each time.</p>
+
+        <h3>How It Works</h3>
+        <p>Memory is stored in a markdown file called <code>BUJI.md</code>. At the start of every session, BujiCoder loads this file and injects its contents into the system prompt so all agents have immediate access to the accumulated knowledge.</p>
+        <p>Content is organized under <code>## Section Name</code> headers. Agents write to specific sections, and existing sections are updated in place rather than appended to.</p>
+
+        <h3>File Location</h3>
+        <p>BujiCoder looks for the memory file in two locations, in order:</p>
+        <ol>
+            <li><code>.bujicoder/BUJI.md</code> — preferred location, read-write</li>
+            <li><code>BUJI.md</code> in the project root — read-only fallback</li>
+        </ol>
+        <p>If neither file exists, BujiCoder creates <code>.bujicoder/BUJI.md</code> automatically the first time an agent writes to memory.</p>
+
+        <div class="docs-callout info">
+            <strong>Tip:</strong> You can manually create a BUJI.md in your project root to pre-seed memory before the first session.
+        </div>
+
+        <h3>Tools</h3>
+        <table>
+            <thead>
+                <tr><th>Tool</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>memory_read</code></td><td>Reads the contents of BUJI.md</td></tr>
+                <tr><td><code>memory_write</code></td><td>Writes content to a named section in BUJI.md</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Slash Command</h3>
+        <p>Use <code>/memory</code> in the TUI to view the current project memory without consuming an LLM call.</p>
+
+        <h3>Limits</h3>
+        <ul>
+            <li><strong>System prompt injection:</strong> capped at 6KB. If BUJI.md exceeds this, it is truncated when loaded into the prompt.</li>
+            <li><strong>File size:</strong> capped at 32KB to prevent unbounded growth. Agents will refuse to write beyond this limit.</li>
+        </ul>
+
+        <h3>What Gets Stored</h3>
+        <p>The base agent has built-in guidance on when to write to persistent memory. Common entries include:</p>
+        <ul>
+            <li>Architecture decisions and rationale</li>
+            <li>Naming conventions and code style preferences</li>
+            <li>Common pitfalls discovered during sessions</li>
+            <li>Project-specific patterns and idioms</li>
+        </ul>
+
+        <h2>Shared Agent Memory (Session-Only)</h2>
+        <p>Shared memory is an ephemeral key-value store that lets agents exchange information within a single session. When the session ends, all shared memory is discarded.</p>
+
+        <h3>How It Works</h3>
+        <p>The store is a thread-safe, namespaced key-value map. Each agent writes under its own namespace using the pattern <code>agentID/key</code>, preventing collisions between agents.</p>
+        <p>A markdown summary of all shared memory entries is injected into every agent's system prompt, so any agent can read what other agents have written without making an explicit tool call.</p>
+
+        <h3>Tools</h3>
+        <table>
+            <thead>
+                <tr><th>Tool</th><th>Available To</th><th>Purpose</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><code>shared_memory_write</code></td><td>researcher, planner</td><td>Write a key-value pair to the shared store</td></tr>
+                <tr><td><code>shared_memory_read</code></td><td>editor</td><td>Read entries from the shared store</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Use Case</h3>
+        <p>A typical workflow:</p>
+        <ol>
+            <li>The <strong>researcher</strong> agent discovers the project's API structure and writes it to shared memory</li>
+            <li>The <strong>planner</strong> agent reads the research findings and writes a step-by-step plan</li>
+            <li>The <strong>editor</strong> agent reads both the API structure and the plan when making file changes</li>
+        </ol>
+
+        <h3>Limits</h3>
+        <ul>
+            <li><strong>Max entries:</strong> 200 key-value pairs across all namespaces</li>
+            <li><strong>Value size:</strong> 10KB per individual value</li>
+            <li><strong>Summary size:</strong> 8KB total for the markdown summary injected into prompts</li>
+        </ul>
+
+        <h2>Comparison</h2>
+        <table>
+            <thead>
+                <tr><th></th><th>Persistent (BUJI.md)</th><th>Shared (Session)</th></tr>
+            </thead>
+            <tbody>
+                <tr><td><strong>Lifetime</strong></td><td>Survives across sessions</td><td>Current session only</td></tr>
+                <tr><td><strong>Storage</strong></td><td>Markdown file on disk</td><td>In-memory key-value store</td></tr>
+                <tr><td><strong>Scope</strong></td><td>Entire project</td><td>Between agents in one session</td></tr>
+                <tr><td><strong>Max size</strong></td><td>32KB file, 6KB in prompt</td><td>200 entries, 8KB summary</td></tr>
+                <tr><td><strong>Access</strong></td><td>All agents (via system prompt)</td><td>All agents (via system prompt + tools)</td></tr>
+            </tbody>
+        </table>
+    </main>
+</div>
+
+<script>
+document.querySelector('.nav-toggle').addEventListener('click', function() {
+    document.querySelector('.nav-links').classList.toggle('open');
+    this.classList.toggle('active');
+});
+</script>
+</body>
+</html>
