@@ -99,6 +99,7 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 				CostMode:          parentCfg.CostMode,
 				ModelResolver:     parentCfg.ModelResolver,
 				ProposalCollector: collector,
+				SharedMemory:      parentCfg.SharedMemory, // Share memory across agents
 				OnEvent: func(ev Event) {
 					if parentCfg.OnEvent == nil {
 						return

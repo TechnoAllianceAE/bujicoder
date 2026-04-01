@@ -12,6 +12,8 @@ tools:
   - list_directory
   - code_search
   - think_deeply
+  - shared_memory_write
+  - shared_memory_read
 spawnable_agents: []
 system_prompt: |
   You are a planning agent. Your job is to analyze tasks and decompose them

@@ -12,6 +12,7 @@ import (
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/codeintel"
 	"github.com/TechnoAllianceAE/bujicoder/shared/smartctx"
+	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
 // buildDynamicContext gathers project context (file tree, git changes, system info,
@@ -44,6 +45,15 @@ func buildDynamicContext(projectRoot string, userQuery ...string) string {
 
 	if knowledge := readKnowledgeFiles(projectRoot); knowledge != "" {
 		sections = append(sections, "# Knowledge Files\n\n"+knowledge)
+	}
+
+	// Load persistent project memory (BUJI.md).
+	// Cap at 6000 bytes (same as knowledge files) to prevent unbounded context consumption.
+	if memory := tools.ReadProjectMemory(projectRoot); memory != "" {
+		if len(memory) > 6000 {
+			memory = memory[:6000] + "\n... (truncated)"
+		}
+		sections = append(sections, "# Project Memory (BUJI.md)\n\n"+memory)
 	}
 
 	// Symbol index: extract top-level symbols from project files for code intelligence.

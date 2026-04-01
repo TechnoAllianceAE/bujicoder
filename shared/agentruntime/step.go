@@ -41,6 +41,12 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 		if st.dynamicCtx != "" {
 			sp += "\n\n" + st.dynamicCtx
 		}
+		// Inject shared memory summary so agents can see what other agents discovered.
+		if cfg.SharedMemory != nil {
+			if summary := cfg.SharedMemory.Summary(); summary != "" {
+				sp += "\n\n" + summary
+			}
+		}
 		req.SystemPrompt = &sp
 	}
 
@@ -89,6 +95,32 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 						},
 					},
 					"required": []string{"question"},
+				},
+			})
+			continue
+		}
+		if toolName == "shared_memory_write" && cfg.SharedMemory != nil {
+			req.Tools = append(req.Tools, llm.ToolDefinition{
+				Name:        "shared_memory_write",
+				Description: "Write knowledge to shared memory so other agents can access it. Use to share discoveries, analysis results, or important context.",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"key":   map[string]any{"type": "string", "description": "A short descriptive key (e.g. 'architecture', 'api_endpoints', 'bug_root_cause')"},
+						"value": map[string]any{"type": "string", "description": "The knowledge to share"},
+					},
+					"required": []string{"key", "value"},
+				},
+			})
+			continue
+		}
+		if toolName == "shared_memory_read" && cfg.SharedMemory != nil {
+			req.Tools = append(req.Tools, llm.ToolDefinition{
+				Name:        "shared_memory_read",
+				Description: "Read all shared memory entries from other agents. Returns a summary of all knowledge shared during this session.",
+				InputSchema: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
 				},
 			})
 			continue
@@ -406,6 +438,30 @@ func toolInputSchema(toolName string) map[string]any {
 			},
 			"required": []string{"schema", "data"},
 		}
+	case "memory_read":
+		return map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+		}
+	case "memory_write":
+		return map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"section": map[string]any{
+					"type":        "string",
+					"description": "Section header (e.g. 'Architecture', 'Conventions', 'Common Pitfalls')",
+				},
+				"content": map[string]any{
+					"type":        "string",
+					"description": "Content to write under the section",
+				},
+				"replace": map[string]any{
+					"type":        "boolean",
+					"description": "If true, replace existing section content; if false, append (default: false)",
+				},
+			},
+			"required": []string{"section", "content"},
+		}
 	default:
 		return map[string]any{"type": "object", "properties": map[string]any{}}
 	}
@@ -414,12 +470,9 @@ func toolInputSchema(toolName string) map[string]any {
 // hashArgs creates a hash of tool arguments for loop detection.
 // Uses a simple hash to detect identical tool calls.
 func hashArgs(argsJSON string) string {
-	// Simple hash: normalize JSON and compute a hash
-	// For simplicity, we just use the first 16 chars of a basic hash
-	// A more robust implementation would use cryptographic hash
-	h := uint32(0)
+	h := uint64(0)
 	for _, c := range argsJSON {
-		h = h*31 + uint32(c)
+		h = h*31 + uint64(c)
 	}
-	return fmt.Sprintf("%x", h)[:16]
+	return fmt.Sprintf("%016x", h)
 }

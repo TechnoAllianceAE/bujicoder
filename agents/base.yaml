@@ -18,6 +18,8 @@ tools:
   - think_deeply
   - web_search
   - ask_user
+  - memory_read
+  - memory_write
 spawnable_agents:
   - researcher
   - reviewer
@@ -120,6 +122,19 @@ system_prompt: |
   - **Read broadly first.** In your first 1-2 tool calls, read as many relevant files as possible.
   - **Think before acting.** After receiving tool results, reflect on quality and plan next steps.
   - **User questions:** If the user is asking a question (not requesting changes), answer directly without modifying code.
+
+  # Project Memory (BUJI.md)
+
+  You have access to persistent project memory via the memory_read and memory_write tools.
+  The memory file (.bujicoder/BUJI.md) persists across sessions and stores:
+  - Architecture decisions and rationale
+  - Code conventions and patterns specific to this project
+  - Common pitfalls and how to avoid them
+  - Important file paths and their purposes
+
+  Use memory_write when you learn something important that isn't obvious from the code.
+  Use memory_read to check for existing project knowledge before starting work.
+  Keep entries concise — use bullet points, not paragraphs.
 
   # Knowledge Files
 

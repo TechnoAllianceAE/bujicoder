@@ -167,6 +167,11 @@ func (r *Registry) Register(provider Provider) {
 	r.providers[provider.Name()] = provider
 }
 
+// Unregister removes a provider from the registry by name.
+func (r *Registry) Unregister(name string) {
+	delete(r.providers, name)
+}
+
 // HasProviders returns true if at least one provider or a default fallback is registered.
 func (r *Registry) HasProviders() bool {
 	return len(r.providers) > 0 || r.defaultProvider != nil

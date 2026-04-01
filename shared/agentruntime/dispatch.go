@@ -179,6 +179,37 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 			resultText = result
 		}
 
+	case "shared_memory_write":
+		if cfg.SharedMemory == nil {
+			resultText = "Shared memory is not available in this context."
+			isError = true
+		} else {
+			var args struct {
+				Key   string `json:"key"`
+				Value string `json:"value"`
+			}
+			if err := json.Unmarshal([]byte(tc.ArgumentsJSON), &args); err != nil {
+				resultText = fmt.Sprintf("Error parsing args: %v", err)
+				isError = true
+			} else {
+				cfg.SharedMemory.Write(cfg.AgentDef.ID, args.Key, args.Value)
+				resultText = fmt.Sprintf("Written to shared memory: %s/%s", cfg.AgentDef.ID, args.Key)
+			}
+		}
+
+	case "shared_memory_read":
+		if cfg.SharedMemory == nil {
+			resultText = "Shared memory is not available in this context."
+			isError = true
+		} else {
+			summary := cfg.SharedMemory.Summary()
+			if summary == "" {
+				resultText = "Shared memory is empty. No other agents have written any knowledge yet."
+			} else {
+				resultText = summary
+			}
+		}
+
 	case "apply_proposals":
 		if cfg.CostMode == "plan" {
 			resultText = "BLOCKED (plan mode): apply_proposals is not allowed in plan mode."

@@ -65,6 +65,8 @@ var slashCommands = []struct{ cmd, desc string }{
 	{"/models", "List available models and mode mappings"},
 	{"/refresh", "Refresh model-agent assignments"},
 	{"/update", "Check for updates"},
+	{"/goal", "Auto-decompose a goal into tasks and execute with specialist agents"},
+	{"/memory", "View project memory (BUJI.md)"},
 	{"/help", "Show help and keyboard shortcuts"},
 	{"/quit", "Exit BujiCoder"},
 	{"/exit", "Exit BujiCoder"},
@@ -793,6 +795,90 @@ func sendMessageLocal(
 	}
 }
 
+// sendCoordinatedGoal runs the coordinator pattern: decompose goal -> execute tasks -> synthesize.
+// Accepts an optional parent context for cancellation support; defaults to context.Background().
+func sendCoordinatedGoal(
+	rt *agentruntime.Runtime,
+	agentReg *agent.Registry,
+	resolver *costmode.Resolver,
+	goal string,
+	ch chan tea.Msg,
+	mode costmode.Mode,
+	parentCtx ...context.Context,
+) tea.Cmd {
+	return func() tea.Msg {
+		var ctx context.Context
+		if len(parentCtx) > 0 && parentCtx[0] != nil {
+			ctx = parentCtx[0]
+		} else {
+			ctx = context.Background()
+		}
+
+		agentDef, ok := agentReg.Get("base")
+		if !ok {
+			close(ch)
+			return streamDoneMsg{err: fmt.Errorf("base agent not found")}
+		}
+
+		if mode != "" && resolver != nil {
+			agentDef = agentDef.WithCostMode(mode, resolver)
+		}
+
+		cwd, _ := os.Getwd()
+
+		cfg := agentruntime.RunConfig{
+			AgentDef:      agentDef,
+			ProjectRoot:   cwd,
+			CostMode:      mode,
+			ModelResolver: resolver,
+			SharedMemory:  agentruntime.NewSharedMemory(),
+			OnEvent: func(ev agentruntime.Event) {
+				switch ev.Type {
+				case agentruntime.EventDelta:
+					ch <- streamChunkMsg{text: ev.Text, agentID: ev.AgentID}
+				case agentruntime.EventToolCall:
+					ch <- toolCallMsg{
+						toolCallID: ev.ToolCallID,
+						toolName:   ev.ToolName,
+						argsJSON:   ev.ArgsJSON,
+						agentID:    ev.AgentID,
+					}
+				case agentruntime.EventToolResult:
+					ch <- toolResultMsg{
+						toolCallID: ev.ToolCallID,
+						toolName:   ev.ToolName,
+						text:       ev.Text,
+						isError:    ev.IsError,
+						agentID:    ev.AgentID,
+					}
+				case agentruntime.EventStepStart:
+					ch <- stepStartMsg{step: ev.StepNumber, agentID: ev.AgentID}
+				case agentruntime.EventStepEnd:
+					ch <- stepEndMsg{step: ev.StepNumber, agentID: ev.AgentID}
+				case agentruntime.EventStatus:
+					ch <- statusMsg{agentID: ev.AgentID, text: ev.Text}
+				case agentruntime.EventCompact:
+					ch <- statusMsg{agentID: ev.AgentID, text: ev.Text}
+				}
+			},
+		}
+
+		result, err := rt.RunCoordinatedGoal(ctx, goal, cfg)
+
+		if result != nil {
+			ch <- streamChunkMsg{text: result.FinalText, agentID: "coordinator"}
+			ch <- completeMsg{
+				inputTokens:  0,
+				outputTokens: 0,
+				costCents:    0,
+			}
+		}
+
+		close(ch)
+		return streamDoneMsg{err: err}
+	}
+}
+
 func checkForUpdateCmd() tea.Cmd {
 	return func() tea.Msg {
 		return updateCheckResultMsg{}
@@ -1395,6 +1481,25 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 
+				if userMsg == "/memory" || strings.HasPrefix(userMsg, "/memory ") {
+					m.input = ""
+					m.cursorPos = 0
+					cwd, _ := os.Getwd()
+					content := tools.ReadProjectMemory(cwd)
+					if content == "" {
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: "No project memory found.\n\nTo create one, I can write to `.bujicoder/BUJI.md` during our conversation, or you can create it manually.\n\nUsage: Just ask me to remember something, and I'll persist it to project memory.",
+						})
+					} else {
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: "## Project Memory\n\n" + content,
+						})
+					}
+					return m, nil
+				}
+
 				if strings.HasPrefix(userMsg, "/mcp") {
 					m.input = ""
 				m.cursorPos = 0
@@ -1623,10 +1728,20 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 
-				sendCmd := sendMessageLocal(
-					m.agentRuntime, m.agentRegistry, m.modelResolver,
-					m.messages, m.streamCh, m.costMode, m.planMode, m.conversationID,
-				)
+				// Coordinator pattern: /goal <description> decomposes into task DAG.
+				var sendCmd tea.Cmd
+				if strings.HasPrefix(userMsg, "/goal ") {
+					goalText := strings.TrimPrefix(userMsg, "/goal ")
+					sendCmd = sendCoordinatedGoal(
+						m.agentRuntime, m.agentRegistry, m.modelResolver,
+						goalText, m.streamCh, m.costMode,
+					)
+				} else {
+					sendCmd = sendMessageLocal(
+						m.agentRuntime, m.agentRegistry, m.modelResolver,
+						m.messages, m.streamCh, m.costMode, m.planMode, m.conversationID,
+					)
+				}
 
 				return m, tea.Batch(
 					sendCmd,

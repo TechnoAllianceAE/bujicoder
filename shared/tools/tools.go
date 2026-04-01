@@ -217,6 +217,16 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 		Description: "Validate and return structured JSON data against a provided schema. Use when producing structured plans, configs, or decisions.",
 		Execute:     structuredOutput(),
 	})
+	r.Register(&Tool{
+		Name:        "memory_read",
+		Description: "Read the project memory file (BUJI.md). Contains persistent knowledge, conventions, and learnings from previous sessions.",
+		Execute:     memoryRead(workDir),
+	})
+	r.Register(&Tool{
+		Name:        "memory_write",
+		Description: "Write to the project memory file (BUJI.md). Use to persist important learnings, conventions, architecture notes, or common pitfalls for future sessions. Requires 'section' (header name) and 'content' (text). Optional 'replace' (bool) to overwrite a section.",
+		Execute:     memoryWrite(workDir),
+	})
 
 	return r
 }
@@ -416,54 +426,6 @@ func listDirectory(workDir string) func(ctx context.Context, args json.RawMessag
 	}
 }
 
-// isDangerousCommand checks if a shell command is destructive or attempts to
-// access paths outside the project directory. Returns true and a reason if blocked.
-func isDangerousCommand(cmd string) (bool, string) {
-	lower := strings.ToLower(strings.TrimSpace(cmd))
-
-	// Block access to sensitive absolute paths outside the project.
-	sensitivePatterns := []string{
-		"/etc/", "/etc/passwd", "/etc/shadow",
-		"~/.ssh", "$HOME/.ssh", "${HOME}/.ssh",
-		"~/.aws", "$HOME/.aws", "${HOME}/.aws",
-		"~/.gnupg", "$HOME/.gnupg", "${HOME}/.gnupg",
-		"~/.config", "$HOME/.config", "${HOME}/.config",
-	}
-	for _, pat := range sensitivePatterns {
-		if strings.Contains(lower, pat) {
-			return true, fmt.Sprintf("access to %s is restricted for security", pat)
-		}
-	}
-
-	// Git push (any variant)
-	if strings.Contains(lower, "git push") {
-		return true, "git push requires user confirmation"
-	}
-	// Git force/destructive operations
-	if strings.Contains(lower, "git reset") && strings.Contains(lower, "--hard") {
-		return true, "git reset --hard is destructive and requires user confirmation"
-	}
-	if strings.Contains(lower, "git clean") && (strings.Contains(lower, "-f") || strings.Contains(lower, "--force")) {
-		return true, "git clean requires user confirmation"
-	}
-	if strings.Contains(lower, "git checkout") && strings.Contains(lower, "-- .") {
-		return true, "discarding all changes requires user confirmation"
-	}
-	if strings.Contains(lower, "git restore .") || strings.Contains(lower, "git restore --staged .") {
-		return true, "restoring all files requires user confirmation"
-	}
-	// -D is case-sensitive (uppercase D = force delete) — check original cmd
-	if strings.Contains(lower, "git branch") && strings.Contains(cmd, "-D") {
-		return true, "force-deleting a branch requires user confirmation"
-	}
-	// Destructive file operations
-	if strings.Contains(lower, "rm ") && (strings.Contains(lower, "-rf") || strings.Contains(lower, "-r ") || strings.Contains(lower, " -fr")) {
-		return true, "recursive delete requires user confirmation"
-	}
-
-	return false, ""
-}
-
 // isReadOnlyCommand checks if a terminal command is safe for plan mode (read-only).
 func isReadOnlyCommand(cmd string) bool {
 	lower := strings.ToLower(strings.TrimSpace(cmd))
@@ -510,36 +472,53 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectP
 		if action := perms.CheckCommand(params.Command); action != "" {
 			switch action {
 			case ActionAllow:
-				// Explicitly allowed — skip all further checks.
+				// Explicitly allowed — but still block critical threats for safety.
+				if v := AnalyzeCommand(params.Command); v.Blocked {
+					return "", fmt.Errorf("BLOCKED [%s]: %s\nThis command was blocked even though permissions.yaml allows it — critical threats are always blocked.\nCommand: %s",
+						v.Level, v.Reason, params.Command)
+				}
 				goto execute
 			case ActionDeny:
 				return "", fmt.Errorf("BLOCKED by permissions.yaml: command matches a deny rule.\nCommand: %s", params.Command)
 			case ActionAsk:
-				// Fall through to dangerous-command check + approval flow.
+				// Fall through to security analysis + approval flow.
 			}
 		}
 
-		// 2. Check isDangerousCommand (hardcoded list).
-		if blocked, reason := isDangerousCommand(params.Command); blocked {
-			// 3. Apply permission mode.
-			if perms != nil && perms.Mode == ModeYolo {
-				// Yolo mode: auto-approve dangerous commands.
-				goto execute
-			}
-			if perms != nil && perms.Mode == ModeStrict {
-				return "", fmt.Errorf("BLOCKED (strict mode): %s. This command was not executed.\nCommand: %s", reason, params.Command)
+		// 2. Comprehensive security analysis.
+		{
+			verdict := AnalyzeCommand(params.Command)
+
+			if verdict.Blocked {
+				// Critical threats are always blocked regardless of mode.
+				return "", fmt.Errorf("BLOCKED [%s]: %s\nThis command was not executed.\nCommand: %s",
+					verdict.Level, verdict.Reason, params.Command)
 			}
 
-			// Ask mode (default).
-			if approvalFn == nil {
-				return "", fmt.Errorf("BLOCKED: %s. This command was not executed.\nPlease inform the user and let them run it manually.\nCommand: %s", reason, params.Command)
-			}
-			approved, err := approvalFn(params.Command, reason)
-			if err != nil {
-				return "", fmt.Errorf("approval error: %w", err)
-			}
-			if !approved {
-				return "", fmt.Errorf("DENIED: user declined to run this command.\nCommand: %s\nReason: %s", params.Command, reason)
+			if verdict.NeedsApproval {
+				// 3. Apply permission mode.
+				if perms != nil && perms.Mode == ModeYolo {
+					// Yolo mode: auto-approve.
+					goto execute
+				}
+				if perms != nil && perms.Mode == ModeStrict {
+					return "", fmt.Errorf("BLOCKED (strict mode) [%s]: %s\nThis command was not executed.\nCommand: %s",
+						verdict.Level, verdict.Reason, params.Command)
+				}
+
+				// Ask mode (default).
+				if approvalFn == nil {
+					return "", fmt.Errorf("BLOCKED [%s]: %s\nThis command was not executed.\nPlease inform the user and let them run it manually.\nCommand: %s",
+						verdict.Level, verdict.Reason, params.Command)
+				}
+				approved, err := approvalFn(params.Command, verdict.Reason)
+				if err != nil {
+					return "", fmt.Errorf("approval error: %w", err)
+				}
+				if !approved {
+					return "", fmt.Errorf("DENIED: user declined to run this command.\nCommand: %s\nReason: %s",
+						params.Command, verdict.Reason)
+				}
 			}
 		}
 

@@ -29,11 +29,12 @@ const (
 	EventStepStart  EventType = "step_start"
 	EventStepEnd    EventType = "step_end"
 	EventStatus     EventType = "status"
+	EventCompact    EventType = "compact"
 )
 
 // Loop guard constants
 const (
-	MaxIdenticalToolCalls = 10   // Allow up to 10 identical tool calls before breaking
+	MaxIdenticalToolCalls = 10     // Allow up to 10 identical tool calls before breaking
 	MaxRunInputTokens     = 200000 // 200K input token budget per agent run
 )
 
@@ -69,6 +70,7 @@ type RunConfig struct {
 	SnapshotManager   *snapshot.Manager           // When set, auto-snapshots after write tools
 	LSPManager        *lsp.Manager                // When set, LSP diagnostics run after file edits
 	TodoList          *tools.TodoList             // When set, agents can track tasks
+	SharedMemory      *SharedMemory              // When set, enables inter-agent knowledge sharing
 }
 
 // RunResult summarises a completed agent run.
@@ -174,6 +176,40 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 			result.FinishReason = "token_budget_exceeded"
 			result.Messages = state.messages
 			return result, nil
+		}
+
+		// Context compaction: if the last step's input tokens indicate we're
+		// approaching the context window limit, summarize older messages.
+		if shouldCompact(stepResult.inputTokens, cfg.AgentDef.Model) {
+			messagesBefore := len(state.messages)
+			r.log.Info().
+				Str("agent", cfg.AgentDef.ID).
+				Int("last_step_input_tokens", stepResult.inputTokens).
+				Int("messages", messagesBefore).
+				Msg("triggering context compaction")
+
+			if cfg.OnEvent != nil {
+				cfg.OnEvent(Event{
+					Type:    EventCompact,
+					AgentID: cfg.AgentDef.ID,
+					Text:    "Compacting conversation context...",
+				})
+			}
+
+			compacted, compactUsg := compactMessages(ctx, r, state.messages, cfg.AgentDef.Model, cfg)
+			state.messages = compacted
+
+			// Track compaction LLM cost in the run totals.
+			if compactUsg != nil {
+				result.TotalInputTokens += compactUsg.InputTokens
+				result.TotalOutputTokens += compactUsg.OutputTokens
+				result.TotalCredits += compactUsg.CostCents
+			}
+
+			r.log.Info().
+				Int("messages_before", messagesBefore).
+				Int("messages_after", len(compacted)).
+				Msg("context compaction complete")
 		}
 
 		// If no tool calls were made, the agent is done

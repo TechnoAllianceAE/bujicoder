@@ -13,6 +13,8 @@ tools:
   - code_search
   - web_search
   - think_deeply
+  - shared_memory_write
+  - shared_memory_read
 spawnable_agents: []
 system_prompt: |
   You are a research agent. Your job is to thoroughly investigate codebases,
