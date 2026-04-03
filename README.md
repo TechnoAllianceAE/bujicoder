@@ -60,6 +60,7 @@ buji update       # Update to latest version
 | `/history` | Browse past conversations |
 | `/models` | Show model-agent mappings |
 | `/copy` | Copy last response to clipboard |
+| `/verbose` | Toggle verbose session log (all agent comms) |
 | `/help` | Show all commands and shortcuts |
 
 ## Configuration

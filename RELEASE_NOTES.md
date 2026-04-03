@@ -6,6 +6,8 @@
 
 - **feat: configurable LLM request timeout** — Added `request_timeout` config option (in seconds) to `~/.bujicoder/bujicoder.yaml`. Defaults to 90 seconds. Useful for slower local models via Ollama or llama.cpp that need more time to respond.
 
+- **feat: /verbose session logging** — New `/verbose` slash command toggles detailed session logging. All communications between the orchestrator and agents/sub-agents are written to a timestamped log file in `~/.bujicoder/logs/`. Captures user messages, LLM output, tool calls with args, tool results, sub-agent spawns, context compaction, and session summaries. Toggle off to see the log path.
+
   ```yaml
   request_timeout: 300  # 5 minutes for local LLMs
   ```

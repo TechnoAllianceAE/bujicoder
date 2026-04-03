@@ -198,6 +198,27 @@ To use local models via Ollama:
        main: ollama/llama3
    ```
 
+## Verbose Session Logging
+
+Toggle with `/verbose` in the TUI. When enabled, every communication between the orchestrator and agents/sub-agents is written to a timestamped log file in `~/.bujicoder/logs/`:
+
+```
+~/.bujicoder/logs/session_2026-04-03_14-30-00.log
+```
+
+The log captures:
+- **User messages** sent to the agent
+- **Step boundaries** (start/end per agent)
+- **LLM text output** (streamed deltas)
+- **Tool calls** with full arguments
+- **Tool results** (truncated to 2000 chars)
+- **Sub-agent spawn/complete** status events
+- **Context compaction** events
+- **Session summary** (steps, elapsed time, tokens, cost)
+- **Errors** at any stage
+
+Toggle off with `/verbose` again — the log path is shown on disable.
+
 ## Request Timeout
 
 The default LLM request timeout is 90 seconds. Local models (Ollama, llama.cpp) are often slower and may need more time. Set `request_timeout` in your config (in seconds):

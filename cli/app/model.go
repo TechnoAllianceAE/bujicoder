@@ -67,6 +67,7 @@ var slashCommands = []struct{ cmd, desc string }{
 	{"/update", "Check for updates"},
 	{"/goal", "Auto-decompose a goal into tasks and execute with specialist agents"},
 	{"/memory", "View project memory (BUJI.md)"},
+	{"/verbose", "Toggle verbose session log (saved to .bujicoder/logs/)"},
 	{"/help", "Show help and keyboard shortcuts"},
 	{"/quit", "Exit BujiCoder"},
 	{"/exit", "Exit BujiCoder"},
@@ -266,6 +267,10 @@ type Model struct {
 	promptHistory []string // past user inputs, oldest first
 	historyIdx    int      // -1 = not browsing; 0..len-1 = browsing
 	historySaved  string   // input saved when user starts browsing
+
+	// Verbose session logging (/verbose toggle)
+	verboseEnabled bool     // whether verbose logging is active
+	verboseFile    *os.File // open log file handle (nil when disabled)
 }
 
 // NewModel creates the initial TUI model.
@@ -325,6 +330,108 @@ func NewModel(version, commit, buildTime string, verbose bool) Model {
 		historyIdx:       -1,
 		log:              log,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Verbose session logging
+// ---------------------------------------------------------------------------
+
+// verboseLog writes a formatted line to the verbose log file (if enabled).
+func (m *Model) verboseLog(format string, args ...any) {
+	if !m.verboseEnabled || m.verboseFile == nil {
+		return
+	}
+	ts := time.Now().Format("15:04:05.000")
+	line := fmt.Sprintf("[%s] %s\n", ts, fmt.Sprintf(format, args...))
+	m.verboseFile.WriteString(line)
+}
+
+// verboseLogEvent logs an agent runtime event with context.
+func (m *Model) verboseLogEvent(ev agentruntime.Event) {
+	if !m.verboseEnabled || m.verboseFile == nil {
+		return
+	}
+	agent := ev.AgentID
+	if agent == "" {
+		agent = "base"
+	}
+	switch ev.Type {
+	case agentruntime.EventStepStart:
+		m.verboseLog("──── STEP %d [agent:%s] ────", ev.StepNumber, agent)
+	case agentruntime.EventStepEnd:
+		m.verboseLog("──── STEP %d END [agent:%s] ────", ev.StepNumber, agent)
+	case agentruntime.EventDelta:
+		// Accumulate text deltas — logged at step end or tool call boundaries.
+		// Log individual deltas only if they contain substantial text.
+		text := strings.TrimSpace(ev.Text)
+		if len(text) > 0 {
+			m.verboseLog("[agent:%s] LLM ▸ %s", agent, text)
+		}
+	case agentruntime.EventToolCall:
+		m.verboseLog("[agent:%s] TOOL CALL ▸ %s (id:%s)\n         args: %s", agent, ev.ToolName, ev.ToolCallID, ev.ArgsJSON)
+	case agentruntime.EventToolResult:
+		result := ev.Text
+		if len(result) > 2000 {
+			result = result[:2000] + "... (truncated)"
+		}
+		errTag := ""
+		if ev.IsError {
+			errTag = " [ERROR]"
+		}
+		m.verboseLog("[agent:%s] TOOL RESULT%s ▸ %s (id:%s)\n         %s", agent, errTag, ev.ToolName, ev.ToolCallID, result)
+	case agentruntime.EventStatus:
+		m.verboseLog("[agent:%s] STATUS ▸ %s", agent, ev.Text)
+	case agentruntime.EventComplete:
+		if ev.Usage != nil {
+			m.verboseLog("[agent:%s] COMPLETE ▸ input_tokens=%d output_tokens=%d cost=%.4f¢", agent, ev.Usage.InputTokens, ev.Usage.OutputTokens, float64(ev.Usage.CostCents))
+		} else {
+			m.verboseLog("[agent:%s] COMPLETE", agent)
+		}
+	case agentruntime.EventCompact:
+		m.verboseLog("[agent:%s] CONTEXT COMPACTED ▸ %s", agent, ev.Text)
+	case agentruntime.EventError:
+		m.verboseLog("[agent:%s] ERROR ▸ %s", agent, ev.Text)
+	}
+}
+
+// startVerboseLog creates a new timestamped log file in .bujicoder/logs/.
+func (m *Model) startVerboseLog() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	logsDir := filepath.Join(home, ".bujicoder", "logs")
+	if err := os.MkdirAll(logsDir, 0o755); err != nil {
+		return err
+	}
+	filename := fmt.Sprintf("session_%s.log", time.Now().Format("2006-01-02_15-04-05"))
+	f, err := os.Create(filepath.Join(logsDir, filename))
+	if err != nil {
+		return err
+	}
+	m.verboseFile = f
+	m.verboseEnabled = true
+	// Write header.
+	m.verboseLog("═══════════════════════════════════════════════════════════════")
+	m.verboseLog("BujiCoder Verbose Session Log")
+	m.verboseLog("Started: %s", time.Now().Format(time.RFC3339))
+	m.verboseLog("Cost mode: %s", string(m.costMode))
+	cwd, _ := os.Getwd()
+	m.verboseLog("Working dir: %s", cwd)
+	m.verboseLog("═══════════════════════════════════════════════════════════════")
+	return nil
+}
+
+// stopVerboseLog closes the current verbose log file.
+func (m *Model) stopVerboseLog() {
+	if m.verboseFile != nil {
+		m.verboseLog("═══════════════════════════════════════════════════════════════")
+		m.verboseLog("Session ended: %s", time.Now().Format(time.RFC3339))
+		m.verboseLog("═══════════════════════════════════════════════════════════════")
+		m.verboseFile.Close()
+		m.verboseFile = nil
+	}
+	m.verboseEnabled = false
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +782,7 @@ func extractImageParts(input string) (cleanedText string, imageParts []llm.Conte
 }
 
 // sendMessageLocal runs the agent loop locally using the CLI-side runtime.
+// The optional eventLog callback is called for every agent event (used by /verbose).
 func sendMessageLocal(
 	rt *agentruntime.Runtime,
 	agentReg *agent.Registry,
@@ -684,6 +792,7 @@ func sendMessageLocal(
 	mode costmode.Mode,
 	planMode bool,
 	convID string,
+	eventLog ...func(agentruntime.Event),
 ) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
@@ -734,6 +843,9 @@ func sendMessageLocal(
 			CostMode:      mode,
 			ModelResolver: resolver,
 			OnEvent: func(ev agentruntime.Event) {
+				if len(eventLog) > 0 && eventLog[0] != nil {
+					eventLog[0](ev)
+				}
 				switch ev.Type {
 				case agentruntime.EventDelta:
 					ch <- streamChunkMsg{text: ev.Text, agentID: ev.AgentID}
@@ -797,6 +909,7 @@ func sendMessageLocal(
 
 // sendCoordinatedGoal runs the coordinator pattern: decompose goal -> execute tasks -> synthesize.
 // Accepts an optional parent context for cancellation support; defaults to context.Background().
+// The optional eventLog callback is called for every agent event (used by /verbose).
 func sendCoordinatedGoal(
 	rt *agentruntime.Runtime,
 	agentReg *agent.Registry,
@@ -804,6 +917,7 @@ func sendCoordinatedGoal(
 	goal string,
 	ch chan tea.Msg,
 	mode costmode.Mode,
+	eventLog func(agentruntime.Event),
 	parentCtx ...context.Context,
 ) tea.Cmd {
 	return func() tea.Msg {
@@ -833,6 +947,9 @@ func sendCoordinatedGoal(
 			ModelResolver: resolver,
 			SharedMemory:  agentruntime.NewSharedMemory(),
 			OnEvent: func(ev agentruntime.Event) {
+				if eventLog != nil {
+					eventLog(ev)
+				}
 				switch ev.Type {
 				case agentruntime.EventDelta:
 					ch <- streamChunkMsg{text: ev.Text, agentID: ev.AgentID}
@@ -1148,6 +1265,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			if m.mcpManager != nil {
 				m.mcpManager.ShutdownAll()
 			}
+			m.stopVerboseLog()
 			return m, tea.Quit
 
 		default:
@@ -1270,6 +1388,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					if m.mcpManager != nil {
 						m.mcpManager.ShutdownAll()
 					}
+					m.stopVerboseLog()
 					return m, tea.Quit
 				}
 			}
@@ -1506,6 +1625,32 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					return m, nil
 				}
 
+				if userMsg == "/verbose" {
+					m.input = ""
+					m.cursorPos = 0
+					if m.verboseEnabled {
+						logPath := m.verboseFile.Name()
+						m.stopVerboseLog()
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: fmt.Sprintf("Verbose logging **disabled**.\n\nLog saved to `%s`", logPath),
+						})
+					} else {
+						if err := m.startVerboseLog(); err != nil {
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: fmt.Sprintf("Failed to start verbose log: %s", err),
+							})
+						} else {
+							m.messages = append(m.messages, ChatMessage{
+								Role:    "assistant",
+								Content: fmt.Sprintf("Verbose logging **enabled**.\n\nAll agent communications will be logged to:\n`%s`", m.verboseFile.Name()),
+							})
+						}
+					}
+					return m, nil
+				}
+
 				if strings.HasPrefix(userMsg, "/mcp") {
 					m.input = ""
 				m.cursorPos = 0
@@ -1704,6 +1849,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				m.messages = append(m.messages, ChatMessage{Role: "user", Content: userMsg})
 				m.promptHistory = append(m.promptHistory, userMsg)
 				m.historyIdx = -1
+				m.verboseLog("USER ▸ %s", userMsg)
 				m.input = ""
 				m.cursorPos = 0
 				m.streaming = true
@@ -1736,16 +1882,20 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				// Coordinator pattern: /goal <description> decomposes into task DAG.
 				var sendCmd tea.Cmd
+				var evLog func(agentruntime.Event)
+				if m.verboseEnabled {
+					evLog = m.verboseLogEvent
+				}
 				if strings.HasPrefix(userMsg, "/goal ") {
 					goalText := strings.TrimPrefix(userMsg, "/goal ")
 					sendCmd = sendCoordinatedGoal(
 						m.agentRuntime, m.agentRegistry, m.modelResolver,
-						goalText, m.streamCh, m.costMode,
+						goalText, m.streamCh, m.costMode, evLog,
 					)
 				} else {
 					sendCmd = sendMessageLocal(
 						m.agentRuntime, m.agentRegistry, m.modelResolver,
-						m.messages, m.streamCh, m.costMode, m.planMode, m.conversationID,
+						m.messages, m.streamCh, m.costMode, m.planMode, m.conversationID, evLog,
 					)
 				}
 
@@ -2209,7 +2359,10 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		elapsed := time.Since(m.startTime)
 		if msg.err != nil {
 			m.err = msg.err
+			m.verboseLog("SESSION ERROR ▸ %v", msg.err)
 		}
+		m.verboseLog("──── SESSION COMPLETE ▸ steps=%d elapsed=%s input_tokens=%d output_tokens=%d cost=%.4f¢ ────",
+			m.totalSteps, elapsed.Round(time.Millisecond), m.inputTokens, m.outputTokens, float64(m.costCents))
 		if m.streamBuf != "" || len(m.activities) > 0 {
 			content := m.streamBuf
 			if content == "" && msg.err != nil {
@@ -2227,6 +2380,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				CostCents:       m.costCents,
 			})
 			m.streamBuf = ""
+			if content != "" {
+				response := content
+				if len(response) > 3000 {
+					response = response[:3000] + "... (truncated in log)"
+				}
+				m.verboseLog("ASSISTANT RESPONSE ▸\n%s", response)
+			}
 
 			// Persist to local store.
 			if m.localStore != nil {
