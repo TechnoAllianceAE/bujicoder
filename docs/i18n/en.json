@@ -1,0 +1,127 @@
+{
+  "nav": {
+    "features": "Features",
+    "providers": "Providers",
+    "howItWorks": "How It Works",
+    "docs": "Docs",
+    "github": "GitHub",
+    "install": "Install"
+  },
+  "hero": {
+    "badge": "Open Source · Apache 2.0",
+    "title": "The AI coding assistant<br>that doesn't need <span class='strike'>Node</span>,<br><span class='strike'>npm</span>, or <span class='strike'>your patience</span>.",
+    "subtitle": "Heavily inspired by <strong class='inspired-inline'>Claude Code</strong> and <strong class='inspired-inline'>CodeBuff</strong>, BujiCoder is a <strong>Go-native</strong> multi-agent AI coding tool that runs in your terminal. One binary. Zero dependencies. Pick any LLM provider. Your code never leaves your machine.",
+    "getStarted": "Get Started",
+    "viewOnGitHub": "View on GitHub"
+  },
+  "features": {
+    "label": "What makes it different",
+    "title": "10 reasons BujiCoder isn't just another code assistant",
+    "desc": "Most AI coding tools lock you into one model, one provider, and a mountain of JavaScript dependencies. BujiCoder takes a fundamentally different approach.",
+    "items": [
+      { "icon": "&#9889;", "title": "Zero-Dependency Go Binary", "desc": "No Node. No npm. No Python. No Docker. A single compiled binary that starts instantly. Download it, run it, done. Under 30 MB for the entire tool." },
+      { "icon": "&#9881;", "title": "Granular Model Control", "desc": "Assign different models to different agent roles. Use a cheap model for file exploration, a powerful one for editing, and a reasoning model for planning — all in a single session." },
+      { "icon": "&#127760;", "title": "Any Provider, Your Choice", "desc": "OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama — bring your own API keys and switch providers freely." },
+      { "icon": "&#129302;", "title": "13 Specialized Agents", "desc": "Not one generic chatbot. A team of 13 purpose-built agents — editor, planner, researcher, reviewer, git committer, and more — each with their own tools and system prompts." },
+      { "icon": "&#9878;", "title": "Parallel Evolution Mode", "desc": "In Max mode, multiple agents implement competing solutions simultaneously. A judge agent evaluates and picks the best one. It's like having a coding tournament for every task." },
+      { "icon": "&#128176;", "title": "Three Cost Modes", "desc": "<strong>Normal</strong> for fast/cheap everyday coding. <strong>Heavy</strong> for harder tasks with smarter models. <strong>Max</strong> for mission-critical work with the most powerful models and parallel evolution." },
+      { "icon": "&#128274;", "title": "Local-First Privacy", "desc": "All tools execute on your machine. File reads, writes, code search, terminal commands — nothing routes through a third-party server. Your code stays yours." },
+      { "icon": "&#128268;", "title": "MCP Extensibility", "desc": "Extend BujiCoder with any Model Context Protocol server. Add GitHub, browser automation, databases, or custom tools. Eager or lazy loading — you control when servers start." },
+      { "icon": "&#128737;", "title": "Built-In Safety Rails", "desc": "4-level threat classification with 40+ security patterns. Meta-execution detection blocks shell injection via <code>eval</code>, <code>$()</code>, and <code>bash -c</code>. Per-project permissions, three modes — strict, ask, or yolo. Critical threats are always blocked." },
+      { "icon": "&#128064;", "title": "Vision & Multimodal", "desc": "Attach images directly with <code>@path/to/screenshot.png</code>. Review UI mockups, debug visual regressions, or let the UI reviewer agent automate browser testing with Puppeteer." }
+    ]
+  },
+  "providers": {
+    "label": "LLM Providers",
+    "title": "Your keys. Your models. Your money.",
+    "desc": "BujiCoder talks directly to AI providers using your API keys. No middleman markup. No vendor lock-in. Switch providers with a single config change.",
+    "items": [
+      { "name": "OpenRouter", "desc": "200+ models, one API key" },
+      { "name": "Groq", "desc": "Ultra-low latency inference" },
+      { "name": "Cerebras", "desc": "Wafer-scale speed" },
+      { "name": "Together AI", "desc": "Open-source model hosting" },
+      { "name": "OpenAI", "desc": "GPT-4o & family" },
+      { "name": "Anthropic", "desc": "Claude Opus, Sonnet, Haiku" },
+      { "name": "xAI", "desc": "Grok models" },
+      { "name": "Google AI", "desc": "Gemini family" },
+      { "name": "Amazon Bedrock", "desc": "Enterprise-grade access" },
+      { "name": "Google Vertex", "desc": "GCP-native model serving" },
+      { "name": "Ollama", "desc": "Run models 100% locally" },
+      { "name": "Llama.cpp", "desc": "Local GGUF models, OpenAI-compatible" },
+      { "name": "+ Any OpenAI-compatible", "desc": "Custom endpoints supported" }
+    ]
+  },
+  "howItWorks": {
+    "label": "How it works",
+    "title": "From install to coding in 60 seconds",
+    "steps": [
+      { "num": "1", "title": "Install", "desc": "One curl command. One binary. No runtime dependencies.", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { "num": "2", "title": "Configure", "desc": "The setup wizard walks you through picking a provider and entering your API key. Quick setup takes 10 seconds.", "code": "buji", "note": "wizard runs on first launch" },
+      { "num": "3", "title": "Code", "desc": "Ask questions, edit files, search your codebase, run commands. BujiCoder's agents handle the rest.", "code": "buji", "note": "start interactive session" }
+    ]
+  },
+  "comparison": {
+    "label": "Comparison",
+    "title": "How BujiCoder stacks up",
+    "headers": ["", "BujiCoder", "Typical AI Assistants"],
+    "rows": [
+      ["Runtime", "Single Go binary", "Node.js + npm install"],
+      ["Startup time", "< 100ms", "2-10 seconds"],
+      ["LLM Providers", "11+ providers", "1-2 providers"],
+      ["Model per agent", "Yes, fully configurable", "One model for everything"],
+      ["Cost control", "3 modes + per-agent overrides", "Subscription or single tier"],
+      ["Agent architecture", "13 specialized agents", "Single agent"],
+      ["Parallel evolution", "Yes (Max mode)", "No"],
+      ["MCP support", "Full (eager + lazy)", "Limited or none"],
+      ["Privacy", "100% local execution", "Cloud-dependent"],
+      ["License", "Apache 2.0", "Varies"]
+    ]
+  },
+  "inspired": {
+    "label": "Standing on the shoulders of giants",
+    "title": "Inspired by the best in the game",
+    "desc": "BujiCoder didn't emerge in a vacuum. We studied the tools that redefined AI-assisted coding, learned what they got right, and built on those ideas with our own vision.",
+    "cards": [
+      {
+        "name": "Claude Code",
+        "tagline": "Anthropic's terminal-native coding agent",
+        "desc": "Claude Code proved that a terminal-first AI assistant could be more powerful than any IDE plugin. Its agenticarchitecture — where the AI reads files, edits code, runs commands, and iterates on its own — fundamentally changed how developers interact with AI. BujiCoder's multi-agent orchestration, tool-use system, and permission model are all deeply influenced by the patterns Claude Code pioneered.",
+        "lessons": ["Agentic tool use", "Terminal-first UX", "Permission system", "File editing patterns"]
+      },
+      {
+        "name": "CodeBuff",
+        "tagline": "The lean, fast coding assistant",
+        "desc": "CodeBuff showed that an AI coding tool doesn't need to be a bloated IDE extension with a hundred config files. It championed speed, simplicity, and getting out of the developer's way. BujiCoder carries that same philosophy forward — a single binary, instant startup, minimal config — while adding the flexibility to bring your own models and providers.",
+        "lessons": ["Speed-first design", "Minimal footprint", "Developer-centric UX"]
+      }
+    ],
+    "cta": "We took the best ideas, rewrote them in Go, made them provider-agnostic, and added multi-agent superpowers.<br><strong>That's BujiCoder.</strong>"
+  },
+  "install": {
+    "label": "Install",
+    "title": "Ready to try it?",
+    "desc": "Pick your platform. Be coding in under a minute.",
+    "cards": [
+      { "title": "macOS / Linux", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { "title": "From Source (Go 1.24+)", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { "title": "Windows", "desc": "Download the latest <code>.exe</code> from <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>." }
+    ]
+  },
+  "footer": {
+    "tagline": "AI coding assistant. Your models. Your machine. Your rules.",
+    "product": "Product",
+    "resources": "Resources",
+    "enterprise": "Enterprise",
+    "contactSales": "Contact Sales",
+    "teamFeatures": "Team Features",
+    "contributing": "Contributing",
+    "copyright": "© 2025 TechnoAlliance. Apache License 2.0."
+  },
+  "languages": {
+    "en": "🇺🇸 English",
+    "jp": "🇯🇵 日本語",
+    "cn": "🇨🇳 中文",
+    "hi": "🇮🇳 हिन्दी",
+    "sa": "🇸🇦 العربية"
+  }
+}

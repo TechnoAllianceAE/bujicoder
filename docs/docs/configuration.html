@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,18 +8,30 @@
     <link rel="stylesheet" href="docs.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+SC:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <nav class="nav scrolled">
     <div class="nav-inner">
-        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <a href="../" class="nav-logo"><img src="../logo.svg" alt="BujiCoder Logo" class="logo-image"> BujiCoder</a>
         <div class="nav-links">
             <a href="../#features">Features</a>
             <a href="./">Docs</a>
             <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
             <a href="../#install" class="nav-cta">Install</a>
+            <div class="lang-switcher">
+                <button class="lang-switcher-btn" id="langBtn" aria-label="Switch language">
+                    <span id="langFlag">🇺🇸</span> <span id="langName">EN</span> ▾
+                </button>
+                <div class="lang-dropdown" id="langDrop">
+                    <a href="#" data-lang="en" class="active"><span class="lang-flag">🇺🇸</span> English</a>
+                    <a href="#" data-lang="jp"><span class="lang-flag">🇯🇵</span> 日本語</a>
+                    <a href="#" data-lang="cn"><span class="lang-flag">🇨🇳</span> 中文</a>
+                    <a href="#" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी</a>
+                    <a href="#" data-lang="sa"><span class="lang-flag">🇸🇦</span> العربية</a>
+                </div>
+            </div>
         </div>
         <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
     </div>
@@ -110,7 +122,7 @@ mcp_servers:
     args: ["-y", "@modelcontextprotocol/server-github"]
     lazy: true</code></pre>
 
-        <h2>Agent &amp; Sub-Agent Model Mapping</h2>
+        <h2>Agent & Sub-Agent Model Mapping</h2>
         <p>Each cost mode assigns models to three roles: <code>main</code> (orchestrator), <code>file_explorer</code> (lightweight navigation), and <code>sub_agent</code> (all other specialist agents). You can override the model for individual agents using <code>agent_overrides</code>.</p>
 
         <div class="docs-callout info">
@@ -224,6 +236,54 @@ document.querySelector('.nav-toggle').addEventListener('click', function() {
     document.querySelector('.nav-links').classList.toggle('open');
     this.classList.toggle('active');
 });
+
+// Language switcher
+const langBtn = document.getElementById('langBtn');
+const langDrop = document.getElementById('langDrop');
+const langFlag = document.getElementById('langFlag');
+const langName = document.getElementById('langName');
+
+const langMap = {
+    en: { flag: '🇺🇸', name: 'EN', dir: 'ltr' },
+    jp: { flag: '🇯🇵', name: 'JP', dir: 'ltr' },
+    cn: { flag: '🇨🇳', name: 'CN', dir: 'ltr' },
+    hi: { flag: '🇮🇳', name: 'HI', dir: 'ltr' },
+    sa: { flag: '🇸🇦', name: 'SA', dir: 'rtl' }
+};
+
+langBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    langDrop.classList.toggle('show');
+});
+
+document.addEventListener('click', function() {
+    langDrop.classList.remove('show');
+});
+
+document.querySelectorAll('.lang-dropdown a').forEach(function(link) {
+    link.addEventListener('click', function(e) {
+        e.preventDefault();
+        const lang = this.getAttribute('data-lang');
+        const info = langMap[lang];
+        if (info) {
+            langFlag.textContent = info.flag;
+            langName.textContent = info.name;
+            document.documentElement.dir = info.dir;
+            document.documentElement.lang = lang;
+            localStorage.setItem('buji-lang', lang);
+        }
+        langDrop.classList.remove('show');
+    });
+});
+
+// Restore saved language
+const savedLang = localStorage.getItem('buji-lang');
+if (savedLang && langMap[savedLang]) {
+    langFlag.textContent = langMap[savedLang].flag;
+    langName.textContent = langMap[savedLang].name;
+    document.documentElement.dir = langMap[savedLang].dir;
+    document.documentElement.lang = savedLang;
+}
 </script>
 </body>
 </html>

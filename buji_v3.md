@@ -7,6 +7,274 @@
 
 ---
 
+## Code Quality Improvements
+
+> **Quick wins** — These 5 improvements address code quality, security, and maintainability issues found during source analysis. They can be implemented independently of the feature roadmap.
+
+### 1. Fix Race Condition in Context Cache
+
+**File:** [`shared/contextcache/cache.go`](shared/contextcache/cache.go:62)
+
+**Problem:** The [`Cache.Get()`](shared/contextcache/cache.go:62) method has a race condition. It reads the entry under a read lock, checks if it's stale, then releases the lock before calling [`refresh()`](shared/contextcache/cache.go:117). Another goroutine could modify the cache between these operations.
+
+**Solution:** Use double-checked locking with a write lock for refresh:
+
+```go
+func (c *Cache) Get(relPath string) (string, error) {
+    c.mu.RLock()
+    entry, ok := c.entries[relPath]
+    c.mu.RUnlock()
+
+    if ok && !entry.stale(c.ttl) {
+        absPath := filepath.Join(c.root, relPath)
+        if info, err := os.Stat(absPath); err == nil && info.ModTime().Equal(entry.ModTime) {
+            c.mu.Lock()
+            entry.AccessedAt = time.Now()
+            c.mu.Unlock()
+            return entry.Content, nil
+        }
+    }
+
+    // Use write lock for refresh to prevent concurrent refreshes
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    
+    // Double-check after acquiring write lock
+    if entry, ok := c.entries[relPath]; ok && !entry.stale(c.ttl) {
+        return entry.Content, nil
+    }
+    
+    return c.refreshLocked(relPath)
+}
+```
+
+**Impact:** Prevents data races in concurrent tool execution scenarios.
+
+---
+
+### 2. Improve Hash Function for Tool Call Loop Detection
+
+**File:** [`shared/agentruntime/step.go`](shared/agentruntime/step.go:472)
+
+**Problem:** The [`hashArgs()`](shared/agentruntime/step.go:472) function uses a simple polynomial hash (`h = h*31 + uint64(c)`) that's prone to collisions, especially with similar JSON arguments. This could cause false positives in loop detection.
+
+**Solution:** Use FNV-1a hash for better collision resistance:
+
+```go
+import "hash/fnv"
+
+func hashArgs(argsJSON string) string {
+    h := fnv.New64a()
+    h.Write([]byte(argsJSON))
+    return fmt.Sprintf("%016x", h.Sum64())
+}
+```
+
+**Impact:** More reliable loop detection, preventing false positives that could break legitimate tool call sequences.
+
+---
+
+### 3. Extract Tool Schema Definitions to Reduce Duplication
+
+**File:** [`shared/agentruntime/step.go`](shared/agentruntime/step.go:311)
+
+**Problem:** The [`toolInputSchema()`](shared/agentruntime/step.go:311) function is a 150+ line switch statement with repetitive schema definitions. This is hard to maintain and violates DRY principles.
+
+**Solution:** Define schemas as a map:
+
+```go
+var toolSchemas = map[string]map[string]any{
+    "read_files": {
+        "type": "object",
+        "properties": map[string]any{
+            "paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+        },
+        "required": []string{"paths"},
+    },
+    "write_file": {
+        "type": "object",
+        "properties": map[string]any{
+            "path":    map[string]any{"type": "string"},
+            "content": map[string]any{"type": "string"},
+        },
+        "required": []string{"path", "content"},
+    },
+    // ... other schemas
+}
+
+func toolInputSchema(toolName string) map[string]any {
+    if schema, ok := toolSchemas[toolName]; ok {
+        return schema
+    }
+    return map[string]any{"type": "object", "properties": map[string]any{}}
+}
+```
+
+**Impact:** Easier to maintain, reduces code by ~100 lines, and makes adding new tools simpler.
+
+---
+
+### 4. Add Context Cancellation to Web Search
+
+**File:** [`shared/tools/tools.go`](shared/tools/tools.go:675)
+
+**Problem:** The [`webSearch()`](shared/tools/tools.go:675) function creates a new HTTP client with a fixed timeout but doesn't properly respect the context's cancellation. If the context is cancelled, the HTTP request may continue running.
+
+**Solution:** Use context-aware HTTP request:
+
+```go
+func webSearch() func(ctx context.Context, args json.RawMessage) (string, error) {
+    return func(ctx context.Context, args json.RawMessage) (string, error) {
+        var params struct {
+            Query string `json:"query"`
+        }
+        if err := json.Unmarshal(args, &params); err != nil {
+            return "", err
+        }
+
+        searchURL := "https://html.duckduckgo.com/html/?q=" + strings.ReplaceAll(params.Query, " ", "+")
+
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
+        if err != nil {
+            return "", fmt.Errorf("create search request: %w", err)
+        }
+        req.Header.Set("User-Agent", "BujiCoder/1.0 (CLI)")
+
+        client := &http.Client{Timeout: 10 * time.Second}
+        resp, err := client.Do(req)
+        if err != nil {
+            // Check if context was cancelled
+            if ctx.Err() != nil {
+                return "", ctx.Err()
+            }
+            return "", fmt.Errorf("web search: %w", err)
+        }
+        defer resp.Body.Close()
+
+        // ... rest of the function
+    }
+}
+```
+
+**Impact:** Proper cancellation support prevents resource leaks when agent runs are cancelled or timeout.
+
+---
+
+### 5. Add Input Validation for File Paths
+
+**File:** [`shared/tools/tools.go`](shared/tools/tools.go:781)
+
+**Problem:** The [`safePath()`](shared/tools/tools.go:781) function validates paths but doesn't check for null bytes or other dangerous characters that could cause issues. Additionally, the function doesn't validate path length.
+
+**Solution:** Add comprehensive path validation:
+
+```go
+func safePath(workDir, path string) (string, error) {
+    // Check for null bytes (path traversal attack vector)
+    if strings.ContainsRune(path, '\x00') {
+        return "", fmt.Errorf("access denied: path contains null byte")
+    }
+
+    // Check path length (prevent extremely long paths)
+    const maxPathLength = 4096
+    if len(path) > maxPathLength {
+        return "", fmt.Errorf("access denied: path exceeds maximum length of %d characters", maxPathLength)
+    }
+
+    // Check for suspicious patterns
+    suspiciousPatterns := []string{"..", "~", "$", "`", "\\", "|", "<", ">", ":", "*", "?", "\""}
+    for _, pattern := range suspiciousPatterns {
+        if strings.Contains(path, pattern) {
+            return "", fmt.Errorf("access denied: path contains suspicious character %q", pattern)
+        }
+    }
+
+    resolved := path
+    if !filepath.IsAbs(path) {
+        resolved = filepath.Join(workDir, path)
+    }
+    resolved = filepath.Clean(resolved)
+
+    // Canonicalize the workDir for comparison (follow symlinks)
+    canonicalRoot, err := filepath.EvalSymlinks(workDir)
+    if err != nil {
+        canonicalRoot = filepath.Clean(workDir)
+    }
+
+    // Canonicalize the target if it exists (follow symlinks)
+    canonicalResolved, err := filepath.EvalSymlinks(resolved)
+    if err != nil {
+        canonicalResolved = resolved
+    }
+
+    if canonicalResolved != canonicalRoot &&
+        !strings.HasPrefix(canonicalResolved, canonicalRoot+string(filepath.Separator)) {
+        return "", fmt.Errorf("access denied: path %q is outside the project directory", path)
+    }
+    return resolved, nil
+}
+```
+
+**Impact:** Enhanced security against path traversal attacks and malformed path inputs.
+
+---
+
+### Summary of Code Improvements
+
+| # | Issue | File | Impact |
+|---|-------|------|--------|
+| 1 | Race condition in cache | `shared/contextcache/cache.go` | Concurrency safety |
+| 2 | Weak hash function | `shared/agentruntime/step.go` | Loop detection reliability |
+| 3 | Code duplication | `shared/agentruntime/step.go` | Maintainability |
+| 4 | Missing context cancellation | `shared/tools/tools.go` | Resource leak prevention |
+| 5 | Insufficient path validation | `shared/tools/tools.go` | Security hardening |
+
+All changes are backward-compatible and can be implemented independently.
+
+---
+
+## Top 5 Priority Improvements
+
+> **Recommended starting point** — these 5 improvements offer the highest impact-to-effort ratio
+> and should be prioritized for the first development cycle.
+
+### 1. Fuzzy Edit Matching (7-Strategy str_replace)
+- **Problem**: Current `str_replace` uses exact `strings.Contains()` matching, causing silent failures when LLMs produce wrong whitespace/indentation
+- **Solution**: Cascading matcher chain in `shared/tools/editmatch/` with 7 strategies from strict to lenient
+- **Impact**: Immediate improvement in agent reliability, reduced token waste from failed edits
+- **Effort**: 3-4 days | **Phase**: A (v3.0)
+- **See**: [Section 1](#1-fuzzy-edit-matching)
+
+### 2. Error Logging System
+- **Problem**: `zerolog.Nop()` everywhere — no persistent logs, silent failures, no post-mortem capability
+- **Solution**: Structured JSON logging to `~/.bujicoder/logs/` with lumberjack rotation, `--verbose` flag
+- **Impact**: Enables debugging, user support, performance monitoring, and metrics insight
+- **Effort**: 2-3 days | **Phase**: A (v3.0)
+- **See**: [Section 5a](#5a-error-logging-system)
+
+### 3. Batch Parallel Tool Execution
+- **Problem**: All tool calls execute sequentially, even independent read operations
+- **Solution**: Safe/Unsafe classification with concurrent dispatch for read-only tools (max 10 parallel)
+- **Impact**: Significant latency reduction for multi-file reads and searches
+- **Effort**: 1-2 days | **Phase**: A (v3.0)
+- **See**: [Section 5](#5-batch-parallel-tool-execution)
+
+### 4. Git Snapshot & Revert System
+- **Problem**: No way to undo agent changes — wrong edits require manual identification and revert
+- **Solution**: Shadow git repo in `.bujicoder/snapshots/` with auto-snapshot after writes, `revert_snapshot` tool
+- **Impact**: Safety net for experimental runs, builds user trust, never pollutes user's git history
+- **Effort**: 4-5 days | **Phase**: A (v3.0)
+- **See**: [Section 2](#2-git-snapshot--revert-system)
+
+### 5. Smart Context Assembly (Relevance-Ranked Files)
+- **Problem**: Sends top 200 files as flat list, wasting context tokens on irrelevant files
+- **Solution**: Multi-factor relevance scoring (keyword match, git changes, symbols, imports, recency) → top 50 ranked
+- **Impact**: Better agent responses with less token waste — a **competitive superiority feature**
+- **Effort**: 3 days | **Phase**: C (v3.9)
+- **See**: [Section 16](#16-smart-context-assembly)
+
+---
+
 ## Table of Contents
 
 ### Foundation

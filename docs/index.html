@@ -1,19 +1,14 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BujiCoder — AI Coding Assistant. Your Models. Your Machine. Your Rules.</title>
     <meta name="description" content="BujiCoder is a blazing-fast, Go-based AI coding assistant that runs in your terminal. No Node. No npm. Choose any LLM provider. Full control over your models and your code.">
-    <meta name="keywords" content="AI coding assistant, terminal AI, Go CLI, LLM providers, OpenRouter, Groq, Cerebras, OpenAI, Claude, xAI, code assistant, multi-agent AI">
-    <meta property="og:title" content="BujiCoder — AI Coding Assistant. Your Models. Your Machine. Your Rules.">
-    <meta property="og:description" content="Blazing-fast Go-based AI coding assistant. No Node/npm. Choose any LLM provider. Full granular control.">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://community.bujicoder.com">
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+SC:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -24,12 +19,25 @@
             <img src="logo.svg" alt="BujiCoder Logo" class="logo-image"> BujiCoder
         </a>
         <div class="nav-links">
-            <a href="#features">Features</a>
-            <a href="#providers">Providers</a>
-            <a href="#how-it-works">How It Works</a>
-            <a href="docs/">Docs</a>
+            <a href="#features" data-i18n="nav.features">Features</a>
+            <a href="#providers" data-i18n="nav.providers">Providers</a>
+            <a href="#how-it-works" data-i18n="nav.howItWorks">How It Works</a>
+            <a href="docs/" data-i18n="nav.docs">Docs</a>
             <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
-            <a href="#install" class="nav-cta">Install</a>
+            <a href="#install" class="nav-cta" data-i18n="nav.install">Install</a>
+            <!-- Language Switcher -->
+            <div class="lang-switcher">
+                <button class="lang-switcher-btn" id="langBtn" aria-label="Switch language">
+                    <span id="langFlag">🇺🇸</span> <span id="langName">EN</span> ▾
+                </button>
+                <div class="lang-dropdown" id="langDrop">
+                    <a href="#" data-lang="en" class="active"><span class="lang-flag">🇺🇸</span> English</a>
+                    <a href="#" data-lang="jp"><span class="lang-flag">🇯🇵</span> 日本語</a>
+                    <a href="#" data-lang="cn"><span class="lang-flag">🇨🇳</span> 中文</a>
+                    <a href="#" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी</a>
+                    <a href="#" data-lang="sa"><span class="lang-flag">🇸🇦</span> العربية</a>
+                </div>
+            </div>
         </div>
         <button class="nav-toggle" aria-label="Toggle menu">
             <span></span><span></span><span></span>
@@ -41,24 +49,24 @@
 <header class="hero" id="top">
     <div class="hero-bg-grid"></div>
     <div class="container">
-        <div class="hero-badge">Open Source &middot; Apache 2.0</div>
-        <h1 class="hero-title">
+        <div class="hero-badge" data-i18n="hero.badge">Open Source · Apache 2.0</div>
+        <h1 class="hero-title" data-i18n-html="hero.title">
             The AI coding assistant<br>
             that doesn't need <span class="strike">Node</span>,
             <span class="strike">npm</span>,<br>
             or <span class="strike">your patience</span>.
         </h1>
-        <p class="hero-subtitle">
+        <p class="hero-subtitle" data-i18n-html="hero.subtitle">
             Heavily inspired by <strong class="inspired-inline">Claude Code</strong> and <strong class="inspired-inline">CodeBuff</strong>,
             BujiCoder is a <strong>Go-native</strong> multi-agent AI coding tool that runs in your terminal.
             One binary. Zero dependencies. Pick any LLM provider.
             Your code never leaves your machine.
         </p>
         <div class="hero-actions">
-            <a href="#install" class="btn btn-primary">Get Started</a>
+            <a href="#install" class="btn btn-primary" data-i18n="hero.getStarted">Get Started</a>
             <a href="https://github.com/TechnoAllianceAE/bujicoder" class="btn btn-secondary" target="_blank" rel="noopener">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
-                View on GitHub
+                <span data-i18n="hero.viewOnGitHub">View on GitHub</span>
             </a>
         </div>
         <div class="hero-terminal">
@@ -75,95 +83,22 @@
                 <div class="terminal-line"><span class="t-prompt">$</span> <span class="t-cmd">buji</span></div>
                 <div class="terminal-line t-fade"><span class="t-output">Welcome to BujiCoder! Let's get you set up.</span></div>
                 <div class="terminal-line t-fade"><span class="t-output">? Choose setup mode:</span></div>
-                <div class="terminal-line t-fade"><span class="t-accent">  &gt; Quick Setup</span> <span class="t-dim">— OpenRouter key + recommended defaults</span></div>
-                <div class="terminal-line t-fade"><span class="t-dim">    Advanced Setup — Pick providers, models &amp; agent roles</span></div>
+                <div class="terminal-line t-fade"><span class="t-accent">  > Quick Setup</span> <span class="t-dim">— OpenRouter key + recommended defaults</span></div>
+                <div class="terminal-line t-fade"><span class="t-dim">    Advanced Setup — Pick providers, models & agent roles</span></div>
             </div>
         </div>
     </div>
 </header>
 
-<!-- 10 Features -->
+<!-- Features -->
 <section class="features" id="features">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">What makes it different</span>
-            <h2 class="section-title">10 reasons BujiCoder isn't just another code assistant</h2>
-            <p class="section-desc">Most AI coding tools lock you into one model, one provider, and a mountain of JavaScript dependencies. BujiCoder takes a fundamentally different approach.</p>
+            <span class="section-label" data-i18n="features.label">What makes it different</span>
+            <h2 class="section-title" data-i18n="features.title">10 reasons BujiCoder isn't just another code assistant</h2>
+            <p class="section-desc" data-i18n="features.desc">Most AI coding tools lock you into one model, one provider, and a mountain of JavaScript dependencies. BujiCoder takes a fundamentally different approach.</p>
         </div>
-
-        <div class="features-grid">
-
-            <div class="feature-card feature-highlight">
-                <div class="feature-number">01</div>
-                <div class="feature-icon">&#9889;</div>
-                <h3>Zero-Dependency Go Binary</h3>
-                <p>No Node. No npm. No Python. No Docker. A single compiled binary that starts instantly. Download it, run it, done. Under 30 MB for the entire tool.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">02</div>
-                <div class="feature-icon">&#9881;</div>
-                <h3>Granular Model Control</h3>
-                <p>Assign different models to different agent roles. Use a cheap model for file exploration, a powerful one for editing, and a reasoning model for planning &mdash; all in a single session.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">03</div>
-                <div class="feature-icon">&#127760;</div>
-                <h3>Any Provider, Your Choice</h3>
-                <p>OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama &mdash; bring your own API keys and switch providers freely.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">04</div>
-                <div class="feature-icon">&#129302;</div>
-                <h3>13 Specialized Agents</h3>
-                <p>Not one generic chatbot. A team of 13 purpose-built agents &mdash; editor, planner, researcher, reviewer, git committer, and more &mdash; each with their own tools and system prompts.</p>
-            </div>
-
-            <div class="feature-card feature-highlight">
-                <div class="feature-number">05</div>
-                <div class="feature-icon">&#9878;</div>
-                <h3>Parallel Evolution Mode</h3>
-                <p>In Max mode, multiple agents implement competing solutions simultaneously. A judge agent evaluates and picks the best one. It's like having a coding tournament for every task.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">06</div>
-                <div class="feature-icon">&#128176;</div>
-                <h3>Three Cost Modes</h3>
-                <p><strong>Normal</strong> for fast/cheap everyday coding. <strong>Heavy</strong> for harder tasks with smarter models. <strong>Max</strong> for mission-critical work with the most powerful models and parallel evolution.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">07</div>
-                <div class="feature-icon">&#128274;</div>
-                <h3>Local-First Privacy</h3>
-                <p>All tools execute on your machine. File reads, writes, code search, terminal commands &mdash; nothing routes through a third-party server. Your code stays yours.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">08</div>
-                <div class="feature-icon">&#128268;</div>
-                <h3>MCP Extensibility</h3>
-                <p>Extend BujiCoder with any Model Context Protocol server. Add GitHub, browser automation, databases, or custom tools. Eager or lazy loading &mdash; you control when servers start.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">09</div>
-                <div class="feature-icon">&#128737;</div>
-                <h3>Built-In Safety Rails</h3>
-                <p>4-level threat classification with 40+ security patterns. Meta-execution detection blocks shell injection via <code>eval</code>, <code>$()</code>, and <code>bash -c</code>. Per-project permissions, three modes &mdash; strict, ask, or yolo. Critical threats are always blocked.</p>
-            </div>
-
-            <div class="feature-card">
-                <div class="feature-number">10</div>
-                <div class="feature-icon">&#128064;</div>
-                <h3>Vision &amp; Multimodal</h3>
-                <p>Attach images directly with <code>@path/to/screenshot.png</code>. Review UI mockups, debug visual regressions, or let the UI reviewer agent automate browser testing with Puppeteer.</p>
-            </div>
-
-        </div>
+        <div class="features-grid" id="featuresGrid"></div>
     </div>
 </section>
 
@@ -171,65 +106,11 @@
 <section class="providers" id="providers">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">LLM Providers</span>
-            <h2 class="section-title">Your keys. Your models. Your money.</h2>
-            <p class="section-desc">BujiCoder talks directly to AI providers using your API keys. No middleman markup. No vendor lock-in. Switch providers with a single config change.</p>
+            <span class="section-label" data-i18n="providers.label">LLM Providers</span>
+            <h2 class="section-title" data-i18n="providers.title">Your keys. Your models. Your money.</h2>
+            <p class="section-desc" data-i18n="providers.desc">BujiCoder talks directly to AI providers using your API keys. No middleman markup. No vendor lock-in. Switch providers with a single config change.</p>
         </div>
-
-        <div class="providers-grid">
-            <div class="provider-card">
-                <div class="provider-name">OpenRouter</div>
-                <div class="provider-desc">200+ models, one API key</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Groq</div>
-                <div class="provider-desc">Ultra-low latency inference</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Cerebras</div>
-                <div class="provider-desc">Wafer-scale speed</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Together AI</div>
-                <div class="provider-desc">Open-source model hosting</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">OpenAI</div>
-                <div class="provider-desc">GPT-4o &amp; family</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Anthropic</div>
-                <div class="provider-desc">Claude Opus, Sonnet, Haiku</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">xAI</div>
-                <div class="provider-desc">Grok models</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Google AI</div>
-                <div class="provider-desc">Gemini family</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Amazon Bedrock</div>
-                <div class="provider-desc">Enterprise-grade access</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Google Vertex</div>
-                <div class="provider-desc">GCP-native model serving</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Ollama</div>
-                <div class="provider-desc">Run models 100% locally. Use tool-capable models (llama3.1, qwen2.5-coder, mistral) for full agent features.</div>
-            </div>
-            <div class="provider-card">
-                <div class="provider-name">Llama.cpp</div>
-                <div class="provider-desc">Local GGUF models, OpenAI-compatible. Use tool-capable models for full agent features.</div>
-            </div>
-            <div class="provider-card provider-card-add">
-                <div class="provider-name">+ Any OpenAI-compatible</div>
-                <div class="provider-desc">Custom endpoints supported</div>
-            </div>
-        </div>
+        <div class="providers-grid" id="providersGrid"></div>
     </div>
 </section>
 
@@ -237,42 +118,10 @@
 <section class="how-it-works" id="how-it-works">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">How it works</span>
-            <h2 class="section-title">From install to coding in 60 seconds</h2>
+            <span class="section-label" data-i18n="howItWorks.label">How it works</span>
+            <h2 class="section-title" data-i18n="howItWorks.title">From install to coding in 60 seconds</h2>
         </div>
-
-        <div class="steps">
-            <div class="step">
-                <div class="step-number">1</div>
-                <div class="step-content">
-                    <h3>Install</h3>
-                    <p>One curl command. One binary. No runtime dependencies.</p>
-                    <div class="step-code">
-                        <code>curl -fsSL https://community.bujicoder.com/install.sh | bash</code>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">2</div>
-                <div class="step-content">
-                    <h3>Configure</h3>
-                    <p>The setup wizard walks you through picking a provider and entering your API key. Quick setup takes 10 seconds.</p>
-                    <div class="step-code">
-                        <code>buji</code> <span class="step-note">wizard runs on first launch</span>
-                    </div>
-                </div>
-            </div>
-            <div class="step">
-                <div class="step-number">3</div>
-                <div class="step-content">
-                    <h3>Code</h3>
-                    <p>Ask questions, edit files, search your codebase, run commands. BujiCoder's agents handle the rest.</p>
-                    <div class="step-code">
-                        <code>buji</code> <span class="step-note">start interactive session</span>
-                    </div>
-                </div>
-            </div>
-        </div>
+        <div class="steps" id="stepsContainer"></div>
     </div>
 </section>
 
@@ -280,72 +129,11 @@
 <section class="comparison">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">Comparison</span>
-            <h2 class="section-title">How BujiCoder stacks up</h2>
+            <span class="section-label" data-i18n="comparison.label">Comparison</span>
+            <h2 class="section-title" data-i18n="comparison.title">How BujiCoder stacks up</h2>
         </div>
-
         <div class="table-wrapper">
-            <table class="comparison-table">
-                <thead>
-                    <tr>
-                        <th></th>
-                        <th class="highlight-col">BujiCoder</th>
-                        <th>Typical AI Assistants</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Runtime</td>
-                        <td class="highlight-col"><strong>Single Go binary</strong></td>
-                        <td>Node.js + npm install</td>
-                    </tr>
-                    <tr>
-                        <td>Startup time</td>
-                        <td class="highlight-col"><strong>&lt; 100ms</strong></td>
-                        <td>2-10 seconds</td>
-                    </tr>
-                    <tr>
-                        <td>LLM Providers</td>
-                        <td class="highlight-col"><strong>11+ providers</strong></td>
-                        <td>1-2 providers</td>
-                    </tr>
-                    <tr>
-                        <td>Model per agent</td>
-                        <td class="highlight-col"><strong>Yes, fully configurable</strong></td>
-                        <td>One model for everything</td>
-                    </tr>
-                    <tr>
-                        <td>Cost control</td>
-                        <td class="highlight-col"><strong>3 modes + per-agent overrides</strong></td>
-                        <td>Subscription or single tier</td>
-                    </tr>
-                    <tr>
-                        <td>Agent architecture</td>
-                        <td class="highlight-col"><strong>13 specialized agents</strong></td>
-                        <td>Single agent</td>
-                    </tr>
-                    <tr>
-                        <td>Parallel evolution</td>
-                        <td class="highlight-col"><strong>Yes (Max mode)</strong></td>
-                        <td>No</td>
-                    </tr>
-                    <tr>
-                        <td>MCP support</td>
-                        <td class="highlight-col"><strong>Full (eager + lazy)</strong></td>
-                        <td>Limited or none</td>
-                    </tr>
-                    <tr>
-                        <td>Privacy</td>
-                        <td class="highlight-col"><strong>100% local execution</strong></td>
-                        <td>Cloud-dependent</td>
-                    </tr>
-                    <tr>
-                        <td>License</td>
-                        <td class="highlight-col"><strong>Apache 2.0</strong></td>
-                        <td>Varies</td>
-                    </tr>
-                </tbody>
-            </table>
+            <table class="comparison-table" id="comparisonTable"></table>
         </div>
     </div>
 </section>
@@ -354,44 +142,13 @@
 <section class="inspired-by" id="inspired-by">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">Standing on the shoulders of giants</span>
-            <h2 class="section-title">Inspired by the best in the game</h2>
-            <p class="section-desc">BujiCoder didn't emerge in a vacuum. We studied the tools that redefined AI-assisted coding, learned what they got right, and built on those ideas with our own vision.</p>
+            <span class="section-label" data-i18n="inspired.label">Standing on the shoulders of giants</span>
+            <h2 class="section-title" data-i18n="inspired.title">Inspired by the best in the game</h2>
+            <p class="section-desc" data-i18n="inspired.desc">BujiCoder didn't emerge in a vacuum. We studied the tools that redefined AI-assisted coding, learned what they got right, and built on those ideas with our own vision.</p>
         </div>
-
-        <div class="inspired-grid">
-            <div class="inspired-card">
-                <div class="inspired-logo">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                </div>
-                <h3>Claude Code</h3>
-                <p class="inspired-tagline">Anthropic's terminal-native coding agent</p>
-                <p class="inspired-desc">Claude Code proved that a terminal-first AI assistant could be more powerful than any IDE plugin. Its agentic architecture &mdash; where the AI reads files, edits code, runs commands, and iterates on its own &mdash; fundamentally changed how developers interact with AI. BujiCoder's multi-agent orchestration, tool-use system, and permission model are all deeply influenced by the patterns Claude Code pioneered.</p>
-                <div class="inspired-lessons">
-                    <span class="lesson-tag">Agentic tool use</span>
-                    <span class="lesson-tag">Terminal-first UX</span>
-                    <span class="lesson-tag">Permission system</span>
-                    <span class="lesson-tag">File editing patterns</span>
-                </div>
-            </div>
-
-            <div class="inspired-card">
-                <div class="inspired-logo">
-                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                </div>
-                <h3>CodeBuff</h3>
-                <p class="inspired-tagline">The lean, fast coding assistant</p>
-                <p class="inspired-desc">CodeBuff showed that an AI coding tool doesn't need to be a bloated IDE extension with a hundred config files. It championed speed, simplicity, and getting out of the developer's way. BujiCoder carries that same philosophy forward &mdash; a single binary, instant startup, minimal config &mdash; while adding the flexibility to bring your own models and providers.</p>
-                <div class="inspired-lessons">
-                    <span class="lesson-tag">Speed-first design</span>
-                    <span class="lesson-tag">Minimal footprint</span>
-                    <span class="lesson-tag">Developer-centric UX</span>
-                </div>
-            </div>
-        </div>
-
+        <div class="inspired-grid" id="inspiredGrid"></div>
         <div class="inspired-cta">
-            <p>We took the best ideas, rewrote them in Go, made them provider-agnostic, and added multi-agent superpowers.<br><strong>That's BujiCoder.</strong></p>
+            <p data-i18n-html="inspired.cta">We took the best ideas, rewrote them in Go, made them provider-agnostic, and added multi-agent superpowers.<br><strong>That's BujiCoder.</strong></p>
         </div>
     </div>
 </section>
@@ -400,29 +157,11 @@
 <section class="install" id="install">
     <div class="container">
         <div class="section-header">
-            <span class="section-label">Install</span>
-            <h2 class="section-title">Ready to try it?</h2>
-            <p class="section-desc">Pick your platform. Be coding in under a minute.</p>
+            <span class="section-label" data-i18n="install.label">Install</span>
+            <h2 class="section-title" data-i18n="install.title">Ready to try it?</h2>
+            <p class="section-desc" data-i18n="install.desc">Pick your platform. Be coding in under a minute.</p>
         </div>
-
-        <div class="install-options">
-            <div class="install-card">
-                <h3>macOS / Linux</h3>
-                <div class="install-code">
-                    <code>curl -fsSL https://community.bujicoder.com/install.sh | bash</code>
-                </div>
-            </div>
-            <div class="install-card">
-                <h3>From Source (Go 1.24+)</h3>
-                <div class="install-code">
-                    <code>go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code>
-                </div>
-            </div>
-            <div class="install-card">
-                <h3>Windows</h3>
-                <p>Download the latest <code>.exe</code> from <a href="https://github.com/TechnoAllianceAE/bujicoder/releases" target="_blank" rel="noopener">GitHub Releases</a>.</p>
-            </div>
-        </div>
+        <div class="install-options" id="installOptions"></div>
     </div>
 </section>
 
@@ -432,70 +171,439 @@
         <div class="footer-inner">
             <div class="footer-brand">
                 <img src="logo.svg" alt="BujiCoder Logo" class="logo-image"> BujiCoder
-                <p class="footer-tagline">AI coding assistant. Your models. Your machine. Your rules.</p>
+                <p class="footer-tagline" data-i18n="footer.tagline">AI coding assistant. Your models. Your machine. Your rules.</p>
             </div>
             <div class="footer-links">
                 <div class="footer-col">
-                    <h4>Product</h4>
-                    <a href="#features">Features</a>
-                    <a href="#providers">Providers</a>
-                    <a href="#install">Install</a>
+                    <h4 data-i18n="footer.product">Product</h4>
+                    <a href="#features" data-i18n="nav.features">Features</a>
+                    <a href="#providers" data-i18n="nav.providers">Providers</a>
+                    <a href="#install" data-i18n="nav.install">Install</a>
                 </div>
                 <div class="footer-col">
-                    <h4>Resources</h4>
+                    <h4 data-i18n="footer.resources">Resources</h4>
                     <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
-                    <a href="docs/">Documentation</a>
-                    <a href="https://github.com/TechnoAllianceAE/bujicoder/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+                    <a href="docs/" data-i18n="nav.docs">Documentation</a>
+                    <a href="https://github.com/TechnoAllianceAE/bujicoder/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-i18n="footer.contributing">Contributing</a>
                 </div>
                 <div class="footer-col">
-                    <h4>Enterprise</h4>
-                    <a href="mailto:hello@bujicoder.com">Contact Sales</a>
-                    <a href="#">Team Features</a>
+                    <h4 data-i18n="footer.enterprise">Enterprise</h4>
+                    <a href="mailto:hello@bujicoder.com" data-i18n="footer.contactSales">Contact Sales</a>
+                    <a href="#" data-i18n="footer.teamFeatures">Team Features</a>
                 </div>
             </div>
         </div>
         <div class="footer-bottom">
-            <p>&copy; 2025 TechnoAlliance. Apache License 2.0.</p>
+            <p data-i18n="footer.copyright">&copy; 2025 TechnoAlliance. Apache License 2.0.</p>
         </div>
     </div>
 </footer>
 
 <script>
-// Mobile nav toggle
-document.querySelector('.nav-toggle').addEventListener('click', function() {
+// ===== i18n Translations =====
+const translations = {
+  en: {
+    nav: { features: "Features", providers: "Providers", howItWorks: "How It Works", docs: "Docs", github: "GitHub", install: "Install" },
+    hero: { badge: "Open Source · Apache 2.0", title: "The AI coding assistant<br>that doesn't need <span class='strike'>Node</span>,<br><span class='strike'>npm</span>, or <span class='strike'>your patience</span>.", subtitle: "Heavily inspired by <strong class='inspired-inline'>Claude Code</strong> and <strong class='inspired-inline'>CodeBuff</strong>, BujiCoder is a <strong>Go-native</strong> multi-agent AI coding tool that runs in your terminal. One binary. Zero dependencies. Pick any LLM provider. Your code never leaves your machine.", getStarted: "Get Started", viewOnGitHub: "View on GitHub" },
+    features: { label: "What makes it different", title: "10 reasons BujiCoder isn't just another code assistant", desc: "Most AI coding tools lock you into one model, one provider, and a mountain of JavaScript dependencies. BujiCoder takes a fundamentally different approach.", items: [
+      { icon: "&#9889;", title: "Zero-Dependency Go Binary", desc: "No Node. No npm. No Python. No Docker. A single compiled binary that starts instantly. Download it, run it, done. Under 30 MB for the entire tool." },
+      { icon: "&#9881;", title: "Granular Model Control", desc: "Assign different models to different agent roles. Use a cheap model for file exploration, a powerful one for editing, and a reasoning model for planning — all in a single session." },
+      { icon: "&#127760;", title: "Any Provider, Your Choice", desc: "OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama — bring your own API keys and switch providers freely." },
+      { icon: "&#129302;", title: "13 Specialized Agents", desc: "Not one generic chatbot. A team of 13 purpose-built agents — editor, planner, researcher, reviewer, git committer, and more — each with their own tools and system prompts." },
+      { icon: "&#9878;", title: "Parallel Evolution Mode", desc: "In Max mode, multiple agents implement competing solutions simultaneously. A judge agent evaluates and picks the best one. It's like having a coding tournament for every task." },
+      { icon: "&#128176;", title: "Three Cost Modes", desc: "<strong>Normal</strong> for fast/cheap everyday coding. <strong>Heavy</strong> for harder tasks with smarter models. <strong>Max</strong> for mission-critical work with the most powerful models and parallel evolution." },
+      { icon: "&#128274;", title: "Local-First Privacy", desc: "All tools execute on your machine. File reads, writes, code search, terminal commands — nothing routes through a third-party server. Your code stays yours." },
+      { icon: "&#128268;", title: "MCP Extensibility", desc: "Extend BujiCoder with any Model Context Protocol server. Add GitHub, browser automation, databases, or custom tools. Eager or lazy loading — you control when servers start." },
+      { icon: "&#128737;", title: "Built-In Safety Rails", desc: "4-level threat classification with 40+ security patterns. Meta-execution detection blocks shell injection via <code>eval</code>, <code>$()</code>, and <code>bash -c</code>. Per-project permissions, three modes — strict, ask, or yolo. Critical threats are always blocked." },
+      { icon: "&#128064;", title: "Vision & Multimodal", desc: "Attach images directly with <code>@path/to/screenshot.png</code>. Review UI mockups, debug visual regressions, or let the UI reviewer agent automate browser testing with Puppeteer." }
+    ]},
+    providers: { label: "LLM Providers", title: "Your keys. Your models. Your money.", desc: "BujiCoder talks directly to AI providers using your API keys. No middleman markup. No vendor lock-in. Switch providers with a single config change.", items: [
+      { name: "OpenRouter", desc: "200+ models, one API key" }, { name: "Groq", desc: "Ultra-low latency inference" }, { name: "Cerebras", desc: "Wafer-scale speed" }, { name: "Together AI", desc: "Open-source model hosting" }, { name: "OpenAI", desc: "GPT-4o & family" }, { name: "Anthropic", desc: "Claude Opus, Sonnet, Haiku" }, { name: "xAI", desc: "Grok models" }, { name: "Google AI", desc: "Gemini family" }, { name: "Amazon Bedrock", desc: "Enterprise-grade access" }, { name: "Google Vertex", desc: "GCP-native model serving" }, { name: "Ollama", desc: "Run models 100% locally" }, { name: "Llama.cpp", desc: "Local GGUF models, OpenAI-compatible" }, { name: "+ Any OpenAI-compatible", desc: "Custom endpoints supported" }
+    ]},
+    howItWorks: { label: "How it works", title: "From install to coding in 60 seconds", steps: [
+      { num: "1", title: "Install", desc: "One curl command. One binary. No runtime dependencies.", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { num: "2", title: "Configure", desc: "The setup wizard walks you through picking a provider and entering your API key. Quick setup takes 10 seconds.", code: "buji", note: "wizard runs on first launch" },
+      { num: "3", title: "Code", desc: "Ask questions, edit files, search your codebase, run commands. BujiCoder's agents handle the rest.", code: "buji", note: "start interactive session" }
+    ]},
+    comparison: { label: "Comparison", title: "How BujiCoder stacks up", headers: ["", "BujiCoder", "Typical AI Assistants"], rows: [
+      ["Runtime", "Single Go binary", "Node.js + npm install"], ["Startup time", "< 100ms", "2-10 seconds"], ["LLM Providers", "11+ providers", "1-2 providers"], ["Model per agent", "Yes, fully configurable", "One model for everything"], ["Cost control", "3 modes + per-agent overrides", "Subscription or single tier"], ["Agent architecture", "13 specialized agents", "Single agent"], ["Parallel evolution", "Yes (Max mode)", "No"], ["MCP support", "Full (eager + lazy)", "Limited or none"], ["Privacy", "100% local execution", "Cloud-dependent"], ["License", "Apache 2.0", "Varies"]
+    ]},
+    inspired: { label: "Standing on the shoulders of giants", title: "Inspired by the best in the game", desc: "BujiCoder didn't emerge in a vacuum. We studied the tools that redefined AI-assisted coding, learned what they got right, and built on those ideas with our own vision.", cards: [
+      { name: "Claude Code", tagline: "Anthropic's terminal-native coding agent", desc: "Claude Code proved that a terminal-first AI assistant could be more powerful than any IDE plugin. Its agentic architecture — where the AI reads files, edits code, runs commands, and iterates on its own — fundamentally changed how developers interact with AI. BujiCoder's multi-agent orchestration, tool-use system, and permission model are all deeply influenced by the patterns Claude Code pioneered.", lessons: ["Agentic tool use", "Terminal-first UX", "Permission system", "File editing patterns"] },
+      { name: "CodeBuff", tagline: "The lean, fast coding assistant", desc: "CodeBuff showed that an AI coding tool doesn't need to be a bloated IDE extension with a hundred config files. It championed speed, simplicity, and getting out of the developer's way. BujiCoder carries that same philosophy forward — a single binary, instant startup, minimal config — while adding the flexibility to bring your own models and providers.", lessons: ["Speed-first design", "Minimal footprint", "Developer-centric UX"] }
+    ], cta: "We took the best ideas, rewrote them in Go, made them provider-agnostic, and added multi-agent superpowers.<br><strong>That's BujiCoder.</strong>" },
+    install: { label: "Install", title: "Ready to try it?", desc: "Pick your platform. Be coding in under a minute.", cards: [
+      { title: "macOS / Linux", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { title: "From Source (Go 1.24+)", code: "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { title: "Windows", desc: "Download the latest <code>.exe</code> from <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>." }
+    ]},
+    footer: { tagline: "AI coding assistant. Your models. Your machine. Your rules.", product: "Product", resources: "Resources", enterprise: "Enterprise", contactSales: "Contact Sales", teamFeatures: "Team Features", contributing: "Contributing", copyright: "© 2025 TechnoAlliance. Apache License 2.0." }
+  },
+  jp: {
+    nav: { features: "機能", providers: "プロバイダー", howItWorks: "使い方", docs: "ドキュメント", github: "GitHub", install: "インストール" },
+    hero: { badge: "オープンソース · Apache 2.0", title: "<span class='strike'>Node</span>も<br><span class='strike'>npm</span>も<br><span class='strike'>忍耐</span>も不要な<br>AIコーディングアシスタント", subtitle: "<strong class='inspired-inline'>Claude Code</strong>と<strong class='inspired-inline'>CodeBuff</strong>に強くインスパイアされたBujiCoderは、ターミナルで動作する<strong>Goネイティブ</strong>のマルチエージェントAIコーディングツールです。1つのバイナリ。ゼロ依存。お好みのLLMプロバイダーを選択可能。あなたのコードは決してマシンから出ません。", getStarted: "始める", viewOnGitHub: "GitHubで見る" },
+    features: { label: "何が違うのか", title: "BujiCoderが普通のコードアシスタントと違う10の理由", desc: "ほとんどのAIコーディングツールは、1つのモデル、1つのプロバイダー、大量のJavaScript依存関係にあなたを閉じ込めます。BujiCoderは根本的に異なるアプローチを取ります。", items: [
+      { icon: "&#9889;", title: "ゼロ依存Goバイナリ", desc: "Node不要。npm不要。Python不要。Docker不要。単一のコンパイル済みバイナリが瞬時に起動。ダウンロードして実行するだけ。ツール全体で30MB未満。" },
+      { icon: "&#9881;", title: "きめ細かいモデル制御", desc: "エージェントロールごとに異なるモデルを割り当て。ファイル探索には安価なモデル、編集には強力なモデル、計画には推論モデルを — すべて1セッションで。" },
+      { icon: "&#127760;", title: "お好みのプロバイダー", desc: "OpenRouter、Groq、Cerebras、Together AI、Amazon Bedrock、Google Vertex、OpenAI、Anthropic、xAI、Ollama — APIキーを持ち込んで、プロバイダーを自由に切り替え。" },
+      { icon: "&#129302;", title: "13の専門エージェント", desc: "汎用チャットボットは1つではありません。エディター、プランナー、リサーチャー、レビュアー、gitコミッターなど、13の目的別エージェントチーム — それぞれが独自のツールとシステムプロンプトを持ちます。" },
+      { icon: "&#9878;", title: "パラレルエボリューションモード", desc: "Maxモードでは、複数のエージェントが競合するソリューションを同時に実装します。ジャッジエージェントが評価して最良のものを選択。すべてのタスクでコーディングトーナメントを開催しているようなものです。" },
+      { icon: "&#128176;", title: "3つのコストモード", desc: "高速/安価な日常コーディング用の<strong>Normal</strong>。よりスマートなモデルで難しいタスク用の<strong>Heavy</strong>。最も強力なモデルとパラレルエボリューションによるミッションクリティカルな作業用の<strong>Max</strong>。" },
+      { icon: "&#128274;", title: "ローカルファーストプライバシー", desc: "すべてのツールはあなたのマシンで実行されます。ファイルの読み書き、コード検索、ターミナルコマンド — サードパーティサーバーを経由するものは何もありません。あなたのコードはあなたのものです。" },
+      { icon: "&#128268;", title: "MCP拡張性", desc: "Model Context ProtocolサーバーでBujiCoderを拡張。GitHub、ブラウザ自動化、データベース、カスタムツールを追加。イーガーロードとレイジーロード — サーバーの起動タイミングをあなたが制御。" },
+      { icon: "&#128737;", title: "組み込みの安全レール", desc: "40以上のセキュリティパターンによる4レベルの脅威分類。<code>eval</code>、<code>$()</code>、<code>bash -c</code>によるシェルインジェクションをメタ実行検出でブロック。プロジェクトごとのパーミッション、3つのモード — strict、ask、yolo。重大な脅威は常にブロックされます。" },
+      { icon: "&#128064;", title: "ビジョン＆マルチモーダル", desc: "<code>@path/to/screenshot.png</code>で画像を直接添付。UIモックアップのレビュー、ビジュアルリグレッションのデバッグ、UIレビュアーエージェントによるPuppeteerを使用したブラウザテストの自動化。" }
+    ]},
+    providers: { label: "LLMプロバイダー", title: "あなたのキー。あなたのモデル。あなたのお金。", desc: "BujiCoderはあなたのAPIキーを使用してAIプロバイダーと直接通信します。中間マージンなし。ベンダーロックインなし。設定変更1つでプロバイダーを切り替え。", items: [
+      { name: "OpenRouter", desc: "200以上のモデル、1つのAPIキー" }, { name: "Groq", desc: "超低遅延推論" }, { name: "Cerebras", desc: "ウェハースケールの速度" }, { name: "Together AI", desc: "オープンソースモデルホスティング" }, { name: "OpenAI", desc: "GPT-4o＆ファミリー" }, { name: "Anthropic", desc: "Claude Opus、Sonnet、Haiku" }, { name: "xAI", desc: "Grokモデル" }, { name: "Google AI", desc: "Geminiファミリー" }, { name: "Amazon Bedrock", desc: "エンタープライズグレード" }, { name: "Google Vertex", desc: "GCPネイティブモデル配信" }, { name: "Ollama", desc: "100%ローカルでモデルを実行" }, { name: "Llama.cpp", desc: "ローカルGGUFモデル、OpenAI互換" }, { name: "+ OpenAI互換なら何でも", desc: "カスタムエンドポイント対応" }
+    ]},
+    howItWorks: { label: "使い方", title: "インストールからコーディングまで60秒", steps: [
+      { num: "1", title: "インストール", desc: "curlコマンド1つ。バイナリ1つ。ランタイム依存関係なし。", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { num: "2", title: "設定", desc: "セットアップウィザードがプロバイダーの選択とAPIキーの入力をガイドします。クイックセットアップは10秒で完了。", code: "buji", note: "初回起動時にウィザードが実行されます" },
+      { num: "3", title: "コーディング", desc: "質問したり、ファイルを編集したり、コードベースを検索したり、コマンドを実行したり。BujiCoderのエージェントが残りをお任せします。", code: "buji", note: "インタラクティブセッションを開始" }
+    ]},
+    comparison: { label: "比較", title: "BujiCoderの実力", headers: ["", "BujiCoder", "一般的なAIアシスタント"], rows: [
+      ["ランタイム", "単一Goバイナリ", "Node.js + npmインストール"], ["起動時間", "< 100ms", "2〜10秒"], ["LLMプロバイダー", "11以上のプロバイダー", "1〜2プロバイダー"], ["エージェントごとのモデル", "はい、完全に設定可能", "すべてに1つのモデル"], ["コスト制御", "3モード + エージェントごとの上書き", "サブスクリプションまたは単一ティア"], ["エージェントアーキテクチャ", "13の専門エージェント", "単一エージェント"], ["パラレルエボリューション", "はい（Maxモード）", "なし"], ["MCPサポート", "フル（イーガー + レイジー）", "制限付きまたはなし"], ["プライバシー", "100%ローカル実行", "クラウド依存"], ["ライセンス", "Apache 2.0", "様々"]
+    ]},
+    inspired: { label: "巨人の肩の上に立つ", title: "最高のものからインスパイアされた", desc: "BujiCoderは真空状態で生まれたわけではありません。AI支援コーディングの再定義に貢献したツールを研究し、その優れた点を学び、独自のビジョンで構築しました。", cards: [
+      { name: "Claude Code", tagline: "Anthropicのターミナルネイティブコーディングエージェント", desc: "Claude Codeは、ターミナルファーストのAIアシスタントがIDEプラグインよりも強力であることを証明しました。AIがファイルを読み、コードを編集し、コマンドを実行し、自ら反復するエージェンティックアーキテクチャは、開発者がAIと対話する方法を根本的に変えました。BujiCoderのマルチエージェントオーケストレーション、ツール使用システム、パーミッションモデルはすべて、Claude Codeが先駆けたパターンに深く影響を受けています。", lessons: ["エージェンティックツール使用", "ターミナルファーストUX", "パーミッションシステム", "ファイル編集パターン"] },
+      { name: "CodeBuff", tagline: "リーンで高速なコーディングアシスタント", desc: "CodeBuffは、AIコーディングツールが100の設定ファイルを持つ膨らんだIDE拡張機能である必要がないことを示しました。速度、シンプルさ、開発者の邪魔をしないことを提唱しました。BujiCoderはその哲学を受け継ぎ — 単一バイナリ、瞬時起動、最小限の設定 — さらに独自のモデルとプロバイダーを持ち込む柔軟性を追加しました。", lessons: ["速度ファーストデザイン", "最小フットプリント", "開発者中心UX"] }
+    ], cta: "最高のアイデアを取り、Goで書き直し、プロバイダー非依存にし、マルチエージェントの超能力を追加しました。<br><strong>それがBujiCoderです。</strong>" },
+    install: { label: "インストール", title: "試してみる準備はできましたか？", desc: "プラットフォームを選んでください。1分以内にコーディングを始められます。", cards: [
+      { title: "macOS / Linux", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { title: "ソースから（Go 1.24+）", code: "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { title: "Windows", desc: "最新の<code>.exe</code>を<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>からダウンロードしてください。" }
+    ]},
+    footer: { tagline: "AIコーディングアシスタント。あなたのモデル。あなたのマシン。あなたのルール。", product: "プロダクト", resources: "リソース", enterprise: "エンタープライズ", contactSales: "営業に連絡", teamFeatures: "チーム機能", contributing: "コントリビューション", copyright: "© 2025 TechnoAlliance. Apache License 2.0." }
+  },
+  cn: {
+    nav: { features: "功能", providers: "提供商", howItWorks: "使用方法", docs: "文档", github: "GitHub", install: "安装" },
+    hero: { badge: "开源 · Apache 2.0", title: "不需要 <span class='strike'>Node</span>、<br><span class='strike'>npm</span> 或 <span class='strike'>你的耐心</span> 的<br>AI编程助手", subtitle: "深受 <strong class='inspired-inline'>Claude Code</strong> 和 <strong class='inspired-inline'>CodeBuff</strong> 启发，BujiCoder 是一个在终端中运行的 <strong>Go原生</strong> 多智能体AI编程工具。一个二进制文件。零依赖。选择任何LLM提供商。你的代码永远不会离开你的机器。", getStarted: "开始使用", viewOnGitHub: "在GitHub上查看" },
+    features: { label: "与众不同之处", title: "BujiCoder不仅仅是另一个代码助手的10个理由", desc: "大多数AI编程工具将你锁定在一个模型、一个提供商和大量的JavaScript依赖中。BujiCoder采取了根本不同的方法。", items: [
+      { icon: "&#9889;", title: "零依赖Go二进制文件", desc: "不需要Node。不需要npm。不需要Python。不需要Docker。单个编译二进制文件瞬间启动。下载它，运行它，完成。整个工具不到30MB。" },
+      { icon: "&#9881;", title: "精细的模型控制", desc: "为不同的智能体角色分配不同的模型。在单个会话中，使用便宜的模型进行文件探索，强大的模型进行编辑，推理模型进行规划。" },
+      { icon: "&#127760;", title: "任何提供商，由你选择", desc: "OpenRouter、Groq、Cerebras、Together AI、Amazon Bedrock、Google Vertex、OpenAI、Anthropic、xAI、Ollama — 带上你自己的API密钥，自由切换提供商。" },
+      { icon: "&#129302;", title: "13个专业智能体", desc: "不是一个通用的聊天机器人。一个由13个专用智能体组成的团队 — 编辑器、规划器、研究员、审查员、git提交者等 — 每个都有自己的工具和系统提示。" },
+      { icon: "&#9878;", title: "并行进化模式", desc: "在Max模式下，多个智能体同时实现竞争解决方案。一个评审智能体评估并选择最好的一个。就像为每个任务举办编程锦标赛。" },
+      { icon: "&#128176;", title: "三种成本模式", desc: "<strong>Normal</strong> 用于快速/廉价的日常编码。<strong>Heavy</strong> 用于更困难的任务和更智能的模型。<strong>Max</strong> 用于使用最强大模型和并行进化的关键任务。" },
+      { icon: "&#128274;", title: "本地优先的隐私", desc: "所有工具都在你的机器上执行。文件读取、写入、代码搜索、终端命令 — 没有通过第三方服务器路由。你的代码永远是你的。" },
+      { icon: "&#128268;", title: "MCP可扩展性", desc: "使用任何模型上下文协议服务器扩展BujiCoder。添加GitHub、浏览器自动化、数据库或自定义工具。急切或延迟加载 — 你控制服务器何时启动。" },
+      { icon: "&#128737;", title: "内置安全护栏", desc: "4级威胁分类，40多种安全模式。元执行检测阻止通过 <code>eval</code>、<code>$()</code> 和 <code>bash -c</code> 的shell注入。每个项目权限，三种模式 — 严格、询问或yolo。关键威胁始终被阻止。" },
+      { icon: "&#128064;", title: "视觉和多模态", desc: "直接使用 <code>@path/to/screenshot.png</code> 附加图像。审查UI模型、调试视觉回归，或让UI审查员智能体使用Puppeteer自动化浏览器测试。" }
+    ]},
+    providers: { label: "LLM提供商", title: "你的密钥。你的模型。你的钱。", desc: "BujiCoder使用你的API密钥直接与AI提供商通信。没有中间商加价。没有供应商锁定。通过单个配置更改切换提供商。", items: [
+      { name: "OpenRouter", desc: "200+模型，一个API密钥" }, { name: "Groq", desc: "超低延迟推理" }, { name: "Cerebras", desc: "晶圆级速度" }, { name: "Together AI", desc: "开源模型托管" }, { name: "OpenAI", desc: "GPT-4o及系列" }, { name: "Anthropic", desc: "Claude Opus、Sonnet、Haiku" }, { name: "xAI", desc: "Grok模型" }, { name: "Google AI", desc: "Gemini系列" }, { name: "Amazon Bedrock", desc: "企业级访问" }, { name: "Google Vertex", desc: "GCP原生模型服务" }, { name: "Ollama", desc: "100%本地运行模型" }, { name: "Llama.cpp", desc: "本地GGUF模型，OpenAI兼容" }, { name: "+ 任何OpenAI兼容", desc: "支持自定义端点" }
+    ]},
+    howItWorks: { label: "使用方法", title: "60秒内从安装到编码", steps: [
+      { num: "1", title: "安装", desc: "一个curl命令。一个二进制文件。没有运行时依赖。", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { num: "2", title: "配置", desc: "设置向导会引导你选择提供商并输入API密钥。快速设置只需10秒。", code: "buji", note: "首次启动时运行向导" },
+      { num: "3", title: "编码", desc: "提问、编辑文件、搜索代码库、运行命令。BujiCoder的智能体处理其余工作。", code: "buji", note: "启动交互式会话" }
+    ]},
+    comparison: { label: "比较", title: "BujiCoder的表现如何", headers: ["", "BujiCoder", "典型AI助手"], rows: [
+      ["运行时", "单个Go二进制文件", "Node.js + npm安装"], ["启动时间", "< 100ms", "2-10秒"], ["LLM提供商", "11+提供商", "1-2提供商"], ["每个智能体的模型", "是，完全可配置", "一个模型用于一切"], ["成本控制", "3种模式+每个智能体覆盖", "订阅或单层"], ["智能体架构", "13个专业智能体", "单个智能体"], ["并行进化", "是（Max模式）", "否"], ["MCP支持", "完整（急切+延迟）", "有限或无"], ["隐私", "100%本地执行", "依赖云"], ["许可证", "Apache 2.0", "各不相同"]
+    ]},
+    inspired: { label: "站在巨人的肩膀上", title: "受业内最佳的启发", desc: "BujiCoder不是在真空中诞生的。我们研究了重新定义AI辅助编码的工具，学习了它们的优点，并以我们自己的愿景建立在这些想法之上。", cards: [
+      { name: "Claude Code", tagline: "Anthropic的终端原生编码智能体", desc: "Claude Code证明了终端优先的AI助手可以比任何IDE插件更强大。它的智能体架构 — AI读取文件、编辑代码、运行命令并自行迭代 — 从根本上改变了开发者与AI交互的方式。BujiCoder的多智能体编排、工具使用系统和权限模型都深受Claude Code开创的模式的影响。", lessons: ["智能体工具使用", "终端优先UX", "权限系统", "文件编辑模式"] },
+      { name: "CodeBuff", tagline: "精益、快速的编码助手", desc: "CodeBuff表明AI编码工具不需要是带有数百个配置文件的臃肿IDE扩展。它倡导速度、简洁和不打扰开发者。BujiCoder延续了同样的理念 — 单个二进制文件、瞬间启动、最小配置 — 同时增加了自带模型和提供商的灵活性。", lessons: ["速度优先设计", "最小占用", "以开发者为中心的UX"] }
+    ], cta: "我们采纳了最好的想法，用Go重写，使其与提供商无关，并添加了多智能体超能力。<br><strong>这就是BujiCoder。</strong>" },
+    install: { label: "安装", title: "准备好尝试了吗？", desc: "选择你的平台。不到一分钟即可开始编码。", cards: [
+      { title: "macOS / Linux", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { title: "从源码（Go 1.24+）", code: "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { title: "Windows", desc: "从 <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a> 下载最新的 <code>.exe</code>。" }
+    ]},
+    footer: { tagline: "AI编程助手。你的模型。你的机器。你的规则。", product: "产品", resources: "资源", enterprise: "企业", contactSales: "联系销售", teamFeatures: "团队功能", contributing: "贡献", copyright: "© 2025 TechnoAlliance. Apache License 2.0." }
+  },
+  hi: {
+    nav: { features: "विशेषताएं", providers: "प्रदाता", howItWorks: "कैसे काम करता है", docs: "दस्तावेज़", github: "GitHub", install: "इंस्टॉल" },
+    hero: { badge: "ओपन सोर्स · Apache 2.0", title: "AI कोडिंग असिस्टेंट जिसे <span class='strike'>Node</span>,<br><span class='strike'>npm</span>, या <span class='strike'>धैर्य</span> की ज़रूरत नहीं", subtitle: "<strong class='inspired-inline'>Claude Code</strong> और <strong class='inspired-inline'>CodeBuff</strong> से प्रेरित, BujiCoder एक <strong>Go-native</strong> मल्टी-एजेंट AI कोडिंग टूल है जो आपके टर्मिनल में चलता है। एक बाइनरी। शून्य निर्भरता। कोई भी LLM प्रदाता चुनें। आपका कोड कभी आपकी मशीन नहीं छोड़ता।", getStarted: "शुरू करें", viewOnGitHub: "GitHub पर देखें" },
+    features: { label: "क्या अलग बनाता है", title: "10 कारण कि BujiCoder सिर्फ एक और कोड असिस्टेंट नहीं है", desc: "ज्यादातर AI कोडिंग टूल आपको एक मॉडल, एक प्रदाता और JavaScript निर्भरताओं के पहाड़ में बांध देते हैं। BujiCoder एक मौलिक रूप से अलग दृष्टिकोण अपनाता है।", items: [
+      { icon: "&#9889;", title: "शून्य-निर्भरता Go बाइनरी", desc: "Node नहीं। npm नहीं। Python नहीं। Docker नहीं। एक संकलित बाइनरी जो तुरंत शुरू होता है। डाउनलोड करें, चलाएं, हो गया। पूरे टूल के लिए 30 MB से कम।" },
+      { icon: "&#9881;", title: "सूक्ष्म मॉडल नियंत्रण", desc: "विभिन्न एजेंट भूमिकाओं के लिए विभिन्न मॉडल असाइन करें। फ़ाइल खोज के लिए सस्ता मॉडल, संपादन के लिए शक्तिशाली, और योजना के लिए तर्क मॉडल — सब एक ही सत्र में।" },
+      { icon: "&#127760;", title: "कोई भी प्रदाता, आपकी पसंद", desc: "OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama — अपनी API कुंजियां लाएं और प्रदाताओं को स्वतंत्र रूप से बदलें।" },
+      { icon: "&#129302;", title: "13 विशेषज्ञ एजेंट", desc: "एक सामान्य चैटबॉट नहीं। 13 उद्देश्य-निर्मित एजेंटों की टीम — संपादक, योजनाकार, शोधकर्ता, समीक्षक, git कमिटर, और अधिक — प्रत्येक के अपने टूल और सिस्टम प्रॉम्प्ट हैं।" },
+      { icon: "&#9878;", title: "समानांतर विकास मोड", desc: "Max मोड में, कई एजेंट एक साथ प्रतिस्पर्धी समाधान लागू करते हैं। एक जज एजेंट मूल्यांकन करता है और सबसे अच्छा चुनता है। हर टास्क के लिए कोडिंग टूर्नामेंट जैसा।" },
+      { icon: "&#128176;", title: "तीन लागत मोड", desc: "तेज/सस्ती रोजमर्रा की कोडिंग के लिए <strong>Normal</strong>। स्मार्ट मॉडल के साथ कठिन कार्यों के लिए <strong>Heavy</strong>। सबसे शक्तिशाली मॉडल और समानांतर विकास के साथ मिशन-क्रिटिकल कार्य के लिए <strong>Max</strong>।" },
+      { icon: "&#128274;", title: "स्थानीय-प्रथम गोपनीयता", desc: "सभी टूल आपकी मशीन पर निष्पादित होते हैं। फ़ाइल पढ़ना, लिखना, कोड खोज, टर्मिनल कमांड — कुछ भी थर्ड-पार्टी सर्वर के माध्यम से नहीं जाता। आपका कोड आपका रहता है।" },
+      { icon: "&#128268;", title: "MCP विस्तार क्षमता", desc: "किसी भी Model Context Protocol सर्वर के साथ BujiCoder का विस्तार करें। GitHub, ब्राउज़र ऑटोमेशन, डेटाबेस, या कस्टम टूल जोड़ें। ईगर या लेजी लोडिंग — आप नियंत्रित करते हैं कि सर्वर कब शुरू होते हैं।" },
+      { icon: "&#128737;", title: "बिल्ट-इन सुरक्षा रेल", desc: "40+ सुरक्षा पैटर्न के साथ 4-स्तरीय खतरे का वर्गीकरण। <code>eval</code>, <code>$()</code>, और <code>bash -c</code> के माध्यम से शेल इंजेक्शन को मेटा-एक्जीक्यूशन डिटेक्शन ब्लॉक करता है। प्रति-प्रोजेक्ट अनुमति, तीन मोड — strict, ask, या yolo। गंभीर खतरे हमेशा ब्लॉक होते हैं।" },
+      { icon: "&#128064;", title: "विज़न और मल्टीमोडल", desc: "<code>@path/to/screenshot.png</code> से सीधे इमेज अटैच करें। UI मॉकअप की समीक्षा करें, विज़ुअल रिग्रेशन को डीबग करें, या UI समीक्षक एजेंट को Puppeteer के साथ ब्राउज़र टेस्टिंग ऑटोमेट करने दें।" }
+    ]},
+    providers: { label: "LLM प्रदाता", title: "आपकी कुंजियां। आपके मॉडल। आपका पैसा।", desc: "BujiCoder आपकी API कुंजियों का उपयोग करके सीधे AI प्रदाताओं से बात करता है। कोई बिचौलिया मार्कअप नहीं। कोई विक्रेता लॉक-इन नहीं। एकल कॉन्फ़िग परिवर्तन के साथ प्रदाता बदलें।", items: [
+      { name: "OpenRouter", desc: "200+ मॉडल, एक API कुंजी" }, { name: "Groq", desc: "अल्ट्रा-लो लेटेंसी अनुमान" }, { name: "Cerebras", desc: "वेफर-स्केल स्पीड" }, { name: "Together AI", desc: "ओपन-सोर्स मॉडल होस्टिंग" }, { name: "OpenAI", desc: "GPT-4o और परिवार" }, { name: "Anthropic", desc: "Claude Opus, Sonnet, Haiku" }, { name: "xAI", desc: "Grok मॉडल" }, { name: "Google AI", desc: "Gemini परिवार" }, { name: "Amazon Bedrock", desc: "एंटरप्राइज़-ग्रेड एक्सेस" }, { name: "Google Vertex", desc: "GCP-नेटिव मॉडल सर्विंग" }, { name: "Ollama", desc: "100% लोकली मॉडल चलाएं" }, { name: "Llama.cpp", desc: "लोकल GGUF मॉडल, OpenAI-कम्पैटिबल" }, { name: "+ कोई भी OpenAI-कम्पैटिबल", desc: "कस्टम एंडपॉइंट समर्थित" }
+    ]},
+    howItWorks: { label: "कैसे काम करता है", title: "60 सेकंड में इंस्टॉल से कोडिंग तक", steps: [
+      { num: "1", title: "इंस्टॉल", desc: "एक curl कमांड। एक बाइनरी। कोई रनटाइम निर्भरता नहीं।", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { num: "2", title: "कॉन्फ़िगर", desc: "सेटअप विज़ार्ड आपको प्रदाता चुनने और API कुंजी दर्ज करने में मार्गदर्शन करता है। क्विक सेटअप में 10 सेकंड लगते हैं।", code: "buji", note: "विज़ार्ड पहले लॉन्च पर चलता है" },
+      { num: "3", title: "कोड", desc: "प्रश्न पूछें, फ़ाइलें संपादित करें, कोडबेस खोजें, कमांड चलाएं। BujiCoder के एजेंट बाकी संभालते हैं।", code: "buji", note: "इंटरैक्टिव सत्र शुरू करें" }
+    ]},
+    comparison: { label: "तुलना", title: "BujiCoder कैसे स्टैक करता है", headers: ["", "BujiCoder", "सामान्य AI असिस्टेंट"], rows: [
+      ["रनटाइम", "सिंगल Go बाइनरी", "Node.js + npm इंस्टॉल"], ["स्टार्टअप समय", "< 100ms", "2-10 सेकंड"], ["LLM प्रदाता", "11+ प्रदाता", "1-2 प्रदाता"], ["प्रति एजेंट मॉडल", "हां, पूरी तरह कॉन्फ़िगर करने योग्य", "सब कुछ के लिए एक मॉडल"], ["लागत नियंत्रण", "3 मोड + प्रति-एजेंट ओवरराइड", "सब्सक्रिप्शन या सिंगल टियर"], ["एजेंट आर्किटेक्चर", "13 विशेषज्ञ एजेंट", "सिंगल एजेंट"], ["समानांतर विकास", "हां (Max मोड)", "नहीं"], ["MCP सपोर्ट", "फुल (ईगर + लेजी)", "सीमित या नहीं"], ["गोपनीयता", "100% लोकल निष्पादन", "क्लाउड-निर्भर"], ["लाइसेंस", "Apache 2.0", "भिन्न"]
+    ]},
+    inspired: { label: "दिग्गजों के कंधों पर खड़े होकर", title: "खेल में सबसे अच्छे से प्रेरित", desc: "BujiCoder निर्वात में नहीं उभरा। हमने उन टूल्स का अध्ययन किया जिन्होंने AI-सहायता प्राप्त कोडिंग को पुनर्परिभाषित किया, उनके सही पहलुओं को सीखा, और अपने दृष्टिकोण के साथ उन विचारों पर निर्माण किया।", cards: [
+      { name: "Claude Code", tagline: "Anthropic का टर्मिनल-नेटिव कोडिंग एजेंट", desc: "Claude Code ने साबित किया कि टर्मिनल-फर्स्ट AI असिस्टेंट किसी भी IDE प्लगइन से अधिक शक्तिशाली हो सकता है। इसकी एजेंटिक आर्किटेक्चर — जहां AI फ़ाइलें पढ़ता है, कोड संपादित करता है, कमांड चलाता है, और अपने आप पर पुनरावृत्ति करता है — ने मौलिक रूप से बदल दिया कि डेवलपर AI के साथ कैसे इंटरैक्ट करते हैं। BujiCoder का मल्टी-एजेंट ऑर्केस्ट्रेशन, टूल-यूज़ सिस्टम, और अनुमति मॉडल सभी Claude Code द्वारा अग्रणी पैटर्न से गहराई से प्रभावित हैं।", lessons: ["एजेंटिक टूल उपयोग", "टर्मिनल-फर्स्ट UX", "अनुमति प्रणाली", "फ़ाइल संपादन पैटर्न"] },
+      { name: "CodeBuff", tagline: "लीन, फास्ट कोडिंग असिस्टेंट", desc: "CodeBuff ने दिखाया कि AI कोडिंग टूल को सौ कॉन्फ़िग फ़ाइलों वाले फूले हुए IDE एक्सटेंशन होने की ज़रूरत नहीं है। इसने गति, सरलता, और डेवलपर के रास्ते से हटने का समर्थन किया। BujiCoder उसी दर्शन को आगे बढ़ाता है — एकल बाइनरी, तत्काल स्टार्टअप, न्यूनतम कॉन्फ़िग — जबकि अपने स्वयं के मॉडल और प्रदाता लाने की लचीलापन जोड़ता है।", lessons: ["स्पीड-फर्स्ट डिज़ाइन", "न्यूनतम फुटप्रिंट", "डेवलपर-सेंट्रिक UX"] }
+    ], cta: "हमने सबसे अच्छे विचार लिए, उन्हें Go में फिर से लिखा, प्रदाता-अज्ञेय बनाया, और मल्टी-एजेंट सुपरपावर जोड़े।<br><strong>यही BujiCoder है।</strong>" },
+    install: { label: "इंस्टॉल", title: "आज़माने के लिए तैयार?", desc: "अपना प्लेटफ़ॉर्म चुनें। एक मिनट से कम में कोडिंग शुरू करें।", cards: [
+      { title: "macOS / Linux", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { title: "सोर्स से (Go 1.24+)", code: "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { title: "Windows", desc: "नवीनतम <code>.exe</code> <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a> से डाउनलोड करें।" }
+    ]},
+    footer: { tagline: "AI कोडिंग असिस्टेंट। आपके मॉडल। आपकी मशीन। आपके नियम।", product: "प्रोडक्ट", resources: "संसाधन", enterprise: "एंटरप्राइज़", contactSales: "सेल्स से संपर्क करें", teamFeatures: "टीम विशेषताएं", contributing: "योगदान", copyright: "© 2025 TechnoAlliance. Apache License 2.0." }
+  },
+  sa: {
+    nav: { features: "الميزات", providers: "المزودون", howItWorks: "كيف يعمل", docs: "الوثائق", github: "GitHub", install: "التثبيت" },
+    hero: { badge: "مفتوح المصدر · Apache 2.0", title: "مساعد البرمجة بالذكاء الاصطناعي<br>الذي لا يحتاج <span class='strike'>Node</span>،<br>ولا <span class='strike'>npm</span>،<br>ولا <span class='strike'>صبرك</span>", subtitle: "مستوحى بشدة من <strong class='inspired-inline'>Claude Code</strong> و <strong class='inspired-inline'>CodeBuff</strong>، BujiCoder هو أداة برمجة AI <strong>Go-native</strong> متعددة الوكلاء تعمل في جهازك الطرفي. ملف ثنائي واحد. صفر تبعيات. اختر أي مزود LLM. كودك لا يغادر جهازك أبدًا.", getStarted: "ابدأ الآن", viewOnGitHub: "عرض على GitHub" },
+    features: { label: "ما يجعله مختلفًا", title: "10 أسباب تجعل BujiCoder ليس مجرد مساعد برمجة آخر", desc: "تقيدك معظم أدوات برمجة الذكاء الاصطناعي بنموذج واحد ومزود واحد وجبل من تبعيات JavaScript. يتبع BujiCoder نهجًا مختلفًا جذريًا.", items: [
+      { icon: "&#9889;", title: "ملف Go ثنائي بدون تبعيات", desc: "لا Node. لا npm. لا Python. لا Docker. ملف ثنائي مترجم واحد يبدأ فورًا. قم بتنزيله وتشغيله، انتهى. أقل من 30 ميجابايت للأداة بأكملها." },
+      { icon: "&#9881;", title: "تحكم دقيق في النماذج", desc: "عيّن نماذج مختلفة لأدوار الوكلاء المختلفة. استخدم نموذجًا رخيصًا لاستكشاف الملفات، ونموذجًا قويًا للتحرير، ونموذج استنتاج للتخطيط — كل ذلك في جلسة واحدة." },
+      { icon: "&#127760;", title: "أي مزود، اختيارك", desc: "OpenRouter و Groq و Cerebras و Together AI و Amazon Bedrock و Google Vertex و OpenAI و Anthropic و xAI و Ollama — أحضر مفاتيح API الخاصة بك وبدّل المزودين بحرية." },
+      { icon: "&#129302;", title: "13 وكيلًا متخصصًا", desc: "ليس روبوت دردشة عام واحد. فريق من 13 وكيلًا مصممًا لغرض محدد — محرر ومخطط وباحث ومراجع وم-commit git والمزيد — لكل منهم أدواته وموجهات النظام الخاصة به." },
+      { icon: "&#9878;", title: "وضع التطور المتوازي", desc: "في وضع Max، ينفذ وكلاء متعددون حلولًا متنافسة في وقت واحد. يقيّم وكيل القاضي ويختار الأفضل. إنه مثل وجود بطولة برمجة لكل مهمة." },
+      { icon: "&#128176;", title: "ثلاثة أوضاع للتكلفة", desc: "<strong>Normal</strong> للبرمجة اليومية السريعة/الرخيصة. <strong>Heavy</strong> للمهام الأصعب مع نماذج أذكى. <strong>Max</strong> للعمل الحاسم مع أقوى النماذج والتطور المتوازي." },
+      { icon: "&#128274;", title: "الخصوصية أولاً محليًا", desc: "يتم تنفيذ جميع الأدوات على جهازك. قراءة الملفات وكتابتها والبحث في الكود وأوامر الطرفية — لا شيء يتم توجيهه عبر خادم تابع لجهة خارجية. كودك يبقى لك." },
+      { icon: "&#128268;", title: "قابلية توسيع MCP", desc: "قم بتوسيع BujiCoder مع أي خادم Model Context Protocol. أضف GitHub وأتمتة المتصفح وقواعد البيانات أو أدوات مخصصة. التحميل الحريص أو الكسول — أنت تتحكم في موعد بدء الخوادم." },
+      { icon: "&#128737;", title: "سلامة مدمجة", desc: "تصنيف التهديدات من 4 مستويات مع أكثر من 40 نمط أمان. يكشف التنفيذ الفوقي ويمنع حقن shell عبر <code>eval</code> و <code>$()</code> و <code>bash -c</code>. أذونات لكل مشروع، ثلاثة أوضاع — صارم أو اسأل أو yolo. التهديدات الحرجة محظورة دائمًا." },
+      { icon: "&#128064;", title: "الرؤية والوسائط المتعددة", desc: "أرفق الصور مباشرة باستخدام <code>@path/to/screenshot.png</code>. راجع نماذج UI، وتصحيح التراجع البصري، أو دع وكيل مراجعة UI يؤتمت اختبار المتصفح باستخدام Puppeteer." }
+    ]},
+    providers: { label: "مزودو LLM", title: "مفاتيحك. نماذجك. أموالك.", desc: "يتحدث BujiCoder مباشرة مع مزودي الذكاء الاصطناعي باستخدام مفاتيح API الخاصة بك. لا زيادة وسطاء. لا قفل بائع. بدّل المزودين بتغيير تكوين واحد.", items: [
+      { name: "OpenRouter", desc: "200+ نموذج، مفتاح API واحد" }, { name: "Groq", desc: "استدلال فائق السرعة" }, { name: "Cerebras", desc: "سرعة بحجم الرقاقة" }, { name: "Together AI", desc: "استضافة نماذج مفتوحة المصدر" }, { name: "OpenAI", desc: "GPT-4o والعائلة" }, { name: "Anthropic", desc: "Claude Opus و Sonnet و Haiku" }, { name: "xAI", desc: "نماذج Grok" }, { name: "Google AI", desc: "عائلة Gemini" }, { name: "Amazon Bedrock", desc: "وصول بدرجة المؤسسات" }, { name: "Google Vertex", desc: "تقديم نماذج أصلي لـ GCP" }, { name: "Ollama", desc: "تشغيل النماذج محليًا 100%" }, { name: "Llama.cpp", desc: "نماذج GGUF محلية، متوافقة مع OpenAI" }, { name: "+ أي متوافق مع OpenAI", desc: "نقاط نهاية مخصصة مدعومة" }
+    ]},
+    howItWorks: { label: "كيف يعمل", title: "من التثبيت إلى البرمجة في 60 ثانية", steps: [
+      { num: "1", title: "التثبيت", desc: "أمر curl واحد. ملف ثنائي واحد. لا تبعيات وقت التشغيل.", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { num: "2", title: "التكوين", desc: "يرشدك معالج الإعداد لاختيار مزود وإدخال مفتاح API. يستغرق الإعداد السريع 10 ثوانٍ.", code: "buji", note: "يعمل المعالج عند أول تشغيل" },
+      { num: "3", title: "البرمجة", desc: "اطرح أسئلة، عدّل ملفات، ابحث في قاعدة الكود، شغّل أوامر. يتعامل وكلاء BujiCoder مع الباقي.", code: "buji", note: "ابدأ جلسة تفاعلية" }
+    ]},
+    comparison: { label: "المقارنة", title: "كيف يقارن BujiCoder", headers: ["", "BujiCoder", "مساعدي AI النموذجيين"], rows: [
+      ["وقت التشغيل", "ملف Go ثنائي واحد", "تثبيت Node.js + npm"], ["وقت البدء", "< 100 مللي ثانية", "2-10 ثوانٍ"], ["مزودو LLM", "11+ مزود", "1-2 مزود"], ["نموذج لكل وكيل", "نعم، قابل للتكوين بالكامل", "نموذج واحد لكل شيء"], ["التحكم في التكلفة", "3 أوضاع + تجاوزات لكل وكيل", "اشتراك أو طبقة واحدة"], ["بنية الوكيل", "13 وكيلًا متخصصًا", "وكيل واحد"], ["التطور المتوازي", "نعم (وضع Max)", "لا"], ["دعم MCP", "كامل (حريص + كسول)", "محدود أو لا يوجد"], ["الخصوصية", "100% تنفيذ محلي", "معتمد على السحابة"], ["الترخيص", "Apache 2.0", "يختلف"]
+    ]},
+    inspired: { label: "الوقوف على أكتاف العمالقة", title: "مستوحى من الأفضل في المجال", desc: "لم يظهر BujiCoder في فراغ. درسنا الأدوات التي أعادت تعريف البرمجة بمساعدة الذكاء الاصطناعي، وتعلمنا ما فعلته بشكل صحيح، وبنينا على تلك الأفكار برؤيتنا الخاصة.", cards: [
+      { name: "Claude Code", tagline: "وكيل برمجة Anthropic الأصلي للطرفية", desc: "أثبت Claude Code أن مساعد AI الأول للطرفية يمكن أن يكون أكثر قوة من أي مكون إضافي لـ IDE. بنيته الوكيلة — حيث يقرأ AI الملفات ويعدل الكود ويشغل الأوامر ويتكرر بنفسه — غيّرت بشكل أساسي كيفية تفاعل المطورين مع AI. تتأثر تنسيق الوكلاء المتعددين في BujiCoder ونظام استخدام الأدوات ونموذج الأذونات جميعها بعمق بالأنماط التي رائدها Claude Code.", lessons: ["استخدام الأدوات الوكيلة", "UX أولاً للطرفية", "نظام الأذونات", "أنماط تعديل الملفات"] },
+      { name: "CodeBuff", tagline: "مساعد البرمجة النحيف والسريع", desc: "أظهر CodeBuff أن أداة برمجة AI لا تحتاج إلى أن تكون امتداد IDE منتفخًا بمئة ملف تكوين. دافع عن السرعة والبساطة وعدم إعاقة طريق المطور. يحمل BujiCoder نفس الفلسفة إلى الأمام — ملف ثنائي واحد، بدء فوري، تكوين الحد الأدنى — مع إضافة المرونة لجلب نماذجك ومزوديك الخاصين.", lessons: ["تصميم السرعة أولاً", "أقل بصمة", "UX متمحور حول المطور"] }
+    ], cta: "أخذنا أفضل الأفكار، وأعدنا كتابتها بـ Go، وجعلناها مستقلة عن المزود، وأضفنا قوى خارقة متعددة الوكلاء.<br><strong>هذا هو BujiCoder.</strong>" },
+    install: { label: "التثبيت", title: "مستعد لتجربته؟", desc: "اختر منصتك. كن مبرمجًا في أقل من دقيقة.", cards: [
+      { title: "macOS / Linux", code: "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { title: "من المصدر (Go 1.24+)", code: "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { title: "Windows", desc: "قم بتنزيل أحدث <code>.exe</code> من <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>إصدارات GitHub</a>." }
+    ]},
+    footer: { tagline: "مساعد برمجة AI. نماذجك. جهازك. قواعدك.", product: "المنتج", resources: "الموارد", enterprise: "المؤسسات", contactSales: "اتصل بالمبيعات", teamFeatures: "ميزات الفريق", contributing: "المساهمة", copyright: "© 2025 TechnoAlliance. ترخيص Apache 2.0." }
+  }
+};
+
+// ===== Language Switcher =====
+let currentLang = 'en';
+const langFlags = { en: '🇺🇸', jp: '🇯🇵', cn: '🇨🇳', hi: '🇮🇳', sa: '🇸🇦' };
+const langNames = { en: 'EN', jp: 'JP', cn: 'CN', hi: 'HI', sa: 'SA' };
+const langFonts = { en: "'Inter', sans-serif", jp: "'Noto Sans JP', sans-serif", cn: "'Noto Sans SC', sans-serif", hi: "'Noto Sans Devanagari', sans-serif", sa: "'Noto Sans Arabic', sans-serif" };
+
+function setLanguage(lang) {
+  currentLang = lang;
+  const t = translations[lang];
+  if (!t) return;
+
+  // Update HTML dir for RTL
+  document.documentElement.dir = lang === 'sa' ? 'rtl' : 'ltr';
+  document.documentElement.lang = lang;
+
+  // Update font
+  document.body.style.fontFamily = langFonts[lang] || langFonts.en;
+
+  // Update flag button
+  document.getElementById('langFlag').textContent = langFlags[lang];
+  document.getElementById('langName').textContent = langNames[lang];
+
+  // Update simple text elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const parts = key.split('.');
+    let val = t;
+    for (const p of parts) { if (val) val = val[p]; }
+    if (val) el.textContent = val;
+  });
+
+  // Update HTML content elements
+  document.querySelectorAll('[data-i18n-html]').forEach(el => {
+    const key = el.getAttribute('data-i18n-html');
+    const parts = key.split('.');
+    let val = t;
+    for (const p of parts) { if (val) val = val[p]; }
+    if (val) el.innerHTML = val;
+  });
+
+  // Update dropdown active state
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('data-lang') === lang);
+  });
+
+  // Re-render dynamic sections
+  renderFeatures(t);
+  renderProviders(t);
+  renderSteps(t);
+  renderComparison(t);
+  renderInspired(t);
+  renderInstall(t);
+
+  // Save preference
+  try { localStorage.setItem('buji-lang', lang); } catch(e) {}
+}
+
+// ===== Dynamic Section Renderers =====
+function renderFeatures(t) {
+  const grid = document.getElementById('featuresGrid');
+  if (!grid || !t.features) return;
+  grid.innerHTML = t.features.items.map((f, i) => `
+    <div class="feature-card${i === 0 || i === 4 ? ' feature-highlight' : ''}">
+      <div class="feature-number">${String(i + 1).padStart(2, '0')}</div>
+      <div class="feature-icon">${f.icon}</div>
+      <h3>${f.title}</h3>
+      <p>${f.desc}</p>
+    </div>
+  `).join('');
+  observeAnimations();
+}
+
+function renderProviders(t) {
+  const grid = document.getElementById('providersGrid');
+  if (!grid || !t.providers) return;
+  grid.innerHTML = t.providers.items.map(p => `
+    <div class="provider-card${p.name.startsWith('+') ? ' provider-card-add' : ''}">
+      <div class="provider-name">${p.name}</div>
+      <div class="provider-desc">${p.desc}</div>
+    </div>
+  `).join('');
+  observeAnimations();
+}
+
+function renderSteps(t) {
+  const container = document.getElementById('stepsContainer');
+  if (!container || !t.howItWorks) return;
+  container.innerHTML = t.howItWorks.steps.map(s => `
+    <div class="step">
+      <div class="step-number">${s.num}</div>
+      <div class="step-content">
+        <h3>${s.title}</h3>
+        <p>${s.desc}</p>
+        <div class="step-code">
+          <code>${s.code}</code>
+          ${s.note ? `<span class="step-note">${s.note}</span>` : ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+  observeAnimations();
+}
+
+function renderComparison(t) {
+  const table = document.getElementById('comparisonTable');
+  if (!table || !t.comparison) return;
+  let html = '<thead><tr>';
+  t.comparison.headers.forEach((h, i) => {
+    html += `<th${i === 1 ? ' class="highlight-col"' : ''}>${h}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+  t.comparison.rows.forEach(row => {
+    html += '<tr>';
+    row.forEach((cell, i) => {
+      html += `<td${i === 1 ? ' class="highlight-col"' : ''}>${i === 1 ? '<strong>' + cell + '</strong>' : cell}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function renderInspired(t) {
+  const grid = document.getElementById('inspiredGrid');
+  if (!grid || !t.inspired) return;
+  grid.innerHTML = t.inspired.cards.map(c => `
+    <div class="inspired-card">
+      <div class="inspired-logo">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <h3>${c.name}</h3>
+      <p class="inspired-tagline">${c.tagline}</p>
+      <p class="inspired-desc">${c.desc}</p>
+      <div class="inspired-lessons">
+        ${c.lessons.map(l => `<span class="lesson-tag">${l}</span>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderInstall(t) {
+  const container = document.getElementById('installOptions');
+  if (!container || !t.install) return;
+  container.innerHTML = t.install.cards.map(c => `
+    <div class="install-card">
+      <h3>${c.title}</h3>
+      ${c.code ? `<div class="install-code"><code>${c.code}</code></div>` : ''}
+      ${c.desc ? `<p>${c.desc}</p>` : ''}
+    </div>
+  `).join('');
+  observeAnimations();
+}
+
+// ===== Animations =====
+function observeAnimations() {
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) entry.target.classList.add('visible');
+    });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+  document.querySelectorAll('.feature-card, .provider-card, .step, .install-card').forEach(el => {
+    observer.observe(el);
+  });
+}
+
+// ===== Init =====
+document.addEventListener('DOMContentLoaded', () => {
+  // Load saved language
+  const saved = localStorage.getItem('buji-lang');
+  if (saved && translations[saved]) setLanguage(saved);
+  else setLanguage('en');
+
+  // Language switcher toggle
+  document.getElementById('langBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('langDrop').classList.toggle('open');
+  });
+
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      setLanguage(a.getAttribute('data-lang'));
+      document.getElementById('langDrop').classList.remove('open');
+    });
+  });
+
+  document.addEventListener('click', () => {
+    document.getElementById('langDrop').classList.remove('open');
+  });
+
+  // Mobile nav
+  document.querySelector('.nav-toggle').addEventListener('click', function() {
     document.querySelector('.nav-links').classList.toggle('open');
     this.classList.toggle('active');
-});
+  });
 
-// Smooth scroll
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+  // Smooth scroll
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
     anchor.addEventListener('click', function(e) {
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            e.preventDefault();
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            document.querySelector('.nav-links').classList.remove('open');
-            document.querySelector('.nav-toggle').classList.remove('active');
-        }
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        document.querySelector('.nav-links').classList.remove('open');
+        document.querySelector('.nav-toggle').classList.remove('active');
+      }
     });
-});
+  });
 
-// Nav background on scroll
-window.addEventListener('scroll', () => {
+  // Nav scroll
+  window.addEventListener('scroll', () => {
     document.querySelector('.nav').classList.toggle('scrolled', window.scrollY > 40);
-});
+  });
 
-// Intersection Observer for fade-in animations
-const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-        }
-    });
-}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
-
-document.querySelectorAll('.feature-card, .provider-card, .step, .install-card').forEach(el => {
-    observer.observe(el);
+  observeAnimations();
 });
 </script>
 

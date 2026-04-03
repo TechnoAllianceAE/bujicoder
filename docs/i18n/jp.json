@@ -1,0 +1,127 @@
+{
+  "nav": {
+    "features": "機能",
+    "providers": "プロバイダー",
+    "howItWorks": "使い方",
+    "docs": "ドキュメント",
+    "github": "GitHub",
+    "install": "インストール"
+  },
+  "hero": {
+    "badge": "オープンソース · Apache 2.0",
+    "title": "<span class='strike'>Node</span>も<br><span class='strike'>npm</span>も<br><span class='strike'>忍耐</span>も不要な<br>AIコーディングアシスタント",
+    "subtitle": "<strong class='inspired-inline'>Claude Code</strong>と<strong class='inspired-inline'>CodeBuff</strong>に強くインスパイアされたBujiCoderは、ターミナルで動作する<strong>Goネイティブ</strong>のマルチエージェントAIコーディングツールです。1つのバイナリ。ゼロ依存。お好みのLLMプロバイダーを選択可能。あなたのコードは決してマシンから出ません。",
+    "getStarted": "始める",
+    "viewOnGitHub": "GitHubで見る"
+  },
+  "features": {
+    "label": "何が違うのか",
+    "title": "BujiCoderが普通のコードアシスタントと違う10の理由",
+    "desc": "ほとんどのAIコーディングツールは、1つのモデル、1つのプロバイダー、大量のJavaScript依存関係にあなたを閉じ込めます。BujiCoderは根本的に異なるアプローチを取ります。",
+    "items": [
+      { "icon": "&#9889;", "title": "ゼロ依存Goバイナリ", "desc": "Node不要。npm不要。Python不要。Docker不要。単一のコンパイル済みバイナリが瞬時に起動。ダウンロードして実行するだけ。ツール全体で30MB未満。" },
+      { "icon": "&#9881;", "title": "きめ細かいモデル制御", "desc": "エージェントロールごとに異なるモデルを割り当て。ファイル探索には安価なモデル、編集には強力なモデル、計画には推論モデルを — すべて1セッションで。" },
+      { "icon": "&#127760;", "title": "お好みのプロバイダー", "desc": "OpenRouter、Groq、Cerebras、Together AI、Amazon Bedrock、Google Vertex、OpenAI、Anthropic、xAI、Ollama — APIキーを持ち込んで、プロバイダーを自由に切り替え。" },
+      { "icon": "&#129302;", "title": "13の専門エージェント", "desc": "汎用チャットボットは1つではありません。エディター、プランナー、リサーチャー、レビュアー、gitコミッターなど、13の目的別エージェントチーム — それぞれが独自のツールとシステムプロンプトを持ちます。" },
+      { "icon": "&#9878;", "title": "パラレルエボリューションモード", "desc": "Maxモードでは、複数のエージェントが競合するソリューションを同時に実装します。ジャッジエージェントが評価して最良のものを選択。すべてのタスクでコーディングトーナメントを開催しているようなものです。" },
+      { "icon": "&#128176;", "title": "3つのコストモード", "desc": "高速/安価な日常コーディング用の<strong>Normal</strong>。よりスマートなモデルで難しいタスク用の<strong>Heavy</strong>。最も強力なモデルとパラレルエボリューションによるミッションクリティカルな作業用の<strong>Max</strong>。" },
+      { "icon": "&#128274;", "title": "ローカルファーストプライバシー", "desc": "すべてのツールはあなたのマシンで実行されます。ファイルの読み書き、コード検索、ターミナルコマンド — サードパーティサーバーを経由するものは何もありません。あなたのコードはあなたのものです。" },
+      { "icon": "&#128268;", "title": "MCP拡張性", "desc": "Model Context ProtocolサーバーでBujiCoderを拡張。GitHub、ブラウザ自動化、データベース、カスタムツールを追加。イーガーロードとレイジーロード — サーバーの起動タイミングをあなたが制御。" },
+      { "icon": "&#128737;", "title": "組み込みの安全レール", "desc": "40以上のセキュリティパターンによる4レベルの脅威分類。<code>eval</code>、<code>$()</code>、<code>bash -c</code>によるシェルインジェクションをメタ実行検出でブロック。プロジェクトごとのパーミッション、3つのモード — strict、ask、yolo。重大な脅威は常にブロックされます。" },
+      { "icon": "&#128064;", "title": "ビジョン＆マルチモーダル", "desc": "<code>@path/to/screenshot.png</code>で画像を直接添付。UIモックアップのレビュー、ビジュアルリグレッションのデバッグ、UIレビュアーエージェントによるPuppeteerを使用したブラウザテストの自動化。" }
+    ]
+  },
+  "providers": {
+    "label": "LLMプロバイダー",
+    "title": "あなたのキー。あなたのモデル。あなたのお金。",
+    "desc": "BujiCoderはあなたのAPIキーを使用してAIプロバイダーと直接通信します。中間マージンなし。ベンダーロックインなし。設定変更1つでプロバイダーを切り替え。",
+    "items": [
+      { "name": "OpenRouter", "desc": "200以上のモデル、1つのAPIキー" },
+      { "name": "Groq", "desc": "超低遅延推論" },
+      { "name": "Cerebras", "desc": "ウェハースケールの速度" },
+      { "name": "Together AI", "desc": "オープンソースモデルホスティング" },
+      { "name": "OpenAI", "desc": "GPT-4o＆ファミリー" },
+      { "name": "Anthropic", "desc": "Claude Opus、Sonnet、Haiku" },
+      { "name": "xAI", "desc": "Grokモデル" },
+      { "name": "Google AI", "desc": "Geminiファミリー" },
+      { "name": "Amazon Bedrock", "desc": "エンタープライズグレード" },
+      { "name": "Google Vertex", "desc": "GCPネイティブモデル配信" },
+      { "name": "Ollama", "desc": "100%ローカルでモデルを実行" },
+      { "name": "Llama.cpp", "desc": "ローカルGGUFモデル、OpenAI互換" },
+      { "name": "+ OpenAI互換なら何でも", "desc": "カスタムエンドポイント対応" }
+    ]
+  },
+  "howItWorks": {
+    "label": "使い方",
+    "title": "インストールからコーディングまで60秒",
+    "steps": [
+      { "num": "1", "title": "インストール", "desc": "curlコマンド1つ。バイナリ1つ。ランタイム依存関係なし。", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { "num": "2", "title": "設定", "desc": "セットアップウィザードがプロバイダーの選択とAPIキーの入力をガイドします。クイックセットアップは10秒で完了。", "code": "buji", "note": "初回起動時にウィザードが実行されます" },
+      { "num": "3", "title": "コーディング", "desc": "質問したり、ファイルを編集したり、コードベースを検索したり、コマンドを実行したり。BujiCoderのエージェントが残りをお任せします。", "code": "buji", "note": "インタラクティブセッションを開始" }
+    ]
+  },
+  "comparison": {
+    "label": "比較",
+    "title": "BujiCoderの実力",
+    "headers": ["", "BujiCoder", "一般的なAIアシスタント"],
+    "rows": [
+      ["ランタイム", "単一Goバイナリ", "Node.js + npmインストール"],
+      ["起動時間", "< 100ms", "2〜10秒"],
+      ["LLMプロバイダー", "11以上のプロバイダー", "1〜2プロバイダー"],
+      ["エージェントごとのモデル", "はい、完全に設定可能", "すべてに1つのモデル"],
+      ["コスト制御", "3モード + エージェントごとの上書き", "サブスクリプションまたは単一ティア"],
+      ["エージェントアーキテクチャ", "13の専門エージェント", "単一エージェント"],
+      ["パラレルエボリューション", "はい（Maxモード）", "なし"],
+      ["MCPサポート", "フル（イーガー + レイジー）", "制限付きまたはなし"],
+      ["プライバシー", "100%ローカル実行", "クラウド依存"],
+      ["ライセンス", "Apache 2.0", "様々"]
+    ]
+  },
+  "inspired": {
+    "label": "巨人の肩の上に立つ",
+    "title": "最高のものからインスパイアされた",
+    "desc": "BujiCoderは真空状態で生まれたわけではありません。AI支援コーディングの再定義に貢献したツールを研究し、その優れた点を学び、独自のビジョンで構築しました。",
+    "cards": [
+      {
+        "name": "Claude Code",
+        "tagline": "Anthropicのターミナルネイティブコーディングエージェント",
+        "desc": "Claude Codeは、ターミナルファーストのAIアシスタントがIDEプラグインよりも強力であることを証明しました。AIがファイルを読み、コードを編集し、コマンドを実行し、自ら反復するエージェンティックアーキテクチャは、開発者がAIと対話する方法を根本的に変えました。BujiCoderのマルチエージェントオーケストレーション、ツール使用システム、パーミッションモデルはすべて、Claude Codeが先駆けたパターンに深く影響を受けています。",
+        "lessons": ["エージェンティックツール使用", "ターミナルファーストUX", "パーミッションシステム", "ファイル編集パターン"]
+      },
+      {
+        "name": "CodeBuff",
+        "tagline": "リーンで高速なコーディングアシスタント",
+        "desc": "CodeBuffは、AIコーディングツールが100の設定ファイルを持つ膨らんだIDE拡張機能である必要がないことを示しました。速度、シンプルさ、開発者の邪魔をしないことを提唱しました。BujiCoderはその哲学を受け継ぎ — 単一バイナリ、瞬時起動、最小限の設定 — さらに独自のモデルとプロバイダーを持ち込む柔軟性を追加しました。",
+        "lessons": ["速度ファーストデザイン", "最小フットプリント", "開発者中心UX"]
+      }
+    ],
+    "cta": "最高のアイデアを取り、Goで書き直し、プロバイダー非依存にし、マルチエージェントの超能力を追加しました。<br><strong>それがBujiCoderです。</strong>"
+  },
+  "install": {
+    "label": "インストール",
+    "title": "試してみる準備はできましたか？",
+    "desc": "プラットフォームを選んでください。1分以内にコーディングを始められます。",
+    "cards": [
+      { "title": "macOS / Linux", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
+      { "title": "ソースから（Go 1.24+）", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { "title": "Windows", "desc": "最新の<code>.exe</code>を<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>からダウンロードしてください。" }
+    ]
+  },
+  "footer": {
+    "tagline": "AIコーディングアシスタント。あなたのモデル。あなたのマシン。あなたのルール。",
+    "product": "プロダクト",
+    "resources": "リソース",
+    "enterprise": "エンタープライズ",
+    "contactSales": "営業に連絡",
+    "teamFeatures": "チーム機能",
+    "contributing": "コントリビューション",
+    "copyright": "© 2025 TechnoAlliance. Apache License 2.0."
+  },
+  "languages": {
+    "en": "🇺🇸 English",
+    "jp": "🇯🇵 日本語",
+    "cn": "🇨🇳 中文",
+    "hi": "🇮🇳 हिन्दी",
+    "sa": "🇸🇦 العربية"
+  }
+}

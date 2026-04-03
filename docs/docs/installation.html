@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,18 +8,30 @@
     <link rel="stylesheet" href="docs.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+SC:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <nav class="nav scrolled">
     <div class="nav-inner">
-        <a href="../" class="nav-logo"><span class="logo-icon">&#9670;</span> BujiCoder</a>
+        <a href="../" class="nav-logo"><img src="../logo.svg" alt="BujiCoder Logo" class="logo-image"> BujiCoder</a>
         <div class="nav-links">
             <a href="../#features">Features</a>
             <a href="./">Docs</a>
             <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
             <a href="../#install" class="nav-cta">Install</a>
+            <div class="lang-switcher">
+                <button class="lang-switcher-btn" id="langBtn" aria-label="Switch language">
+                    <span id="langFlag">🇺🇸</span> <span id="langName">EN</span> ▾
+                </button>
+                <div class="lang-dropdown" id="langDrop">
+                    <a href="#" data-lang="en" class="active"><span class="lang-flag">🇺🇸</span> English</a>
+                    <a href="#" data-lang="jp"><span class="lang-flag">🇯🇵</span> 日本語</a>
+                    <a href="#" data-lang="cn"><span class="lang-flag">🇨🇳</span> 中文</a>
+                    <a href="#" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी</a>
+                    <a href="#" data-lang="sa"><span class="lang-flag">🇸🇦</span> العربية</a>
+                </div>
+            </div>
         </div>
         <button class="nav-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
     </div>
@@ -27,100 +39,100 @@
 
 <div class="docs-layout">
     <aside class="docs-sidebar">
-        <h3>Getting Started</h3>
+        <h3 data-i18n="sidebar.gettingStarted">Getting Started</h3>
         <a href="./">Overview</a>
         <a href="installation.html" class="active">Installation</a>
         <a href="configuration.html">Configuration</a>
         <a href="api-keys.html">API Keys</a>
-        <h3>Features</h3>
+        <h3 data-i18n="sidebar.features">Features</h3>
         <a href="modes.html">Cost Modes</a>
         <a href="mcp-servers.html">MCP Servers</a>
         <a href="agents.html">Agent Architecture</a>
         <a href="commands.html">Slash Commands</a>
-        <h3>v0.8.4</h3>
+        <h3 data-i18n="sidebar.whatsNew">v0.8.4</h3>
         <a href="security.html">Command Security</a>
         <a href="memory.html">Project Memory</a>
         <a href="coordinator.html">Goal Coordinator</a>
     </aside>
 
     <main class="docs-content">
-        <h1>Installation</h1>
-        <p class="docs-subtitle">BujiCoder ships as a single binary. No runtime dependencies required.</p>
+        <h1 data-i18n="install.title">Installation</h1>
+        <p class="docs-subtitle" data-i18n="install.subtitle">BujiCoder ships as a single binary. No runtime dependencies required.</p>
 
-        <h2>macOS / Linux (recommended)</h2>
-        <p>Use the install script to download the latest release and place it in your PATH:</p>
+        <h2 data-i18n="install.recommendedTitle">macOS / Linux (recommended)</h2>
+        <p data-i18n="install.recommendedDesc">Use the install script to download the latest release and place it in your PATH:</p>
 <pre><code>curl -fsSL https://community.bujicoder.com/install.sh | bash</code></pre>
-        <p>This installs the <code>buji</code> binary to <code>~/.local/bin/</code>. Make sure this directory is in your <code>$PATH</code>.</p>
+        <p data-i18n="install.recommendedNote">This installs the <code>buji</code> binary to <code>~/.local/bin/</code>. Make sure this directory is in your <code>$PATH</code>.</p>
 
-        <h2>Build from Source</h2>
-        <p>Requires <strong>Go 1.24+</strong>.</p>
+        <h2 data-i18n="install.sourceTitle">Build from Source</h2>
+        <p data-i18n="install.sourceReq">Requires <strong>Go 1.24+</strong>.</p>
 <pre><code>go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code></pre>
-        <p>Or clone and build manually:</p>
+        <p data-i18n="install.sourceAlt">Or clone and build manually:</p>
 <pre><code>git clone https://github.com/TechnoAllianceAE/bujicoder.git
 cd bujicoder
 go build -o buji ./cli/cmd/buji
 ./buji</code></pre>
 
-        <h2>Windows</h2>
-        <p>Download the latest <code>.exe</code> from <a href="https://github.com/TechnoAllianceAE/bujicoder/releases" target="_blank" rel="noopener">GitHub Releases</a> and add it to your PATH.</p>
+        <h2 data-i18n="install.windowsTitle">Windows</h2>
+        <p data-i18n="install.windowsDesc">Download the latest <code>.exe</code> from <a href="https://github.com/TechnoAllianceAE/bujicoder/releases" target="_blank" rel="noopener">GitHub Releases</a> and add it to your PATH.</p>
 
-        <h2>Verify Installation</h2>
+        <h2 data-i18n="install.verifyTitle">Verify Installation</h2>
 <pre><code>buji --version</code></pre>
 
-        <h2>First Run</h2>
-        <p>On first launch, BujiCoder runs a setup wizard that:</p>
+        <h2 data-i18n="install.firstRunTitle">First Run</h2>
+        <p data-i18n="install.firstRunDesc">On first launch, BujiCoder runs a setup wizard that:</p>
         <ol>
-            <li>Asks you to choose a setup mode (<strong>Quick</strong> or <strong>Advanced</strong>)</li>
-            <li>Prompts for an API key from your chosen provider</li>
-            <li>Creates the config file at <code>~/.bujicoder/bujicoder.yaml</code></li>
+            <li data-i18n="install.wizard1">Asks you to choose a setup mode (<strong>Quick</strong> or <strong>Advanced</strong>)</li>
+            <li data-i18n="install.wizard2">Prompts for an API key from your chosen provider</li>
+            <li data-i18n="install.wizard3">Creates the config file at <code>~/.bujicoder/bujicoder.yaml</code></li>
         </ol>
 
         <div class="docs-callout tip">
-            <strong>You only need one API key.</strong> We recommend <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a> — it gives access to 200+ models with a single key, and BujiCoder's default model mappings are designed for it. Just paste your OpenRouter key and you're ready to code.
+            <strong data-i18n="install.tipTitle">You only need one API key.</strong> <span data-i18n="install.tipText">We recommend <a href="https://openrouter.ai" target="_blank" rel="noopener">OpenRouter</a> — it gives access to 200+ models with a single key, and BujiCoder's default model mappings are designed for it. Just paste your OpenRouter key and you're ready to code.</span>
         </div>
 
-        <p>If you use a different provider (Anthropic, OpenAI, Groq, etc.), you'll also need to configure the <code>modes</code> section in your config to use models available from that provider. See <a href="api-keys.html">API Keys</a> for per-provider sample configs.</p>
+        <p data-i18n="install.providerNote">If you use a different provider (Anthropic, OpenAI, Groq, etc.), you'll also need to configure the <code>modes</code> section in your config to use models available from that provider. See <a href="api-keys.html">API Keys</a> for per-provider sample configs.</p>
 
-        <h3>Quick Start with OpenRouter</h3>
+        <h3 data-i18n="install.quickOpenRouterTitle">Quick Start with OpenRouter</h3>
         <ol>
-            <li>Sign up at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> (free — use Google, GitHub, or email)</li>
-            <li>Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> and click <strong>Create Key</strong></li>
-            <li>Add credits under <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">Credits</a> (many models have free tiers)</li>
-            <li>Run <code>buji</code> and paste your key when prompted — that's it!</li>
+            <li data-i18n="install.or1">Sign up at <a href="https://openrouter.ai" target="_blank" rel="noopener">openrouter.ai</a> (free — use Google, GitHub, or email)</li>
+            <li data-i18n="install.or2">Go to <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> and click <strong>Create Key</strong></li>
+            <li data-i18n="install.or3">Add credits under <a href="https://openrouter.ai/credits" target="_blank" rel="noopener">Credits</a> (many models have free tiers)</li>
+            <li data-i18n="install.or4">Run <code>buji</code> and paste your key when prompted — that's it!</li>
         </ol>
 
-        <h3>Local Models (Ollama / Llama.cpp)</h3>
-        <p>BujiCoder works with local LLMs via Ollama or any llama.cpp server. In Advanced Setup, select <strong>Ollama</strong> or <strong>Llama.cpp</strong> and enter your server URL (or press Enter to use the default). BujiCoder will fetch available models from your server and let you assign them to agent roles.</p>
+        <h3 data-i18n="install.localModelsTitle">Local Models (Ollama / Llama.cpp)</h3>
+        <p data-i18n="install.localModelsDesc">BujiCoder works with local LLMs via Ollama or any llama.cpp server. In Advanced Setup, select <strong>Ollama</strong> or <strong>Llama.cpp</strong> and enter your server URL (or press Enter to use the default). BujiCoder will fetch available models from your server and let you assign them to agent roles.</p>
 <pre><code># Start your local server first, then run:
 buji
 # Choose Advanced Setup → Ollama or Llama.cpp
 # Press Enter to use the default URL (localhost:11434 / localhost:8080)</code></pre>
 
         <div class="docs-callout tip">
-            <strong>Tool support matters.</strong> BujiCoder's agents use tool/function calling to read files, edit code, run commands, and search your codebase. Not all local models support this. Recommended models with tool support:
+            <strong data-i18n="install.toolSupportTitle">Tool support matters.</strong> <span data-i18n="install.toolSupportDesc">BujiCoder's agents use tool/function calling to read files, edit code, run commands, and search your codebase. Not all local models support this. Recommended models with tool support:</span>
             <ul>
                 <li><code>llama3.1:8b</code> / <code>llama3.1:70b</code></li>
                 <li><code>qwen2.5-coder:7b</code> / <code>qwen2.5-coder:32b</code></li>
                 <li><code>mistral:7b</code></li>
                 <li><code>qwen3:8b</code></li>
             </ul>
-            Models without tool support can still chat, but won't be able to use any agent tools.
+            <span data-i18n="install.toolSupportNote">Models without tool support can still chat, but won't be able to use any agent tools.</span>
         </div>
 
         <div class="docs-callout info">
-            <strong>Note:</strong> You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.
+            <strong data-i18n="install.skipWizardTitle">Note:</strong> <span data-i18n="install.skipWizardText">You can skip the wizard and create the config file manually. See <a href="configuration.html">Configuration</a>.</span>
         </div>
 
-        <h2>Updating</h2>
-        <p>BujiCoder checks for updates on launch (can be disabled). To update manually:</p>
+        <h2 data-i18n="install.updatingTitle">Updating</h2>
+        <p data-i18n="install.updatingDesc">BujiCoder checks for updates on launch (can be disabled). To update manually:</p>
 <pre><code># Re-run the install script
 curl -fsSL https://community.bujicoder.com/install.sh | bash
 
 # Or from source
 go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest</code></pre>
-        <p>You can also use the <code>/update</code> command inside the TUI to check for updates.</p>
+        <p data-i18n="install.tuiUpdate">You can also use the <code>/update</code> command inside the TUI to check for updates.</p>
 
-        <h2>Uninstalling</h2>
+        <h2 data-i18n="install.uninstallTitle">Uninstalling</h2>
 <pre><code># Remove the binary
 rm ~/.local/bin/buji
 
@@ -130,9 +142,76 @@ rm -rf ~/.bujicoder</code></pre>
 </div>
 
 <script>
-document.querySelector('.nav-toggle').addEventListener('click', function() {
+const installTranslations = {
+  en: {
+    sidebar: { gettingStarted: "Getting Started", features: "Features", whatsNew: "v0.8.4" },
+    install: { title: "Installation", subtitle: "BujiCoder ships as a single binary. No runtime dependencies required.", recommendedTitle: "macOS / Linux (recommended)", recommendedDesc: "Use the install script to download the latest release and place it in your PATH:", recommendedNote: "This installs the <code>buji</code> binary to <code>~/.local/bin/</code>. Make sure this directory is in your <code>$PATH</code>.", sourceTitle: "Build from Source", sourceReq: "Requires <strong>Go 1.24+</strong>.", sourceAlt: "Or clone and build manually:", windowsTitle: "Windows", windowsDesc: "Download the latest <code>.exe</code> from <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a> and add it to your PATH.", verifyTitle: "Verify Installation", firstRunTitle: "First Run", firstRunDesc: "On first launch, BujiCoder runs a setup wizard that:", wizard1: "Asks you to choose a setup mode (<strong>Quick</strong> or <strong>Advanced</strong>)", wizard2: "Prompts for an API key from your chosen provider", wizard3: "Creates the config file at <code>~/.bujicoder/bujicoder.yaml</code>", tipTitle: "You only need one API key.", tipText: "We recommend <a href='https://openrouter.ai' target='_blank' rel='noopener'>OpenRouter</a> — it gives access to 200+ models with a single key, and BujiCoder's default model mappings are designed for it. Just paste your OpenRouter key and you're ready to code.", providerNote: "If you use a different provider (Anthropic, OpenAI, Groq, etc.), you'll also need to configure the <code>modes</code> section in your config to use models available from that provider. See <a href='api-keys.html'>API Keys</a> for per-provider sample configs.", quickOpenRouterTitle: "Quick Start with OpenRouter", or1: "Sign up at <a href='https://openrouter.ai' target='_blank' rel='noopener'>openrouter.ai</a> (free — use Google, GitHub, or email)", or2: "Go to <a href='https://openrouter.ai/keys' target='_blank' rel='noopener'>openrouter.ai/keys</a> and click <strong>Create Key</strong>", or3: "Add credits under <a href='https://openrouter.ai/credits' target='_blank' rel='noopener'>Credits</a> (many models have free tiers)", or4: "Run <code>buji</code> and paste your key when prompted — that's it!", localModelsTitle: "Local Models (Ollama / Llama.cpp)", localModelsDesc: "BujiCoder works with local LLMs via Ollama or any llama.cpp server. In Advanced Setup, select <strong>Ollama</strong> or <strong>Llama.cpp</strong> and enter your server URL (or press Enter to use the default). BujiCoder will fetch available models from your server and let you assign them to agent roles.", toolSupportTitle: "Tool support matters.", toolSupportDesc: "BujiCoder's agents use tool/function calling to read files, edit code, run commands, and search your codebase. Not all local models support this. Recommended models with tool support:", toolSupportNote: "Models without tool support can still chat, but won't be able to use any agent tools.", skipWizardTitle: "Note:", skipWizardText: "You can skip the wizard and create the config file manually. See <a href='configuration.html'>Configuration</a>.", updatingTitle: "Updating", updatingDesc: "BujiCoder checks for updates on launch (can be disabled). To update manually:", tuiUpdate: "You can also use the <code>/update</code> command inside the TUI to check for updates.", uninstallTitle: "Uninstalling" }
+  },
+  jp: {
+    sidebar: { gettingStarted: "はじめに", features: "機能", whatsNew: "v0.8.4" },
+    install: { title: "インストール", subtitle: "BujiCoderは単一のバイナリとして提供されます。ランタイム依存関係は不要です。", recommendedTitle: "macOS / Linux（推奨）", recommendedDesc: "インストールスクリプトを使用して最新のリリースをダウンロードし、PATHに配置します：", recommendedNote: "これにより、<code>buji</code>バイナリが<code>~/.local/bin/</code>にインストールされます。このディレクトリが<code>$PATH</code>にあることを確認してください。", sourceTitle: "ソースからビルド", sourceReq: "<strong>Go 1.24+</strong>が必要です。", sourceAlt: "またはクローンして手動でビルド：", windowsTitle: "Windows", windowsDesc: "最新の<code>.exe</code>を<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>からダウンロードし、PATHに追加してください。", verifyTitle: "インストールの確認", firstRunTitle: "初回実行", firstRunDesc: "初回起動時、BujiCoderはセットアップウィザードを実行します：", wizard1: "セットアップモードの選択（<strong>Quick</strong>または<strong>Advanced</strong>）", wizard2: "選択したプロバイダーのAPIキーの入力を促されます", wizard3: "<code>~/.bujicoder/bujicoder.yaml</code>に設定ファイルを作成します", tipTitle: "APIキーは1つだけで十分です。", tipText: "<a href='https://openrouter.ai' target='_blank' rel='noopener'>OpenRouter</a>を推奨します — 1つのキーで200以上のモデルにアクセスでき、BujiCoderのデフォルトモデルマッピングはそれ用に設計されています。OpenRouterキーを貼り付けるだけでコーディングの準備完了です。", providerNote: "別のプロバイダー（Anthropic、OpenAI、Groqなど）を使用する場合は、設定の<code>modes</code>セクションも設定して、そのプロバイダーから利用可能なモデルを使用する必要があります。プロバイダー別のサンプル設定は<a href='api-keys.html'>APIキー</a>を参照してください。", quickOpenRouterTitle: "OpenRouterでクイックスタート", or1: "<a href='https://openrouter.ai' target='_blank' rel='noopener'>openrouter.ai</a>でサインアップ（無料 — Google、GitHub、またはメールで）", or2: "<a href='https://openrouter.ai/keys' target='_blank' rel='noopener'>openrouter.ai/keys</a>にアクセスし、<strong>Create Key</strong>をクリック", or3: "<a href='https://openrouter.ai/credits' target='_blank' rel='noopener'>Credits</a>でクレジットを追加（多くのモデルに無料枠があります）", or4: "<code>buji</code>を実行し、プロンプトが表示されたらキーを貼り付ける — これだけ！", localModelsTitle: "ローカルモデル（Ollama / Llama.cpp）", localModelsDesc: "BujiCoderはOllamaまたは任意のllama.cppサーバーを介してローカルLLMと連携します。詳細設定で<strong>Ollama</strong>または<strong>Llama.cpp</strong>を選択し、サーバーURLを入力します（またはEnterキーを押してデフォルトを使用）。BujiCoderはサーバーから利用可能なモデルを取得し、エージェントロールに割り当てることができます。", toolSupportTitle: "ツールサポートは重要です。", toolSupportDesc: "BujiCoderのエージェントはツール/関数呼び出しを使用してファイルの読み取り、コードの編集、コマンドの実行、コードベースの検索を行います。すべてのローカルモデルがこれをサポートしているわけではありません。ツールサポートのある推奨モデル：", toolSupportNote: "ツールサポートのないモデルでもチャットは可能ですが、エージェントツールを使用することはできません。", skipWizardTitle: "注意：", skipWizardText: "ウィザードをスキップして設定ファイルを手動で作成することもできます。<a href='configuration.html'>設定</a>を参照してください。", updatingTitle: "アップデート", updatingDesc: "BujiCoderは起動時にアップデートを確認します（無効化可能）。手動でアップデートするには：", tuiUpdate: "TUI内で<code>/update</code>コマンドを使用してアップデートを確認することもできます。", uninstallTitle: "アンインストール" }
+  },
+  cn: {
+    sidebar: { gettingStarted: "入门", features: "功能", whatsNew: "v0.8.4" },
+    install: { title: "安装", subtitle: "BujiCoder作为单个二进制文件发布。不需要运行时依赖。", recommendedTitle: "macOS / Linux（推荐）", recommendedDesc: "使用安装脚本下载最新版本并放置到你的PATH中：", recommendedNote: "这会将<code>buji</code>二进制文件安装到<code>~/.local/bin/</code>。确保此目录在你的<code>$PATH</code>中。", sourceTitle: "从源码构建", sourceReq: "需要 <strong>Go 1.24+</strong>。", sourceAlt: "或者克隆并手动构建：", windowsTitle: "Windows", windowsDesc: "从<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>下载最新的<code>.exe</code>并添加到你的PATH。", verifyTitle: "验证安装", firstRunTitle: "首次运行", firstRunDesc: "首次启动时，BujiCoder会运行设置向导：", wizard1: "要求你选择设置模式（<strong>Quick</strong>或<strong>Advanced</strong>）", wizard2: "提示输入你选择提供商的API密钥", wizard3: "在<code>~/.bujicoder/bujicoder.yaml</code>创建配置文件", tipTitle: "你只需要一个API密钥。", tipText: "我们推荐<a href='https://openrouter.ai' target='_blank' rel='noopener'>OpenRouter</a> — 它通过单个密钥提供对200多个模型的访问，BujiCoder的默认模型映射就是为它设计的。只需粘贴你的OpenRouter密钥就可以开始编码了。", providerNote: "如果你使用不同的提供商（Anthropic、OpenAI、Groq等），你还需要在配置中配置<code>modes</code>部分以使用该提供商可用的模型。请参阅<a href='api-keys.html'>API密钥</a>获取每个提供商的示例配置。", quickOpenRouterTitle: "使用OpenRouter快速开始", or1: "在<a href='https://openrouter.ai' target='_blank' rel='noopener'>openrouter.ai</a>注册（免费 — 使用Google、GitHub或邮箱）", or2: "访问<a href='https://openrouter.ai/keys' target='_blank' rel='noopener'>openrouter.ai/keys</a>并点击<strong>Create Key</strong>", or3: "在<a href='https://openrouter.ai/credits' target='_blank' rel='noopener'>Credits</a>下添加积分（许多模型有免费层）", or4: "运行<code>buji</code>并在提示时粘贴你的密钥 — 就这样！", localModelsTitle: "本地模型（Ollama / Llama.cpp）", localModelsDesc: "BujiCoder通过Ollama或任何llama.cpp服务器与本地LLM配合使用。在高级设置中，选择<strong>Ollama</strong>或<strong>Llama.cpp</strong>并输入你的服务器URL（或按Enter使用默认值）。BujiCoder将从你的服务器获取可用模型并让你将它们分配给代理角色。", toolSupportTitle: "工具支持很重要。", toolSupportDesc: "BujiCoder的代理使用工具/函数调用来读取文件、编辑代码、运行命令和搜索代码库。并非所有本地模型都支持这一点。推荐具有工具支持的模型：", toolSupportNote: "没有工具支持的模型仍然可以聊天，但无法使用任何代理工具。", skipWizardTitle: "注意：", skipWizardText: "你可以跳过向导并手动创建配置文件。请参阅<a href='configuration.html'>配置</a>。", updatingTitle: "更新", updatingDesc: "BujiCoder在启动时检查更新（可以禁用）。手动更新：", tuiUpdate: "你也可以在TUI内使用<code>/update</code>命令检查更新。", uninstallTitle: "卸载" }
+  },
+  hi: {
+    sidebar: { gettingStarted: "शुरू करें", features: "विशेषताएं", whatsNew: "v0.8.4" },
+    install: { title: "इंस्टॉल", subtitle: "BujiCoder एकल बाइनरी के रूप में आता है। रनटाइम निर्भरता की आवश्यकता नहीं।", recommendedTitle: "macOS / Linux (अनुशंसित)", recommendedDesc: "नवीनतम रिलीज़ डाउनलोड करने और इसे आपके PATH में रखने के लिए इंस्टॉल स्क्रिप्ट का उपयोग करें:", recommendedNote: "यह <code>buji</code> बाइनरी को <code>~/.local/bin/</code> में इंस्टॉल करता है। सुनिश्चित करें कि यह डायरेक्टरी आपके <code>$PATH</code> में है।", sourceTitle: "सोर्स से बिल्ड", sourceReq: "<strong>Go 1.24+</strong> आवश्यक।", sourceAlt: "या क्लोन करें और मैन्युअल रूप से बिल्ड करें:", windowsTitle: "Windows", windowsDesc: "<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a> से नवीनतम <code>.exe</code> डाउनलोड करें और अपने PATH में जोड़ें।", verifyTitle: "इंस्टॉल सत्यापित करें", firstRunTitle: "पहला रन", firstRunDesc: "पहले लॉन्च पर, BujiCoder एक सेटअप विज़ार्ड चलाता है:", wizard1: "आपसे सेटअप मोड चुनने के लिए कहता है (<strong>Quick</strong> या <strong>Advanced</strong>)", wizard2: "आपके चुने हुए प्रदाता से API कुंजी के लिए प्रॉम्प्ट करता है", wizard3: "<code>~/.bujicoder/bujicoder.yaml</code> पर कॉन्फ़िग फ़ाइल बनाता है", tipTitle: "आपको केवल एक API कुंजी की आवश्यकता है।", tipText: "हम <a href='https://openrouter.ai' target='_blank' rel='noopener'>OpenRouter</a> की अनुशंसा करते हैं — यह एकल कुंजी के साथ 200+ मॉडल तक पहुंच देता है, और BujiCoder की डिफ़ॉल्ट मॉडल मैपिंग इसके लिए डिज़ाइन की गई है। बस अपनी OpenRouter कुंजी पेस्ट करें और आप कोडिंग के लिए तैयार हैं।", providerNote: "यदि आप किसी भिन्न प्रदाता (Anthropic, OpenAI, Groq, आदि) का उपयोग करते हैं, तो आपको उस प्रदाता से उपलब्ध मॉडल का उपयोग करने के लिए अपने कॉन्फ़िग में <code>modes</code> सेक्शन को भी कॉन्फ़िगर करने की आवश्यकता होगी। प्रति-प्रदाता नमूना कॉन्फ़िग के लिए <a href='api-keys.html'>API कुंजियां</a> देखें।", quickOpenRouterTitle: "OpenRouter के साथ त्वरित प्रारंभ", or1: "<a href='https://openrouter.ai' target='_blank' rel='noopener'>openrouter.ai</a> पर साइन अप करें (मुफ़्त — Google, GitHub, या ईमेल का उपयोग करें)", or2: "<a href='https://openrouter.ai/keys' target='_blank' rel='noopener'>openrouter.ai/keys</a> पर जाएं और <strong>Create Key</strong> पर क्लिक करें", or3: "<a href='https://openrouter.ai/credits' target='_blank' rel='noopener'>Credits</a> के तहत क्रेडिट जोड़ें (कई मॉडल में फ्री टियर हैं)", or4: "<code>buji</code> चलाएं और प्रॉम्प्ट होने पर अपनी कुंजी पेस्ट करें — बस इतना ही!", localModelsTitle: "लोकल मॉडल (Ollama / Llama.cpp)", localModelsDesc: "BujiCoder Ollama या किसी भी llama.cpp सर्वर के माध्यम से लोकल LLM के साथ काम करता है। एडवांस्ड सेटअप में, <strong>Ollama</strong> या <strong>Llama.cpp</strong> चुनें और अपना सर्वर URL दर्ज करें (या डिफ़ॉल्ट का उपयोग करने के लिए Enter दबाएं)। BujiCoder आपके सर्वर से उपलब्ध मॉडल लाएगा और आपको उन्हें एजेंट भूमिकाओं में असाइन करने देगा।", toolSupportTitle: "टूल सपोर्ट मायने रखता है।", toolSupportDesc: "BujiCoder के एजेंट फ़ाइलें पढ़ने, कोड संपादित करने, कमांड चलाने और कोडबेस खोजने के लिए टूल/फ़ंक्शन कॉलिंग का उपयोग करते हैं। सभी लोकल मॉडल इसका समर्थन नहीं करते हैं। टूल सपोर्ट के साथ अनुशंसित मॉडल:", toolSupportNote: "टूल सपोर्ट के बिना मॉडल अभी भी चैट कर सकते हैं, लेकिन किसी भी एजेंट टूल का उपयोग नहीं कर पाएंगे।", skipWizardTitle: "नोट:", skipWizardText: "आप विज़ार्ड को छोड़ सकते हैं और कॉन्फ़िग फ़ाइल को मैन्युअल रूप से बना सकते हैं। <a href='configuration.html'>कॉन्फ़िगरेशन</a> देखें।", updatingTitle: "अपडेट करना", updatingDesc: "BujiCoder लॉन्च पर अपडेट की जांच करता है (अक्षम किया जा सकता है)। मैन्युअल अपडेट के लिए:", tuiUpdate: "अपडेट की जांच करने के लिए आप TUI के अंदर <code>/update</code> कमांड का भी उपयोग कर सकते हैं।", uninstallTitle: "अनइंस्टॉल" }
+  },
+  sa: {
+    sidebar: { gettingStarted: "البدء", features: "الميزات", whatsNew: "v0.8.4" },
+    install: { title: "التثبيت", subtitle: "يأتي BujiCoder كملف ثنائي واحد. لا يحتاج تبعيات وقت التشغيل.", recommendedTitle: "macOS / Linux (موصى به)", recommendedDesc: "استخدم نص التثبيت لتنزيل أحدث إصدار ووضعه في PATH:", recommendedNote: "يؤدي هذا إلى تثبيت الملف الثنائي <code>buji</code> في <code>~/.local/bin/</code>. تأكد من أن هذا الدليل موجود في <code>$PATH</code> الخاص بك.", sourceTitle: "البناء من المصدر", sourceReq: "يتطلب <strong>Go 1.24+</strong>.", sourceAlt: "أو استنسخ وابنِ يدويًا:", windowsTitle: "Windows", windowsDesc: "قم بتنزيل أحدث <code>.exe</code> من <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>إصدارات GitHub</a> وأضفه إلى PATH.", verifyTitle: "التحقق من التثبيت", firstRunTitle: "التشغيل الأول", firstRunDesc: "عند التشغيل الأول، يشغل BujiCoder معالج إعداد يقوم بـ:", wizard1: "يطلب منك اختيار وضع الإعداد (<strong>Quick</strong> أو <strong>Advanced</strong>)", wizard2: "يطلب مفتاح API من المزود الذي اخترته", wizard3: "ينشئ ملف التكوين في <code>~/.bujicoder/bujicoder.yaml</code>", tipTitle: "تحتاج فقط مفتاح API واحد.", tipText: "نوصي بـ <a href='https://openrouter.ai' target='_blank' rel='noopener'>OpenRouter</a> — يتيح الوصول إلى أكثر من 200 نموذج بمفتاح واحد، وتعيينات النماذج الافتراضية في BujiCoder مصممة له. فقط الصق مفتاح OpenRouter الخاص بك وأنت جاهز للبرمجة.", providerNote: "إذا كنت تستخدم مزودًا مختلفًا (Anthropic أو OpenAI أو Groq وما إلى ذلك)، فستحتاج أيضًا إلى تكوين قسم <code>modes</code> في التكوين الخاص بك لاستخدام النماذج المتاحة من ذلك المزود. راجع <a href='api-keys.html'>مفاتيح API</a> للحصول على تكوينات نموذجية لكل مزود.", quickOpenRouterTitle: "البدء السريع مع OpenRouter", or1: "سجل في <a href='https://openrouter.ai' target='_blank' rel='noopener'>openrouter.ai</a> (مجاني — استخدم Google أو GitHub أو البريد الإلكتروني)", or2: "انتقل إلى <a href='https://openrouter.ai/keys' target='_blank' rel='noopener'>openrouter.ai/keys</a> وانقر على <strong>Create Key</strong>", or3: "أضف أرصدة تحت <a href='https://openrouter.ai/credits' target='_blank' rel='noopener'>Credits</a> (العديد من النماذج لديها طبقات مجانية)", or4: "شغل <code>buji</code> والصق مفتاحك عند المطالبة — هذا كل شيء!", localModelsTitle: "النماذج المحلية (Ollama / Llama.cpp)", localModelsDesc: "يعمل BujiCoder مع النماذج المحلية عبر Ollama أو أي خادم llama.cpp. في الإعداد المتقدم، حدد <strong>Ollama</strong> أو <strong>Llama.cpp</strong> وأدخل عنوان URL للخادم الخاص بك (أو اضغط Enter لاستخدام الافتراضي). سيجلب BujiCoder النماذج المتاحة من خادمك ويسمح لك بتعيينها لأدوار الوكلاء.", toolSupportTitle: "دعم الأدوات مهم.", toolSupportDesc: "يستخدم وكلاء BujiCoder استدعاء الأدوات/الوظائف لقراءة الملفات وتحرير الكود وتشغيل الأوامر والبحث في قاعدة الكود الخاصة بك. لا تدعم جميع النماذج المحلية هذا. النماذج الموصى بها مع دعم الأدوات:", toolSupportNote: "لا تزال النماذج بدون دعم الأدوات قادرة على الدردشة، لكنها لن تتمكن من استخدام أي أدوات وكيل.", skipWizardTitle: "ملاحظة:", skipWizardText: "يمكنك تخطي المعالج وإنشاء ملف التكوين يدويًا. راجع <a href='configuration.html'>التكوين</a>.", updatingTitle: "التحديث", updatingDesc: "يتحقق BujiCoder من التحديثات عند التشغيل (يمكن تعطيله). للتحديث يدويًا:", tuiUpdate: "يمكنك أيضًا استخدام أمر <code>/update</code> داخل TUI للتحقق من التحديثات.", uninstallTitle: "إلغاء التثبيت" }
+  }
+};
+
+const langFlags = { en: '🇺🇸', jp: '🇯🇵', cn: '🇨🇳', hi: '🇮🇳', sa: '🇸🇦' };
+const langNames = { en: 'EN', jp: 'JP', cn: 'CN', hi: 'HI', sa: 'SA' };
+const langFonts = { en: "'Inter', sans-serif", jp: "'Noto Sans JP', sans-serif", cn: "'Noto Sans SC', sans-serif", hi: "'Noto Sans Devanagari', sans-serif", sa: "'Noto Sans Arabic', sans-serif" };
+
+function setLanguage(lang) {
+  const t = installTranslations[lang];
+  if (!t) return;
+  document.documentElement.dir = lang === 'sa' ? 'rtl' : 'ltr';
+  document.documentElement.lang = lang;
+  document.body.style.fontFamily = langFonts[lang] || langFonts.en;
+  document.getElementById('langFlag').textContent = langFlags[lang];
+  document.getElementById('langName').textContent = langNames[lang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const parts = key.split('.');
+    let val = t;
+    for (const p of parts) { if (val) val = val[p]; }
+    if (val) el.innerHTML = val;
+  });
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('data-lang') === lang);
+  });
+  try { localStorage.setItem('buji-lang', lang); } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('buji-lang');
+  if (saved && installTranslations[saved]) setLanguage(saved);
+  else setLanguage('en');
+  document.getElementById('langBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('langDrop').classList.toggle('open');
+  });
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      setLanguage(a.getAttribute('data-lang'));
+      document.getElementById('langDrop').classList.remove('open');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.getElementById('langDrop').classList.remove('open');
+  });
+  document.querySelector('.nav-toggle').addEventListener('click', function() {
     document.querySelector('.nav-links').classList.toggle('open');
     this.classList.toggle('active');
+  });
 });
 </script>
 </body>

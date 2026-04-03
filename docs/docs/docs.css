@@ -1,5 +1,5 @@
-/* ===== DOCS STYLES ===== */
-/* Inherits vars and base from ../style.css */
+/* ===== DOCS STYLES - Beige/Orange/Dark Brown Theme ===== */
+/* Inherits CSS vars from ../style.css */
 
 /* Layout */
 .docs-layout {
@@ -47,7 +47,7 @@
 }
 
 .docs-sidebar a:hover {
-    color: #fff;
+    color: var(--beige-light);
     background: var(--surface);
 }
 
@@ -67,7 +67,7 @@
 .docs-content h1 {
     font-size: 2.2rem;
     font-weight: 800;
-    color: #fff;
+    color: var(--beige-light);
     margin-bottom: 8px;
     letter-spacing: -0.02em;
 }
@@ -82,7 +82,7 @@
 .docs-content h2 {
     font-size: 1.4rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--beige-light);
     margin-top: 48px;
     margin-bottom: 16px;
     padding-bottom: 8px;
@@ -92,7 +92,7 @@
 .docs-content h3 {
     font-size: 1.1rem;
     font-weight: 700;
-    color: #fff;
+    color: var(--beige-light);
     margin-top: 32px;
     margin-bottom: 12px;
 }
@@ -123,7 +123,7 @@
 
 /* Code blocks */
 .docs-content pre {
-    background: #0d0d14;
+    background: var(--brown-deeper);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 20px 24px;
@@ -163,7 +163,7 @@
     text-align: left;
     padding: 12px 16px;
     background: var(--surface);
-    color: #fff;
+    color: var(--beige-light);
     font-weight: 700;
     border-bottom: 1px solid var(--border);
     white-space: nowrap;
@@ -180,7 +180,7 @@
 }
 
 .docs-content tr:hover td {
-    background: rgba(108, 92, 231, 0.03);
+    background: rgba(212, 136, 58, 0.03);
 }
 
 /* Callout boxes */
@@ -193,21 +193,45 @@
 }
 
 .docs-callout.tip {
-    background: rgba(0, 230, 118, 0.06);
-    border: 1px solid rgba(0, 230, 118, 0.15);
+    background: rgba(109, 184, 107, 0.08);
+    border: 1px solid rgba(109, 184, 107, 0.2);
     color: var(--green);
 }
 
 .docs-callout.warn {
-    background: rgba(255, 215, 64, 0.06);
-    border: 1px solid rgba(255, 215, 64, 0.15);
+    background: rgba(232, 196, 74, 0.08);
+    border: 1px solid rgba(232, 196, 74, 0.2);
     color: var(--yellow);
 }
 
 .docs-callout.info {
-    background: rgba(108, 92, 231, 0.06);
-    border: 1px solid rgba(108, 92, 231, 0.15);
+    background: rgba(212, 136, 58, 0.08);
+    border: 1px solid rgba(212, 136, 58, 0.2);
     color: var(--accent-light);
+}
+
+/* RTL Support */
+[dir="rtl"] .docs-sidebar {
+    text-align: right;
+}
+
+[dir="rtl"] .docs-content {
+    text-align: right;
+}
+
+[dir="rtl"] .docs-content ul,
+[dir="rtl"] .docs-content ol {
+    padding-left: 0;
+    padding-right: 24px;
+}
+
+[dir="rtl"] .docs-content pre {
+    direction: ltr;
+    text-align: left;
+}
+
+[dir="rtl"] .docs-content th {
+    text-align: right;
 }
 
 /* Responsive */

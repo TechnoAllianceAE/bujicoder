@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,20 +9,33 @@
     <link rel="stylesheet" href="docs.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&family=Noto+Sans+SC:wght@400;600;700&family=Noto+Sans+JP:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
 <nav class="nav scrolled">
     <div class="nav-inner">
         <a href="../" class="nav-logo">
-            <span class="logo-icon">&#9670;</span> BujiCoder
+            <img src="../logo.svg" alt="BujiCoder Logo" class="logo-image"> BujiCoder
         </a>
         <div class="nav-links">
             <a href="../#features">Features</a>
             <a href="./">Docs</a>
             <a href="https://github.com/TechnoAllianceAE/bujicoder" target="_blank" rel="noopener">GitHub</a>
             <a href="../#install" class="nav-cta">Install</a>
+            <!-- Language Switcher -->
+            <div class="lang-switcher">
+                <button class="lang-switcher-btn" id="langBtn" aria-label="Switch language">
+                    <span id="langFlag">🇺🇸</span> <span id="langName">EN</span> ▾
+                </button>
+                <div class="lang-dropdown" id="langDrop">
+                    <a href="#" data-lang="en" class="active"><span class="lang-flag">🇺🇸</span> English</a>
+                    <a href="#" data-lang="jp"><span class="lang-flag">🇯🇵</span> 日本語</a>
+                    <a href="#" data-lang="cn"><span class="lang-flag">🇨🇳</span> 中文</a>
+                    <a href="#" data-lang="hi"><span class="lang-flag">🇮🇳</span> हिन्दी</a>
+                    <a href="#" data-lang="sa"><span class="lang-flag">🇸🇦</span> العربية</a>
+                </div>
+            </div>
         </div>
         <button class="nav-toggle" aria-label="Toggle menu">
             <span></span><span></span><span></span>
@@ -32,81 +45,160 @@
 
 <div class="docs-layout">
     <aside class="docs-sidebar">
-        <h3>Getting Started</h3>
-        <a href="./" class="active">Overview</a>
-        <a href="installation.html">Installation</a>
-        <a href="configuration.html">Configuration</a>
-        <a href="api-keys.html">API Keys</a>
-        <h3>Features</h3>
-        <a href="modes.html">Cost Modes</a>
-        <a href="mcp-servers.html">MCP Servers</a>
-        <a href="agents.html">Agent Architecture</a>
-        <a href="commands.html">Slash Commands</a>
-        <h3>v0.8.4</h3>
-        <a href="security.html">Command Security</a>
-        <a href="memory.html">Project Memory</a>
-        <a href="coordinator.html">Goal Coordinator</a>
+        <h3 data-i18n="sidebar.gettingStarted">Getting Started</h3>
+        <a href="./" class="active" data-i18n="sidebar.overview">Overview</a>
+        <a href="installation.html" data-i18n="sidebar.installation">Installation</a>
+        <a href="configuration.html" data-i18n="sidebar.configuration">Configuration</a>
+        <a href="api-keys.html" data-i18n="sidebar.apiKeys">API Keys</a>
+        <h3 data-i18n="sidebar.features">Features</h3>
+        <a href="modes.html" data-i18n="sidebar.costModes">Cost Modes</a>
+        <a href="mcp-servers.html" data-i18n="sidebar.mcpServers">MCP Servers</a>
+        <a href="agents.html" data-i18n="sidebar.agents">Agent Architecture</a>
+        <a href="commands.html" data-i18n="sidebar.commands">Slash Commands</a>
+        <h3 data-i18n="sidebar.whatsNew">v0.8.4</h3>
+        <a href="security.html" data-i18n="sidebar.security">Command Security</a>
+        <a href="memory.html" data-i18n="sidebar.memory">Project Memory</a>
+        <a href="coordinator.html" data-i18n="sidebar.coordinator">Goal Coordinator</a>
     </aside>
 
     <main class="docs-content">
-        <h1>BujiCoder Documentation</h1>
-        <p class="docs-subtitle">Everything you need to install, configure, and get the most out of BujiCoder.</p>
+        <h1 data-i18n="docs.title">BujiCoder Documentation</h1>
+        <p class="docs-subtitle" data-i18n="docs.subtitle">Everything you need to install, configure, and get the most out of BujiCoder.</p>
 
-        <h2>What is BujiCoder?</h2>
-        <p>BujiCoder is a Go-native, multi-agent AI coding assistant that runs in your terminal. It ships as a single binary with zero runtime dependencies — no Node.js, no npm, no Python.</p>
-        <p>You bring your own API keys from any supported LLM provider and BujiCoder routes your requests directly. Your code never leaves your machine.</p>
+        <h2 data-i18n="docs.whatIsTitle">What is BujiCoder?</h2>
+        <p data-i18n="docs.whatIs1">BujiCoder is a Go-native, multi-agent AI coding assistant that runs in your terminal. It ships as a single binary with zero runtime dependencies — no Node.js, no npm, no Python.</p>
+        <p data-i18n="docs.whatIs2">You bring your own API keys from any supported LLM provider and BujiCoder routes your requests directly. Your code never leaves your machine.</p>
 
-        <h2>Quick Start</h2>
-        <p>Get up and running in under a minute:</p>
+        <h2 data-i18n="docs.quickStartTitle">Quick Start</h2>
+        <p data-i18n="docs.quickStartDesc">Get up and running in under a minute:</p>
 
-        <h3>1. Install</h3>
+        <h3 data-i18n="docs.step1Title">1. Install</h3>
 <pre><code>curl -fsSL https://community.bujicoder.com/install.sh | bash</code></pre>
 
-        <h3>2. Launch</h3>
+        <h3 data-i18n="docs.step2Title">2. Launch</h3>
 <pre><code>buji</code></pre>
-        <p>The setup wizard runs automatically on first launch. It asks you to pick a provider and enter an API key.</p>
+        <p data-i18n="docs.step2Desc">The setup wizard runs automatically on first launch. It asks you to pick a provider and enter an API key.</p>
 
-        <h3>3. Code</h3>
-        <p>Start typing natural-language instructions. BujiCoder reads files, edits code, runs terminal commands, searches your codebase, and commits changes — all from the chat interface.</p>
+        <h3 data-i18n="docs.step3Title">3. Code</h3>
+        <p data-i18n="docs.step3Desc">Start typing natural-language instructions. BujiCoder reads files, edits code, runs terminal commands, searches your codebase, and commits changes — all from the chat interface.</p>
 
         <div class="docs-callout tip">
-            <strong>Tip:</strong> Press <code>Shift+Tab</code> to cycle between cost modes (normal / heavy / max / plan) without leaving the chat.
+            <strong data-i18n="docs.tipLabel">Tip:</strong> <span data-i18n="docs.tipText">Press <code>Shift+Tab</code> to cycle between cost modes (normal / heavy / max / plan) without leaving the chat.</span>
         </div>
 
-        <h2>Documentation Sections</h2>
+        <h2 data-i18n="docs.sectionsTitle">Documentation Sections</h2>
         <table>
             <thead>
-                <tr><th>Section</th><th>What you'll learn</th></tr>
+                <tr><th data-i18n="docs.tableSection">Section</th><th data-i18n="docs.tableDesc">What you'll learn</th></tr>
             </thead>
             <tbody>
-                <tr><td><a href="installation.html">Installation</a></td><td>Install on macOS, Linux, Windows, or build from source</td></tr>
-                <tr><td><a href="configuration.html">Configuration</a></td><td>Config file location, structure, and all available options</td></tr>
-                <tr><td><a href="api-keys.html">API Keys</a></td><td>How to add keys for each provider and use environment variables</td></tr>
-                <tr><td><a href="modes.html">Cost Modes</a></td><td>Normal, Heavy, Max, and Plan modes explained</td></tr>
-                <tr><td><a href="mcp-servers.html">MCP Servers</a></td><td>Extend BujiCoder with MCP tool servers</td></tr>
-                <tr><td><a href="agents.html">Agent Architecture</a></td><td>The 13 specialized agents and how to customize them</td></tr>
-                <tr><td><a href="commands.html">Slash Commands</a></td><td>All available TUI commands and keyboard shortcuts</td></tr>
+                <tr><td><a href="installation.html" data-i18n="docs.installLink">Installation</a></td><td data-i18n="docs.installDesc">Install on macOS, Linux, Windows, or build from source</td></tr>
+                <tr><td><a href="configuration.html" data-i18n="docs.configLink">Configuration</a></td><td data-i18n="docs.configDesc">Config file location, structure, and all available options</td></tr>
+                <tr><td><a href="api-keys.html" data-i18n="docs.apiLink">API Keys</a></td><td data-i18n="docs.apiDesc">How to add keys for each provider and use environment variables</td></tr>
+                <tr><td><a href="modes.html" data-i18n="docs.modesLink">Cost Modes</a></td><td data-i18n="docs.modesDesc">Normal, Heavy, Max, and Plan modes explained</td></tr>
+                <tr><td><a href="mcp-servers.html" data-i18n="docs.mcpLink">MCP Servers</a></td><td data-i18n="docs.mcpDesc">Extend BujiCoder with MCP tool servers</td></tr>
+                <tr><td><a href="agents.html" data-i18n="docs.agentsLink">Agent Architecture</a></td><td data-i18n="docs.agentsDesc">The 13 specialized agents and how to customize them</td></tr>
+                <tr><td><a href="commands.html" data-i18n="docs.commandsLink">Slash Commands</a></td><td data-i18n="docs.commandsDesc">All available TUI commands and keyboard shortcuts</td></tr>
             </tbody>
         </table>
 
-        <h2>New in v0.8.4</h2>
+        <h2 data-i18n="docs.newTitle">New in v0.8.4</h2>
         <table>
             <thead>
-                <tr><th>Feature</th><th>What it does</th></tr>
+                <tr><th data-i18n="docs.tableFeature">Feature</th><th data-i18n="docs.tableFeatureDesc">What it does</th></tr>
             </thead>
             <tbody>
-                <tr><td><a href="security.html">Command Security</a></td><td>4-level threat classification for shell commands with 40+ patterns, meta-execution detection, and quote-aware parsing</td></tr>
-                <tr><td><a href="memory.html">Project Memory</a></td><td>Persistent cross-session knowledge (BUJI.md) and ephemeral inter-agent shared memory</td></tr>
-                <tr><td><a href="coordinator.html">Goal Coordinator</a></td><td><code>/goal</code> command for DAG-based task decomposition with parallel execution and cascade failure</td></tr>
+                <tr><td><a href="security.html" data-i18n="docs.securityLink">Command Security</a></td><td data-i18n="docs.securityDesc">4-level threat classification for shell commands with 40+ patterns, meta-execution detection, and quote-aware parsing</td></tr>
+                <tr><td><a href="memory.html" data-i18n="docs.memoryLink">Project Memory</a></td><td data-i18n="docs.memoryDesc">Persistent cross-session knowledge (BUJI.md) and ephemeral inter-agent shared memory</td></tr>
+                <tr><td><a href="coordinator.html" data-i18n="docs.coordinatorLink">Goal Coordinator</a></td><td data-i18n="docs.coordinatorDesc"><code>/goal</code> command for DAG-based task decomposition with parallel execution and cascade failure</td></tr>
             </tbody>
         </table>
     </main>
 </div>
 
 <script>
-document.querySelector('.nav-toggle').addEventListener('click', function() {
+// ===== Docs i18n Translations =====
+const docsTranslations = {
+  en: {
+    sidebar: { gettingStarted: "Getting Started", overview: "Overview", installation: "Installation", configuration: "Configuration", apiKeys: "API Keys", features: "Features", costModes: "Cost Modes", mcpServers: "MCP Servers", agents: "Agent Architecture", commands: "Slash Commands", whatsNew: "v0.8.4", security: "Command Security", memory: "Project Memory", coordinator: "Goal Coordinator" },
+    docs: { title: "BujiCoder Documentation", subtitle: "Everything you need to install, configure, and get the most out of BujiCoder.", whatIsTitle: "What is BujiCoder?", whatIs1: "BujiCoder is a Go-native, multi-agent AI coding assistant that runs in your terminal. It ships as a single binary with zero runtime dependencies — no Node.js, no npm, no Python.", whatIs2: "You bring your own API keys from any supported LLM provider and BujiCoder routes your requests directly. Your code never leaves your machine.", quickStartTitle: "Quick Start", quickStartDesc: "Get up and running in under a minute:", step1Title: "1. Install", step2Title: "2. Launch", step2Desc: "The setup wizard runs automatically on first launch. It asks you to pick a provider and enter an API key.", step3Title: "3. Code", step3Desc: "Start typing natural-language instructions. BujiCoder reads files, edits code, runs terminal commands, searches your codebase, and commits changes — all from the chat interface.", tipLabel: "Tip:", tipText: "Press <code>Shift+Tab</code> to cycle between cost modes (normal / heavy / max / plan) without leaving the chat.", sectionsTitle: "Documentation Sections", tableSection: "Section", tableDesc: "What you'll learn", installLink: "Installation", installDesc: "Install on macOS, Linux, Windows, or build from source", configLink: "Configuration", configDesc: "Config file location, structure, and all available options", apiLink: "API Keys", apiDesc: "How to add keys for each provider and use environment variables", modesLink: "Cost Modes", modesDesc: "Normal, Heavy, Max, and Plan modes explained", mcpLink: "MCP Servers", mcpDesc: "Extend BujiCoder with MCP tool servers", agentsLink: "Agent Architecture", agentsDesc: "The 13 specialized agents and how to customize them", commandsLink: "Slash Commands", commandsDesc: "All available TUI commands and keyboard shortcuts", newTitle: "New in v0.8.4", tableFeature: "Feature", tableFeatureDesc: "What it does", securityLink: "Command Security", securityDesc: "4-level threat classification for shell commands with 40+ patterns, meta-execution detection, and quote-aware parsing", memoryLink: "Project Memory", memoryDesc: "Persistent cross-session knowledge (BUJI.md) and ephemeral inter-agent shared memory", coordinatorLink: "Goal Coordinator", coordinatorDesc: "<code>/goal</code> command for DAG-based task decomposition with parallel execution and cascade failure" }
+  },
+  jp: {
+    sidebar: { gettingStarted: "はじめに", overview: "概要", installation: "インストール", configuration: "設定", apiKeys: "APIキー", features: "機能", costModes: "コストモード", mcpServers: "MCPサーバー", agents: "エージェントアーキテクチャ", commands: "スラッシュコマンド", whatsNew: "v0.8.4", security: "コマンドセキュリティ", memory: "プロジェクトメモリ", coordinator: "ゴールコーディネーター" },
+    docs: { title: "BujiCoder ドキュメント", subtitle: "BujiCoderのインストール、設定、最大限の活用に必要なすべて。", whatIsTitle: "BujiCoderとは？", whatIs1: "BujiCoderは、ターミナルで動作するGoネイティブのマルチエージェントAIコーディングアシスタントです。ゼロランタイム依存の単一バイナリとして提供されます — Node.jsもnpmもPythonも不要。", whatIs2: "サポートされているLLMプロバイダーから自分のAPIキーを持ち込み、BujiCoderがリクエストを直接ルーティングします。コードがマシンから出ることはありません。", quickStartTitle: "クイックスタート", quickStartDesc: "1分以内に起動できます：", step1Title: "1. インストール", step2Title: "2. 起動", step2Desc: "セットアップウィザードは初回起動時に自動的に実行されます。プロバイダーを選択してAPIキーを入力します。", step3Title: "3. コーディング", step3Desc: "自然言語の指示を入力し始めます。BujiCoderはファイルの読み取り、コードの編集、ターミナルコマンドの実行、コードベースの検索、変更のコミットを — すべてチャットインターフェースから行います。", tipLabel: "ヒント：", tipText: "<code>Shift+Tab</code> を押して、チャットから離れることなくコストモード（normal / heavy / max / plan）を切り替えます。", sectionsTitle: "ドキュメントセクション", tableSection: "セクション", tableDesc: "学べること", installLink: "インストール", installDesc: "macOS、Linux、Windowsにインストール、またはソースからビルド", configLink: "設定", configDesc: "設定ファイルの場所、構造、利用可能なすべてのオプション", apiLink: "APIキー", apiDesc: "各プロバイダーのキーの追加方法と環境変数の使用方法", modesLink: "コストモード", modesDesc: "Normal、Heavy、Max、Planモードの説明", mcpLink: "MCPサーバー", mcpDesc: "MCPツールサーバーでBujiCoderを拡張", agentsLink: "エージェントアーキテクチャ", agentsDesc: "13の専門エージェントとカスタマイズ方法", commandsLink: "スラッシュコマンド", commandsDesc: "利用可能なすべてのTUIコマンドとキーボードショートカット", newTitle: "v0.8.4の新機能", tableFeature: "機能", tableFeatureDesc: "何をするか", securityLink: "コマンドセキュリティ", securityDesc: "40以上のパターン、メタ実行検出、引用符対応パーシングによるシェルコマンドの4レベル脅威分類", memoryLink: "プロジェクトメモリ", memoryDesc: "セッションをまたぐ永続的な知識（BUJI.md）とエフェメラルなエージェント間共有メモリ", coordinatorLink: "ゴールコーディネーター", coordinatorDesc: "並列実行とカスケードフェイルによるDAGベースのタスク分解のための<code>/goal</code>コマンド" }
+  },
+  cn: {
+    sidebar: { gettingStarted: "入门", overview: "概述", installation: "安装", configuration: "配置", apiKeys: "API密钥", features: "功能", costModes: "成本模式", mcpServers: "MCP服务器", agents: "智能体架构", commands: "斜杠命令", whatsNew: "v0.8.4", security: "命令安全", memory: "项目记忆", coordinator: "目标协调器" },
+    docs: { title: "BujiCoder 文档", subtitle: "安装、配置和充分利用BujiCoder所需的一切。", whatIsTitle: "什么是BujiCoder？", whatIs1: "BujiCoder是一个在终端中运行的Go原生多智能体AI编程助手。它作为单个二进制文件发布，零运行时依赖 — 不需要Node.js、npm或Python。", whatIs2: "你从任何受支持的LLM提供商带来自己的API密钥，BujiCoder直接路由你的请求。你的代码永远不会离开你的机器。", quickStartTitle: "快速开始", quickStartDesc: "在一分钟内启动：", step1Title: "1. 安装", step2Title: "2. 启动", step2Desc: "设置向导在首次启动时自动运行。它会要求你选择提供商并输入API密钥。", step3Title: "3. 编码", step3Desc: "开始输入自然语言指令。BujiCoder读取文件、编辑代码、运行终端命令、搜索代码库并提交更改 — 全部从聊天界面完成。", tipLabel: "提示：", tipText: "按 <code>Shift+Tab</code> 在不离开聊天的情况下切换成本模式（normal / heavy / max / plan）。", sectionsTitle: "文档章节", tableSection: "章节", tableDesc: "你将学到什么", installLink: "安装", installDesc: "在macOS、Linux、Windows上安装或从源码构建", configLink: "配置", configDesc: "配置文件位置、结构和所有可用选项", apiLink: "API密钥", apiDesc: "如何为每个提供商添加密钥和使用环境变量", modesLink: "成本模式", modesDesc: "Normal、Heavy、Max和Plan模式详解", mcpLink: "MCP服务器", mcpDesc: "使用MCP工具服务器扩展BujiCoder", agentsLink: "智能体架构", agentsDesc: "13个专业智能体及其自定义方法", commandsLink: "斜杠命令", commandsDesc: "所有可用的TUI命令和键盘快捷键", newTitle: "v0.8.4新特性", tableFeature: "功能", tableFeatureDesc: "功能说明", securityLink: "命令安全", securityDesc: "40+模式的shell命令4级威胁分类、元执行检测和引号感知解析", memoryLink: "项目记忆", memoryDesc: "跨会话持久化知识（BUJI.md）和临时智能体间共享内存", coordinatorLink: "目标协调器", coordinatorDesc: "用于DAG基础任务分解的<code>/goal</code>命令，支持并行执行和级联失败" }
+  },
+  hi: {
+    sidebar: { gettingStarted: "शुरू करें", overview: "अवलोकन", installation: "इंस्टॉल", configuration: "कॉन्फ़िगरेशन", apiKeys: "API कुंजियां", features: "विशेषताएं", costModes: "लागत मोड", mcpServers: "MCP सर्वर", agents: "एजेंट आर्किटेक्चर", commands: "स्लैश कमांड", whatsNew: "v0.8.4", security: "कमांड सुरक्षा", memory: "प्रोजेक्ट मेमोरी", coordinator: "गोल कोऑर्डिनेटर" },
+    docs: { title: "BujiCoder दस्तावेज़", subtitle: "BujiCoder को इंस्टॉल, कॉन्फ़िगर और अधिकतम उपयोग करने के लिए आवश्यक सब कुछ।", whatIsTitle: "BujiCoder क्या है?", whatIs1: "BujiCoder एक Go-native, मल्टी-एजेंट AI कोडिंग असिस्टेंट है जो आपके टर्मिनल में चलता है। यह शून्य रनटाइम निर्भरता के साथ एकल बाइनरी के रूप में आता है — Node.js नहीं, npm नहीं, Python नहीं।", whatIs2: "आप किसी भी समर्थित LLM प्रदाता से अपनी API कुंजियां लाते हैं और BujiCoder आपके अनुरोधों को सीधे रूट करता है। आपका कोड कभी आपकी मशीन नहीं छोड़ता।", quickStartTitle: "त्वरित प्रारंभ", quickStartDesc: "एक मिनट से कम समय में शुरू करें:", step1Title: "1. इंस्टॉल", step2Title: "2. लॉन्च", step2Desc: "सेटअप विज़ार्ड पहले लॉन्च पर स्वचालित रूप से चलता है। यह आपको एक प्रदाता चुनने और API कुंजी दर्ज करने के लिए कहता है।", step3Title: "3. कोड", step3Desc: "प्राकृतिक भाषा निर्देश टाइप करना शुरू करें। BujiCoder फ़ाइलें पढ़ता है, कोड संपादित करता है, टर्मिनल कमांड चलाता है, कोडबेस खोजता है और परिवर्तन कमिट करता है — सब कुछ चैट इंटरफ़ेस से।", tipLabel: "सुझाव:", tipText: "चैट छोड़े बिना लागत मोड (normal / heavy / max / plan) के बीच चक्र करने के लिए <code>Shift+Tab</code> दबाएं।", sectionsTitle: "दस्तावेज़ अनुभाग", tableSection: "अनुभाग", tableDesc: "आप क्या सीखेंगे", installLink: "इंस्टॉल", installDesc: "macOS, Linux, Windows पर इंस्टॉल करें या स्रोत से बनाएं", configLink: "कॉन्फ़िगरेशन", configDesc: "कॉन्फ़िग फ़ाइल स्थान, संरचना और सभी उपलब्ध विकल्प", apiLink: "API कुंजियां", apiDesc: "प्रत्येक प्रदाता के लिए कुंजियां कैसे जोड़ें और पर्यावरण चर का उपयोग करें", modesLink: "लागत मोड", modesDesc: "Normal, Heavy, Max और Plan मोड समझाया गया", mcpLink: "MCP सर्वर", mcpDesc: "MCP टूल सर्वर के साथ BujiCoder का विस्तार करें", agentsLink: "एजेंट आर्किटेक्चर", agentsDesc: "13 विशेषज्ञ एजेंट और उन्हें कैसे अनुकूलित करें", commandsLink: "स्लैश कमांड", commandsDesc: "सभी उपलब्ध TUI कमांड और कीबोर्ड शॉर्टकट", newTitle: "v0.8.4 में नया", tableFeature: "विशेषता", tableFeatureDesc: "यह क्या करता है", securityLink: "कमांड सुरक्षा", securityDesc: "40+ पैटर्न, मेटा-एक्जीक्यूशन डिटेक्शन और कोट-अवेयर पार्सिंग के साथ शेल कमांड के लिए 4-स्तरीय खतरे का वर्गीकरण", memoryLink: "प्रोजेक्ट मेमोरी", memoryDesc: "सत्र-पार ज्ञान (BUJI.md) और अस्थायी इंटर-एजेंट साझा मेमोरी", coordinatorLink: "गोल कोऑर्डिनेटर", coordinatorDesc: "समानांतर निष्पादन और कैस्केड फेल के साथ DAG-आधारित कार्य वियोजन के लिए <code>/goal</code> कमांड" }
+  },
+  sa: {
+    sidebar: { gettingStarted: "البدء", overview: "نظرة عامة", installation: "التثبيت", configuration: "التكوين", apiKeys: "مفاتيح API", features: "الميزات", costModes: "أوضاع التكلفة", mcpServers: "خوادم MCP", agents: "بنية الوكلاء", commands: "أوامر الشرطة المائلة", whatsNew: "v0.8.4", security: "أمان الأوامر", memory: "ذاكرة المشروع", coordinator: "منسق الأهداف" },
+    docs: { title: "وثائق BujiCoder", subtitle: "كل ما تحتاجه لتثبيت وتكوين والاستفادة القصوى من BujiCoder.", whatIsTitle: "ما هو BujiCoder؟", whatIs1: "BujiCoder هو مساعد برمجة AI متعدد الوكلاء يعمل في جهازك الطرفي. يأتي كملف ثنائي واحد بدون تبعيات وقت التشغيل — لا Node.js ولا npm ولا Python.", whatIs2: "تجلب مفاتيح API الخاصة بك من أي مزود LLM مدعوم وBujiCoder يوجه طلباتك مباشرة. كودك لا يغادر جهازك أبدًا.", quickStartTitle: "البدء السريع", quickStartDesc: "ابدأ في أقل من دقيقة:", step1Title: "1. التثبيت", step2Title: "2. التشغيل", step2Desc: "يعمل معالج الإعداد تلقائيًا عند أول تشغيل. يطلب منك اختيار مزود وإدخال مفتاح API.", step3Title: "3. البرمجة", step3Desc: "ابدأ بكتابة تعليمات باللغة الطبيعية. يقرأ BujiCoder الملفات ويعدل الكود ويشغل أوامر الطرفية ويبحث في قاعدة الكود ويرتكب التغييرات — كل ذلك من واجهة الدردشة.", tipLabel: "نصيحة:", tipText: "اضغط <code>Shift+Tab</code> للتبديل بين أوضاع التكلفة (normal / heavy / max / plan) دون مغادرة الدردشة.", sectionsTitle: "أقسام الوثائق", tableSection: "القسم", tableDesc: "ما ستتعلمه", installLink: "التثبيت", installDesc: "التثبيت على macOS أو Linux أو Windows أو البناء من المصدر", configLink: "التكوين", configDesc: "موقع ملف التكوين والبنية وجميع الخيارات المتاحة", apiLink: "مفاتيح API", apiDesc: "كيفية إضافة مفاتيح لكل مزود واستخدام متغيرات البيئة", modesLink: "أوضاع التكلفة", modesDesc: "شرح أوضاع Normal و Heavy و Max و Plan", mcpLink: "خوادم MCP", mcpDesc: "توسيع BujiCoder بخوادم أدوات MCP", agentsLink: "بنية الوكلاء", agentsDesc: "الوكلاء المتخصصون الـ 13 وكيفية تخصيصهم", commandsLink: "أوامر الشرطة المائلة", commandsDesc: "جميع أوامر TUI المتاحة واختصارات لوحة المفاتيح", newTitle: "الجديد في v0.8.4", tableFeature: "الميزة", tableFeatureDesc: "ما تفعله", securityLink: "أمان الأوامر", securityDesc: "تصنيف التهديدات من 4 مستويات لأوامر shell مع أكثر من 40 نمطًا وكشف التنفيذ الفوقي وتحليل واعٍ بالاقتباسات", memoryLink: "ذاكرة المشروع", memoryDesc: "معرفة دائمة عبر الجلسات (BUJI.md) وذاكرة مشتركة مؤقتة بين الوكلاء", coordinatorLink: "منسق الأهداف", coordinatorDesc: "أمر <code>/goal</code> لتحليل المهام القائم على DAG مع التنفيذ المتوازي والفشل المتتالي" }
+  }
+};
+
+// ===== Language Switcher =====
+let currentLang = 'en';
+const langFlags = { en: '🇺🇸', jp: '🇯🇵', cn: '🇨🇳', hi: '🇮🇳', sa: '🇸🇦' };
+const langNames = { en: 'EN', jp: 'JP', cn: 'CN', hi: 'HI', sa: 'SA' };
+const langFonts = { en: "'Inter', sans-serif", jp: "'Noto Sans JP', sans-serif", cn: "'Noto Sans SC', sans-serif", hi: "'Noto Sans Devanagari', sans-serif", sa: "'Noto Sans Arabic', sans-serif" };
+
+function setLanguage(lang) {
+  currentLang = lang;
+  const t = docsTranslations[lang];
+  if (!t) return;
+
+  document.documentElement.dir = lang === 'sa' ? 'rtl' : 'ltr';
+  document.documentElement.lang = lang;
+  document.body.style.fontFamily = langFonts[lang] || langFonts.en;
+  document.getElementById('langFlag').textContent = langFlags[lang];
+  document.getElementById('langName').textContent = langNames[lang];
+
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    const parts = key.split('.');
+    let val = t;
+    for (const p of parts) { if (val) val = val[p]; }
+    if (val) el.innerHTML = val;
+  });
+
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.classList.toggle('active', a.getAttribute('data-lang') === lang);
+  });
+
+  try { localStorage.setItem('buji-lang', lang); } catch(e) {}
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem('buji-lang');
+  if (saved && docsTranslations[saved]) setLanguage(saved);
+  else setLanguage('en');
+
+  document.getElementById('langBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('langDrop').classList.toggle('open');
+  });
+
+  document.querySelectorAll('.lang-dropdown a').forEach(a => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      setLanguage(a.getAttribute('data-lang'));
+      document.getElementById('langDrop').classList.remove('open');
+    });
+  });
+
+  document.addEventListener('click', () => {
+    document.getElementById('langDrop').classList.remove('open');
+  });
+
+  document.querySelector('.nav-toggle').addEventListener('click', function() {
     document.querySelector('.nav-links').classList.toggle('open');
     this.classList.toggle('active');
+  });
 });
 </script>
 </body>
