@@ -271,6 +271,9 @@ type Model struct {
 	// Verbose session logging (/verbose toggle)
 	verboseEnabled bool     // whether verbose logging is active
 	verboseFile    *os.File // open log file handle (nil when disabled)
+
+	// Viewport rendering debounce
+	viewportDirty bool // true when content changed and viewport needs rebuild
 }
 
 // NewModel creates the initial TUI model.
@@ -1249,6 +1252,11 @@ func (m Model) Init() tea.Cmd {
 // Update handles messages and syncs the viewport after every update.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := m.handleUpdate(msg)
+	// When not streaming, always rebuild viewport immediately.
+	// During streaming, viewportDirty is set by tick (debounced) or structural events.
+	if !m.streaming {
+		m.viewportDirty = true
+	}
 	return m.syncViewport(), cmd
 }
 
@@ -2123,13 +2131,15 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 		default:
 			if m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
-				ch := msg.String()
-				isPaste := tea.KeyMsg(msg).Paste
-				// Filter out non-printable key names that slip through,
-				// but allow multi-character pasted text.
-				if len(ch) > 1 && !isPaste {
+				key := tea.Key(msg)
+				isPaste := key.Paste
+				// Only accept printable rune input (KeyRunes) and paste events.
+				// All special keys (function keys, arrows, etc.) are handled
+				// by explicit cases above — ignore anything else here.
+				if key.Type != tea.KeyRunes && key.Type != tea.KeySpace && !isPaste {
 					break
 				}
+				ch := msg.String()
 				if isPaste {
 					// Strip carriage returns from pasted text and
 					// replace newlines with spaces for single-line input.
@@ -2158,6 +2168,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.viewportDirty = true
 
 		fh := m.calcFooterHeight()
 		vpHeight := msg.Height - fh
@@ -2168,6 +2179,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		if !m.ready {
 			m.viewport = viewport.New(msg.Width, vpHeight)
 			m.viewport.MouseWheelEnabled = true
+			m.viewport.SetContent(m.buildScrollableContent())
 			m.ready = true
 		} else {
 			m.viewport.Width = msg.Width
@@ -2185,6 +2197,10 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tickMsg:
 		m.spinnerFrame = (m.spinnerFrame + 1) % len(spinnerFrames)
+		if m.streaming {
+			// Flush buffered content changes on tick (100ms debounce).
+			m.viewportDirty = true
+		}
 		if m.streaming || m.state == StateChat || (m.state == StateSetup && m.setupFetching) {
 			return m, tickCmd()
 		}
@@ -2210,6 +2226,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		return m, waitForChunks(m.streamCh)
 
 	case toolCallMsg:
+		m.viewportDirty = true
 		parsedArgs := parseToolArgs(msg.toolName, msg.argsJSON)
 		m.activities = append(m.activities, activityEntry{
 			Kind:       actToolCall,
@@ -2250,6 +2267,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		return m, waitForChunks(m.streamCh)
 
 	case toolResultMsg:
+		m.viewportDirty = true
 		resultSummary := truncateResult(msg.text, msg.isError)
 		m.activities = append(m.activities, activityEntry{
 			Kind:       actToolResult,
@@ -2276,6 +2294,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		return m, waitForChunks(m.streamCh)
 
 	case stepStartMsg:
+		m.viewportDirty = true
 		stepNum := msg.step + 1
 		if msg.agentID == "" || msg.agentID == "base" {
 			m.currentStep = stepNum
@@ -2314,6 +2333,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		return m, waitForChunks(m.streamCh)
 
 	case statusMsg:
+		m.viewportDirty = true
 		m.activities = append(m.activities, activityEntry{
 			AgentID:   msg.agentID,
 			Kind:      actStatus,
@@ -2355,6 +2375,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		return m, waitForChunks(m.streamCh)
 
 	case streamDoneMsg:
+		m.viewportDirty = true
 		m.streaming = false
 		elapsed := time.Since(m.startTime)
 		if msg.err != nil {
@@ -3494,19 +3515,30 @@ func (m Model) syncViewport() Model {
 	if !m.ready || m.state != StateChat {
 		return m
 	}
+
 	fh := m.calcFooterHeight()
 	vpHeight := m.height - fh
 	if vpHeight < 1 {
 		vpHeight = 1
 	}
-	if m.viewport.Height != vpHeight {
+
+	heightChanged := m.viewport.Height != vpHeight
+	if heightChanged {
 		m.viewport.Height = vpHeight
 	}
+
+	// During streaming, only rebuild content on tick (100ms) or height changes
+	// to avoid flickering from per-chunk SetContent calls.
+	if !m.viewportDirty && !heightChanged {
+		return m
+	}
+
 	atBottom := m.viewport.AtBottom()
 	m.viewport.SetContent(m.buildScrollableContent())
 	if atBottom {
 		m.viewport.GotoBottom()
 	}
+	m.viewportDirty = false
 	return m
 }
 
@@ -3645,18 +3677,21 @@ func (m *Model) updateAutocomplete() {
 }
 
 func (m Model) calcFooterHeight() int {
-	if m.streaming || m.width <= 0 {
+	if m.width <= 0 {
+		return 1
+	}
+	if m.streaming {
 		if m.pendingApproval != "" || m.pendingQuestion != "" {
 			innerWidth := m.width - 4
 			if innerWidth < 10 {
 				innerWidth = 10
 			}
 			lines := wrapInput(m.input, innerWidth-1)
-			height := len(lines) + 4
-			height++
-			return height
+			// box (content + 2 border) + prompt banner + status line
+			return len(lines) + 4 + 1
 		}
-		return 2
+		// Streaming with no approval/question: just the status bar (1 line).
+		return 1
 	}
 	innerWidth := m.width - 4
 	if innerWidth < 10 {
