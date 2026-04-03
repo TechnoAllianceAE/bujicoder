@@ -100,17 +100,30 @@ BujiCoder uses a multi-agent system. Each agent has a specialized role, its own 
 
 | Agent | Role | Tools |
 |-------|------|-------|
-| **base** | Orchestrator — routes tasks to sub-agents | All tools + spawns sub-agents + memory_read/write |
+| **base** | Orchestrator — routes tasks to sub-agents | All tools + spawn_agents + symbols + memory_read/write |
 | **editor** | Precise file modifications | edit_file, write_file, read_files, shared_memory_read |
 | **file_explorer** | Fast codebase navigation | read_files, glob, list_directory |
-| **planner** | Task decomposition and planning | read_files, code_search, think_deeply, shared_memory_read/write |
-| **researcher** | Deep research and analysis | read_files, web_search, think_deeply, shared_memory_read/write |
-| **reviewer** | Code quality evaluation | read_files, code_search, glob |
+| **planner** | Task decomposition and planning | read_files, code_search, symbols, think_deeply, shared_memory_read/write |
+| **researcher** | Deep research and analysis | read_files, code_search, symbols, web_search, think_deeply, shared_memory_read/write |
+| **reviewer** | Code quality evaluation | read_files, code_search, symbols, glob |
 | **thinker** | Pure reasoning (no file access) | think_deeply |
 | **git_committer** | Git staging and commits | run_terminal_command, read_files |
 | **parallel_editor** | Max-mode parallel implementation | spawn_agents, apply_proposals |
 
 Agent definitions live in `agents/*.yaml`. You can customize them or add your own.
+
+## Code Intelligence (Symbols Tool)
+
+The `symbols` tool provides AST-based code analysis. Agents can query it to extract structured symbols from your codebase:
+
+- **Go** — Full `go/ast` parsing (functions, methods, types, interfaces, structs)
+- **Python, TypeScript, Rust** — Regex-based pattern extraction (functions, classes, types)
+
+Usage by agents (automatic — no user action needed):
+- Call with no args: indexes the entire project (up to 100 files)
+- Call with `{"paths": ["src/auth.go"]}`: indexes specific files
+
+The base, researcher, reviewer, and planner agents all have access to this tool. It's also used automatically during context building to generate a symbol index in the system prompt.
 
 ## Project Memory
 

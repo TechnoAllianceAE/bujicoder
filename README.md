@@ -36,9 +36,12 @@ Your config is saved to `~/.bujicoder/bujicoder.yaml`. You can edit it anytime t
 - **Multi-provider** — Anthropic, OpenAI, Gemini, xAI, OpenRouter, Groq, Together, Cerebras, Ollama
 - **Multi-agent** — Specialized agents for editing, planning, research, code review, and git commits
 - **Local tools** — File read/write, code search, terminal commands executed on your machine
+- **Code intelligence** — AST-based symbol extraction (Go, Python, TypeScript, Rust) for structured codebase understanding
 - **MCP support** — Extend with Model Context Protocol servers
 - **Cost modes** — Switch between normal / heavy / max to control model quality and spending
+- **Goal coordinator** — `/goal` decomposes complex tasks into a parallel DAG of specialist agents
 - **Built-in cost tracking** — Static pricing registry for 80+ models across 8 providers, works offline
+- **Verbose logging** — `/verbose` logs all agent communications to a timestamped file for debugging
 - **Paste support** — Paste error output or text directly into the chat input
 - **Configurable timeout** — Set `request_timeout` in config for slower local LLMs
 - **Vision** — Attach images with `@path/to/image.png`
@@ -57,10 +60,14 @@ buji update       # Update to latest version
 |---------|-------------|
 | `/new` | Start a new conversation |
 | `/mode <mode>` | Switch cost mode (normal / heavy / max / plan) |
+| `/goal <desc>` | Decompose a goal into tasks and execute with specialist agents |
+| `/verbose` | Toggle verbose session log (all agent comms to file) |
 | `/history` | Browse past conversations |
+| `/search <query>` | Search conversation history |
+| `/memory` | View project memory (BUJI.md) |
 | `/models` | Show model-agent mappings |
+| `/mcp` | Manage MCP servers (list / add / remove) |
 | `/copy` | Copy last response to clipboard |
-| `/verbose` | Toggle verbose session log (all agent comms) |
 | `/help` | Show all commands and shortcuts |
 
 ## Configuration

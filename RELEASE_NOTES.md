@@ -1,4 +1,4 @@
-# v0.8.5
+# v0.9.0
 
 ## New Features
 
@@ -6,11 +6,31 @@
 
 - **feat: configurable LLM request timeout** — Added `request_timeout` config option (in seconds) to `~/.bujicoder/bujicoder.yaml`. Defaults to 90 seconds. Useful for slower local models via Ollama or llama.cpp that need more time to respond.
 
-- **feat: /verbose session logging** — New `/verbose` slash command toggles detailed session logging. All communications between the orchestrator and agents/sub-agents are written to a timestamped log file in `~/.bujicoder/logs/`. Captures user messages, LLM output, tool calls with args, tool results, sub-agent spawns, context compaction, and session summaries. Toggle off to see the log path.
-
   ```yaml
   request_timeout: 300  # 5 minutes for local LLMs
   ```
+
+- **feat: /verbose session logging** — New `/verbose` slash command toggles detailed session logging. All communications between the orchestrator and agents/sub-agents are written to a timestamped log file in `~/.bujicoder/logs/`. Captures user messages, LLM output, tool calls with full args, tool results, sub-agent spawns, context compaction, errors, and session summaries. Toggle off to see the log path.
+
+- **feat: code intelligence (symbols tool)** — The `symbols` tool is now exposed to the base, researcher, reviewer, and planner agents. Agents can query structured code symbols (functions, classes, types, methods) via AST-based analysis for Go and regex-based extraction for Python, TypeScript, and Rust.
+
+## Bug Fixes
+
+- **fix: TUI viewport flickering and output vanishing** — Footer height calculation was mismatched with actual render output during streaming, causing content to disappear. Fixed by correcting `calcFooterHeight()` to return consistent values.
+
+- **fix: keyboard input dropping** — The TUI silently rejected some key events due to an overly aggressive string-length filter. Replaced with a proper `KeyType` check (`KeyRunes`/`KeySpace`) so only unrecognized special keys are filtered.
+
+- **fix: viewport update debouncing** — `SetContent()` was called on every streaming chunk, causing flickering during fast output. Now uses a dirty flag flushed on the 100ms tick cycle. Non-streaming updates remain immediate.
+
+- **fix: viewport init flash** — The viewport was created empty, causing a blank frame on startup. Now gets initial content immediately on creation.
+
+- **fix: race condition in context cache** — `Get()` used a read lock for the staleness check then released it before refreshing, allowing concurrent goroutines to refresh the same entry. Now uses double-checked locking under a write lock.
+
+- **fix: FNV-1a hash for loop detection** — Replaced simple polynomial hash (`h*31+c`) with FNV-1a for better collision resistance in identical tool call detection.
+
+- **fix: file path validation** — `safePath()` now rejects empty paths, null bytes (OS bypass vector), and paths exceeding 4096 characters.
+
+- **fix: web search context cancellation** — Returns `ctx.Err()` directly when cancelled, instead of wrapping it in a generic error that hides the cancellation signal.
 
 ## Upgrade
 
@@ -18,7 +38,7 @@
 curl -fsSL https://community.bujicoder.com/install.sh | bash
 ```
 
-**Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.8.4...v0.8.5
+**Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.8.4...v0.9.0
 
 ---
 
