@@ -11,6 +11,7 @@ tools:
   - find_files
   - list_directory
   - code_search
+  - symbols
   - web_search
   - think_deeply
   - shared_memory_write

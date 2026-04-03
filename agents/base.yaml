@@ -15,6 +15,7 @@ tools:
   - list_directory
   - run_terminal_command
   - code_search
+  - symbols
   - think_deeply
   - web_search
   - ask_user

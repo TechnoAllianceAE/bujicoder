@@ -10,6 +10,7 @@ tools:
   - glob
   - find_files
   - code_search
+  - symbols
   - think_deeply
 spawnable_agents: []
 system_prompt: |
