@@ -1,3 +1,25 @@
+# v0.8.5
+
+## New Features
+
+- **feat: paste support in TUI** — You can now paste text (error output, code snippets, etc.) directly into the chat input. Previously, multi-character paste was silently rejected. Newlines in pasted text are collapsed to spaces for single-line input.
+
+- **feat: configurable LLM request timeout** — Added `request_timeout` config option (in seconds) to `~/.bujicoder/bujicoder.yaml`. Defaults to 90 seconds. Useful for slower local models via Ollama or llama.cpp that need more time to respond.
+
+  ```yaml
+  request_timeout: 300  # 5 minutes for local LLMs
+  ```
+
+## Upgrade
+
+```bash
+curl -fsSL https://community.bujicoder.com/install.sh | bash
+```
+
+**Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.8.4...v0.8.5
+
+---
+
 # v0.8.4
 
 ## SDK Improvements

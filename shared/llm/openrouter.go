@@ -21,11 +21,16 @@ type OpenRouterProvider struct {
 }
 
 // NewOpenRouterProvider creates a new OpenRouter provider.
-func NewOpenRouterProvider(apiKey string) *OpenRouterProvider {
+// An optional timeout overrides the default 90-second HTTP request timeout.
+func NewOpenRouterProvider(apiKey string, timeout ...time.Duration) *OpenRouterProvider {
+	t := 90 * time.Second
+	if len(timeout) > 0 && timeout[0] > 0 {
+		t = timeout[0]
+	}
 	return &OpenRouterProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: t,
 		},
 	}
 }

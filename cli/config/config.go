@@ -75,12 +75,13 @@ func ExeDir() string {
 
 // UnifiedConfig is the single-file YAML config for BujiCoder.
 type UnifiedConfig struct {
-	Mode       string                        `yaml:"mode"`      // "local"
-	CostMode   string                        `yaml:"cost_mode"` // "normal", "heavy", "max"
-	APIKeys    APIKeysConfig                 `yaml:"api_keys"`
-	Modes      map[string]UnifiedModeMapping `yaml:"modes"` // inline model config
-	AgentsDir  string                        `yaml:"agents_dir,omitempty"`
-	MCPServers []MCPServerConfig             `yaml:"mcp_servers,omitempty"` // MCP tool servers
+	Mode           string                        `yaml:"mode"`      // "local"
+	CostMode       string                        `yaml:"cost_mode"` // "normal", "heavy", "max"
+	APIKeys        APIKeysConfig                 `yaml:"api_keys"`
+	Modes          map[string]UnifiedModeMapping `yaml:"modes"` // inline model config
+	AgentsDir      string                        `yaml:"agents_dir,omitempty"`
+	MCPServers     []MCPServerConfig             `yaml:"mcp_servers,omitempty"` // MCP tool servers
+	RequestTimeout int                           `yaml:"request_timeout,omitempty"` // LLM request timeout in seconds (default: 90)
 }
 
 // MCPServerConfig describes how to launch an MCP server process.

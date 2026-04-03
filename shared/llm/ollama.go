@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 const defaultOllamaURL = "http://localhost:11434"
@@ -13,17 +14,22 @@ type OllamaProvider struct {
 }
 
 // NewOllamaProvider creates a new Ollama provider. Cost is always 0 for local models.
-func NewOllamaProvider(baseURL string) *OllamaProvider {
+func NewOllamaProvider(baseURL string, timeout ...time.Duration) *OllamaProvider {
 	if baseURL == "" {
 		baseURL = defaultOllamaURL
 	}
 	baseURL = strings.TrimRight(baseURL, "/")
 
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &OllamaProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       baseURL + "/v1/chat/completions",
 			ProviderName: "ollama",
 			ZeroCost:     true,
+			Timeout:      t,
 		}),
 	}
 }

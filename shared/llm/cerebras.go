@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 )
 
 const cerebrasAPIURL = "https://api.cerebras.ai/v1/chat/completions"
@@ -12,12 +13,17 @@ type CerebrasProvider struct {
 }
 
 // NewCerebrasProvider creates a new Cerebras provider.
-func NewCerebrasProvider(apiKey string) *CerebrasProvider {
+func NewCerebrasProvider(apiKey string, timeout ...time.Duration) *CerebrasProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &CerebrasProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       cerebrasAPIURL,
 			APIKey:       apiKey,
 			ProviderName: "cerebras",
+			Timeout:      t,
 		}),
 	}
 }

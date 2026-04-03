@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 )
 
 const togetherAPIURL = "https://api.together.xyz/v1/chat/completions"
@@ -12,12 +13,17 @@ type TogetherProvider struct {
 }
 
 // NewTogetherProvider creates a new Together AI provider.
-func NewTogetherProvider(apiKey string) *TogetherProvider {
+func NewTogetherProvider(apiKey string, timeout ...time.Duration) *TogetherProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &TogetherProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       togetherAPIURL,
 			APIKey:       apiKey,
 			ProviderName: "together",
+			Timeout:      t,
 		}),
 	}
 }

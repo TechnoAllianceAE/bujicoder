@@ -20,11 +20,16 @@ type GeminiProvider struct {
 }
 
 // NewGeminiProvider creates a new Gemini provider.
-func NewGeminiProvider(apiKey string) *GeminiProvider {
+// An optional timeout overrides the default 90-second HTTP request timeout.
+func NewGeminiProvider(apiKey string, timeout ...time.Duration) *GeminiProvider {
+	t := 90 * time.Second
+	if len(timeout) > 0 && timeout[0] > 0 {
+		t = timeout[0]
+	}
 	return &GeminiProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: t,
 		},
 	}
 }

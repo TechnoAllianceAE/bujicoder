@@ -4,211 +4,111 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is This Repository?
 
-This repository contains **BujiCoder Enterprise**, a high-performance AI coding assistant built in Go. Active development is in `bujicoder-enterprise/` — a Go microservices backend with a Bubble Tea CLI, designed to scale to 1000+ concurrent users.
+BujiCoder is an open-source, multi-agent AI coding assistant that runs in the terminal. It's a Go CLI tool (`buji`) with a Bubble Tea TUI that orchestrates specialized LLM agents to solve coding tasks. Users bring their own API keys; no code leaves their machine.
 
-## Repository Layout
+**Module:** `github.com/TechnoAllianceAE/bujicoder`
 
-```
-bujicoder-enterprise/      # Active Go project (all current development)
-├── gateway/               # Gateway server and all backend services
-│   ├── cmd/               # Service entry points (gateway, core-api, llm-proxy, billing-worker, analytics-worker, migrate)
-│   ├── server/            # HTTP gateway (handlers, middleware)
-│   ├── analytics/         # Analytics worker
-│   ├── billing/           # Billing worker (Stripe, credits)
-│   ├── config/            # Server configuration
-│   ├── coreapi/           # Core API service (users, orgs, credits)
-│   ├── email/             # Email/SMTP service
-│   └── llmproxy/          # LLM proxy service
-├── cli/                   # Bubble Tea TUI client
-│   ├── cmd/cli/           # CLI binary entry point
-│   ├── app/               # TUI model (model.go)
-│   ├── sdk/               # HTTP/SSE client (client.go)
-│   └── config/            # CLI config management
-├── shared/                # Packages shared by both gateway and CLI
-│   ├── agent/             # Agent YAML loading and registry
-│   ├── agentruntime/      # Core step loop (LLM ↔ tool execution)
-│   ├── auth/              # JWT, GitHub OAuth, middleware
-│   ├── buildinfo/         # Version/commit injected via ldflags
-│   ├── cache/             # Redis client and rate limiting
-│   ├── costmode/          # Cost mode → model resolution
-│   ├── database/          # PostgreSQL pool, migrations, sqlc queries
-│   ├── errutil/           # Error handling utilities
-│   ├── events/            # NATS event helpers
-│   ├── gen/               # Generated protobuf Go code
-│   ├── llm/               # LLM provider abstraction, catalog, pricing
-│   ├── selfupdate/        # CLI self-update logic
-│   └── tools/             # Tool registry (file ops, terminal, search)
-├── agents/                # YAML agent definitions (base, editor, file_explorer, git_committer, planner, researcher, reviewer, thinker)
-├── db/queries/            # SQL query files for sqlc
-├── proto/bujicoder/       # gRPC protobuf definitions (core/v1, llm/v1, events/v1)
-├── deploy/docker/         # Per-service Dockerfiles
-├── installer/             # Windows MSI installer (WiX)
-├── scripts/               # Shell helpers (install.sh, proto-gen.sh)
-├── docker-compose.yml     # Infrastructure stack (postgres, pgbouncer, redis, nats)
-└── Makefile               # Build, test, migrate, proto, sqlc, release commands
-
-bujicoder/                 # Open-source CLI repo (TechnoAllianceAE/bujicoder)
-docs/                      # Supplementary documentation (SELF-HOSTING.md, etc.)
-```
-
-## Naming Convention
-
-- **Product name:** BujiCoder
-- **CLI binary:** `buji`
-- **Config dir:** `~/.bujicoder/`
-- **Config file:** `bujicoder.yaml`
-- **Env vars:** `BUJICODER_*`
-- **Public Go module:** `github.com/TechnoAllianceAE/bujicoder`
-- **Private Go module:** `github.com/TechnoAllianceAE/bujicoder-enterprise`
-
-## BujiCoder Build & Development Commands
-
-All active development commands run from the `bujicoder-enterprise/` directory:
+## Build & Development Commands
 
 ```bash
-cd bujicoder-enterprise
+make build              # Build CLI binary to bin/buji
+make install            # Build + install to ~/.local/bin/buji
+make test               # go test ./... -race
+make test-coverage      # Tests + HTML coverage report
+make lint               # golangci-lint run ./...
+make fmt                # gofmt + goimports
+make dist               # Cross-compile for darwin/linux/windows (amd64+arm64)
+make release VERSION=x.y.z  # dist + GitHub release via gh CLI
 
-# Start infrastructure (PostgreSQL, PgBouncer, Redis, NATS)
-make docker-up
+# Run a single test
+go test -race -run TestFunctionName ./shared/agent/
 
-# Apply database migrations
-make migrate-up
-
-# Build all service binaries
-make build
-
-# Build a specific service
-make build-gateway          # or build-cli, build-core-api, etc.
-
-# Run a service locally (after docker-up + migrate-up)
-make run-gateway            # or run-core-api, run-llm-proxy, etc.
-
-# Start infra + run migrations in one command
-make dev
-
-# Install CLI binary to ~/.local/bin/buji
-make install-cli
-
-# Code generation
-make proto                  # Generate Go code from .proto files
-make sqlc                   # Generate Go code from SQL queries
-
-# Testing
-make test                   # Run all tests (go test ./... -race)
-make test-coverage          # Tests with coverage report
-
-# Lint & format
-make lint                   # golangci-lint
-make fmt                    # gofmt + goimports
-
-# Database
-make migrate-up             # Apply pending migrations
-make migrate-down           # Rollback last migration
-make migrate-status         # Show migration status
-
-# Docker
-make docker-up              # Start infrastructure
-make docker-down            # Stop infrastructure
-make docker-logs            # Tail container logs
-make docker-build           # Build all Docker images
-
-# Release
-make release VERSION=x.y.z  # Build cross-platform CLI + create GitHub Release
-make dist-cli               # Cross-compile CLI for all platforms
+# Run tests for a specific package
+go test -race ./shared/agentruntime/
 ```
 
-## BujiCoder Architecture
+## Architecture
 
-### Services
-
-| Service | Port | Purpose |
-|---------|------|---------|
-| **gateway** | 8080 (HTTP) | REST/SSE entry point, auth, rate limiting, routes to core services |
-| **core-api** | 9001 (gRPC) | User, org, credit, subscription, agent management |
-| **llm-proxy** | 9002 (gRPC) + 8082 (HTTP) | LLM provider routing and streaming |
-| **billing-worker** | — | NATS consumer for async credit deduction and Stripe |
-| **analytics-worker** | — | NATS consumer for usage tracking |
-| **cli** | — | Bubble Tea TUI for interactive agent sessions |
-| **migrate** | — | Database migration runner |
-
-### Request Flow
+### Core Loop
 
 ```
-CLI (Bubble Tea) → HTTP/SSE → Gateway (8080)
-  ├── Auth: GitHub OAuth + Password + JWT
-  ├── Agent Runtime: YAML agent definitions → LLM calls → tool dispatch → sub-agent spawning
-  ├── CoreAPI: users, orgs, credits, subscriptions (in-process dev / gRPC prod)
-  └── LLM Proxy: routes to Anthropic, OpenAI, Gemini, XAI, OpenRouter, ZAI, Ollama
-       └── Events → NATS → billing-worker, analytics-worker (async)
+CLI TUI (Bubble Tea) → Agent Runtime (step loop) → LLM Provider (streaming) → Tool Execution → repeat
 ```
+
+The agent runtime (`shared/agentruntime/`) executes agents step-by-step: send context to LLM, parse tool calls from response, execute tools, append results, repeat until the agent signals completion or hits limits (max steps, max tokens, 200K input token budget). A loop guard detects 10+ identical consecutive tool calls.
 
 ### Agent System
 
-Agents are YAML-defined in `bujicoder-enterprise/agents/`. Each specifies a model, tools, spawnable sub-agents, system prompt, max steps, and max tokens. Key agents: `base` (orchestrator, Claude Sonnet 4), `editor` (file editing), `file_explorer` (GPT-4o-mini, cheapest), `planner` (Qwen 3 235B), `researcher`, `reviewer`, `thinker`, `git_committer` (Claude Haiku 4.5).
+Agents are YAML-defined in `agents/`. Each specifies: `id`, `model`, `tools`, `spawnable_agents`, `max_steps` (20-50), `max_tokens` (4096-8192), and `system_prompt`. Key agents:
+- **base** — main orchestrator, can spawn all other agents
+- **editor** / **parallel_editor** — surgical file editing via `str_replace`
+- **file_explorer** — fast codebase navigation (cheapest model)
+- **thinker** — deep reasoning for complex problems
+- **researcher** — thorough investigation with web/code search
+- **planner** — task decomposition
+- **reviewer** / **ui_reviewer** / **judge** — code review and evaluation
+- **git_committer** — git operations
+- **implementor** — code implementation
 
-Sub-agents do NOT inherit parent models — each has its own `model:` field.
+Sub-agents do NOT inherit parent models — each has its own `model:` field. Cost mode can override models dynamically via `model_config.yaml`.
 
-### Infrastructure Stack
+### Cost Mode & Model Resolution
 
-- **PostgreSQL 16** + **PgBouncer** (transaction pooling, 200 client → 40 DB connections)
-- **Redis 7** (auth cache, rate limiting)
-- **NATS JetStream** (event bus for billing and analytics)
-
-### Code Generation
-
-- **sqlc**: SQL queries in `db/queries/*.sql` → generated Go in `shared/database/queries/`. Config in `sqlc.yaml`.
-- **protobuf**: `.proto` files in `proto/bujicoder/` → generated Go in `shared/gen/`. Uses `buf generate`.
+`shared/costmode/` resolves which model each agent uses based on the active cost mode (normal/heavy/max). Mappings live in `model_config.yaml` with per-agent overrides via `agent_overrides`. The resolver maps agent roles (main, file_explorer, sub_agent) to specific models per mode.
 
 ### LLM Providers
 
-Seven providers in `shared/llm/`: Anthropic, OpenAI, Gemini, XAI, OpenRouter, ZAI, Ollama. Cost mode (normal/heavy/max) controls model selection per agent role via `model_config.yaml`. Individual sub-agents can have per-agent model overrides (`agent_overrides` in the config). The model catalog can be loaded statically from `MODELS_JSON_PATH` or dynamically from OpenRouter API (auto-refreshes every 6 hours). Provider-specific implementations handle streaming differences. OpenRouter pricing service (`shared/llm/pricing.go`) fetches real-time model costs.
+`shared/llm/` implements a streaming `Provider` interface for 15+ vendors: Anthropic, OpenAI, Groq, Qwen, DeepSeek, XAI, Together, Gemini, OpenRouter, and more. Provider/model notation: `openai/gpt-4o`, `anthropic/claude-sonnet-4`. Tracks per-request usage (tokens, cost in cents).
 
-## Environment Configuration
+### Tool System
 
-Copy `bujicoder-enterprise/.env.example` to `bujicoder-enterprise/.env`. Key groups:
-- **Database**: `POSTGRES_*`, `PGBOUNCER_*` (default: `bujicoder:bujicoder_dev@localhost:5432/bujicoder`)
-- **Infrastructure**: `REDIS_URL`, `NATS_URL`
-- **Gateway**: `GATEWAY_PORT`, `BASE_URL`, `GATEWAY_CORS_ORIGINS`, `GATEWAY_RATE_LIMIT_RPM`
-- **Auth**: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `JWT_SECRET`, `ADMIN_SECRET` (password auth also supported, default password `pass123`)
-- **LLM Keys**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_AI_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`
-- **Stripe**: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`
-- **Email**: `SMTP_HOST`, `SMTP_FROM` (for password reset emails)
-- **Agent config**: `AGENTS_DIR` (default `./agents`), `MODELS_JSON_PATH`
+`shared/tools/` provides ~20 built-in tools: `read_files`, `write_file`, `str_replace`, `glob`, `code_search`, `run_terminal_command`, `spawn_agents`, `web_search`, `think_deeply`, memory tools, etc. Supports plan mode (read-only except .md). MCP server tools are discovered and registered dynamically.
 
-## Go Code Style
+### Key Subsystems
 
-- Format with `gofmt`, lint with `golangci-lint`
-- Follow [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
-- Tests alongside code in `*_test.go` files
-- Use `zerolog` for structured logging
-- HTTP routing via `go-chi/chi`
-- Database access via `pgx/v5` + sqlc-generated queries
-- Config via `caarlos0/env` (struct tags)
-- Conventional commits: `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`
+| Package | Purpose |
+|---------|---------|
+| `shared/mcp/` | MCP server management (eager + lazy startup), tool discovery |
+| `shared/codeintel/` | Multi-language symbol extraction (Go, Python, Rust, TS) for project understanding |
+| `shared/contextcache/` | TTL-based file content cache (30s, 1MB limit) with mtime invalidation |
+| `shared/smartctx/` | Keyword-based file relevance ranking for context selection |
+| `shared/store/` | Conversation persistence via bbolt + Bleve full-text search |
+| `shared/snapshot/` | Shadow git repo in `.bujicoder/snapshots/` for safe per-step revert |
+| `shared/workflow/` | YAML-defined multi-agent pipelines (sequential/parallel, variables, approval gates) |
+| `shared/logging/` | Structured JSON logging to `~/.bujicoder/logs/` with rotation |
+| `shared/lsp/` | LSP client for post-edit diagnostics |
+| `shared/selfupdate/` | CLI self-update logic |
+| `shared/errutil/` | `Result[T]` pattern (success/failure) |
 
-## Key File Locations
+### CLI / TUI
 
-| What | Where |
-|------|-------|
-| Gateway routes & middleware | `bujicoder-enterprise/gateway/server/server.go`, `handlers/handlers.go` |
-| Agent runtime loop | `bujicoder-enterprise/shared/agentruntime/runtime.go`, `step.go` |
-| Agent YAML definitions | `bujicoder-enterprise/agents/*.yaml` |
-| LLM provider implementations | `bujicoder-enterprise/shared/llm/*.go` |
-| Database schema/migrations | `bujicoder-enterprise/shared/database/migrations/` |
-| SQL queries (source) | `bujicoder-enterprise/db/queries/*.sql` |
-| SQL queries (generated Go) | `bujicoder-enterprise/shared/database/queries/*.sql.go` |
-| CLI TUI model | `bujicoder-enterprise/cli/app/model.go` |
-| CLI HTTP/SSE client | `bujicoder-enterprise/cli/sdk/client.go` |
-| Gateway config | `bujicoder-enterprise/gateway/config/config.go` |
-| Protobuf definitions | `bujicoder-enterprise/proto/bujicoder/{core,llm,events}/v1/*.proto` |
-| Generated proto code | `bujicoder-enterprise/shared/gen/` |
-| Docker Compose (infra) | `bujicoder-enterprise/docker-compose.yml` |
-| Per-service Dockerfiles | `bujicoder-enterprise/deploy/docker/Dockerfile.*` |
-| Cost mode & model overrides | `bujicoder-enterprise/shared/costmode/costmode.go` |
-| Model catalog (dynamic/static) | `bujicoder-enterprise/shared/llm/catalog.go` |
-| Model pricing service | `bujicoder-enterprise/shared/llm/pricing.go` |
-| Model config (mode→model map) | `bujicoder-enterprise/model_config.yaml` |
-| Admin panel handlers | `bujicoder-enterprise/gateway/server/handlers/admin.go` |
-| Self-hosting & Ollama guide | `docs/SELF-HOSTING.md` |
-| CLI self-update logic | `bujicoder-enterprise/shared/selfupdate/selfupdate.go` |
-| Tool implementations | `bujicoder-enterprise/shared/tools/tools.go` |
+`cli/app/model.go` is the Bubble Tea state machine with modes: StateChat, StateHistory, StateSetup. Slash commands (`/new`, `/mode`, `/history`, `/goal`, `/mcp`, `/models`, `/refresh`). Agent runs are async with streaming events (delta, tool_call, tool_result, step_start, step_end, complete, error).
+
+Config file: `~/.bujicoder/bujicoder.yaml` (cost_mode, API keys, agents_dir, model_config_path). Env var overrides supported.
+
+## Adding a New LLM Provider
+
+1. Implement the `Provider` interface in `shared/llm/<provider>.go`
+2. Register in the provider factory in `shared/llm/provider.go`
+3. Add API key field to `cli/config/config.go` (`APIKeysConfig`)
+4. Add env var fallback in `GetAPIKey()`
+5. Register in `cli/app/model.go` (`registerLocalProviders()`)
+
+## Adding a New Tool
+
+1. Add tool definition in `shared/tools/tools.go`
+2. Register in `NewRegistry()`
+3. Add to relevant agent YAML files in `agents/`
+
+## Naming Conventions
+
+- **Product:** BujiCoder | **Binary:** `buji` | **Config dir:** `~/.bujicoder/`
+- **Env vars:** `BUJICODER_*`
+- **Commits:** conventional — `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `refactor:`
+
+## Go Style
+
+- Go 1.24+, `gofmt` + `golangci-lint`, [Uber Go Style Guide](https://github.com/uber-go/guide/blob/master/style.md)
+- Structured logging: `zerolog`
+- Tests: `*_test.go` alongside code, `t.TempDir()` for fixtures
+- Key patterns: registry (agents, tools, providers), event streaming, YAML-driven config

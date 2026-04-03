@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 )
 
 const openAIAPIURL = "https://api.openai.com/v1/chat/completions"
@@ -12,12 +13,17 @@ type OpenAIProvider struct {
 }
 
 // NewOpenAIProvider creates a new OpenAI provider.
-func NewOpenAIProvider(apiKey string) *OpenAIProvider {
+func NewOpenAIProvider(apiKey string, timeout ...time.Duration) *OpenAIProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &OpenAIProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       openAIAPIURL,
 			APIKey:       apiKey,
 			ProviderName: "openai",
+			Timeout:      t,
 		}),
 	}
 }

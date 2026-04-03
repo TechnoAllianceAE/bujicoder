@@ -1039,32 +1039,38 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 		return os.Getenv(envVar)
 	}
 
+	// Resolve configured request timeout (default 90s).
+	var timeout time.Duration
+	if ucfg != nil && ucfg.RequestTimeout > 0 {
+		timeout = time.Duration(ucfg.RequestTimeout) * time.Second
+	}
+
 	if key := getKey("anthropic", "ANTHROPIC_API_KEY"); key != "" {
-		reg.Register(llm.NewAnthropicProvider(key))
+		reg.Register(llm.NewAnthropicProvider(key, timeout))
 	}
 	if key := getKey("openai", "OPENAI_API_KEY"); key != "" {
-		reg.Register(llm.NewOpenAIProvider(key))
+		reg.Register(llm.NewOpenAIProvider(key, timeout))
 	}
 	if key := getKey("google", "GOOGLE_AI_API_KEY"); key != "" {
-		reg.Register(llm.NewGeminiProvider(key))
+		reg.Register(llm.NewGeminiProvider(key, timeout))
 	}
 	if key := getKey("xai", "XAI_API_KEY"); key != "" {
-		reg.Register(llm.NewXAIProvider(key))
+		reg.Register(llm.NewXAIProvider(key, timeout))
 	}
 	if key := getKey("zai", "ZAI_API_KEY"); key != "" {
-		reg.Register(llm.NewZAIProvider(key))
+		reg.Register(llm.NewZAIProvider(key, timeout))
 	}
 	if key := getKey("together", "TOGETHER_API_KEY"); key != "" {
-		reg.Register(llm.NewTogetherProvider(key))
+		reg.Register(llm.NewTogetherProvider(key, timeout))
 	}
 	if key := getKey("groq", "GROQ_API_KEY"); key != "" {
-		reg.Register(llm.NewGroqProvider(key))
+		reg.Register(llm.NewGroqProvider(key, timeout))
 	}
 	if key := getKey("cerebras", "CEREBRAS_API_KEY"); key != "" {
-		reg.Register(llm.NewCerebrasProvider(key))
+		reg.Register(llm.NewCerebrasProvider(key, timeout))
 	}
 	if key := getKey("kilocode", "KILOCODE_API_KEY"); key != "" {
-		kiloProvider := llm.NewKilocodeProvider(key)
+		kiloProvider := llm.NewKilocodeProvider(key, timeout)
 		reg.Register(kiloProvider)
 		// If no OpenRouter key, Kilocode becomes the default fallback gateway.
 		if getKey("openrouter", "OPENROUTER_API_KEY") == "" {
@@ -1072,15 +1078,15 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 		}
 	}
 	if key := getKey("openrouter", "OPENROUTER_API_KEY"); key != "" {
-		orProvider := llm.NewOpenRouterProvider(key)
+		orProvider := llm.NewOpenRouterProvider(key, timeout)
 		reg.Register(orProvider)
 		reg.SetDefault(orProvider)
 	}
 	if u := getKey("ollama", "OLLAMA_URL"); u != "" {
-		reg.Register(llm.NewOllamaProvider(u))
+		reg.Register(llm.NewOllamaProvider(u, timeout))
 	}
 	if u := getKey("llamacpp", "LLAMACPP_URL"); u != "" {
-		reg.Register(llm.NewLlamaCppProvider(u))
+		reg.Register(llm.NewLlamaCppProvider(u, timeout))
 	}
 }
 
@@ -1968,17 +1974,31 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		default:
 			if m.state == StateChat && (!m.streaming || m.pendingQuestion != "" || m.pendingApproval != "") {
 				ch := msg.String()
-				// Filter out non-printable key names that slip through.
-				if len(ch) > 1 {
+				isPaste := tea.KeyMsg(msg).Paste
+				// Filter out non-printable key names that slip through,
+				// but allow multi-character pasted text.
+				if len(ch) > 1 && !isPaste {
 					break
+				}
+				if isPaste {
+					// Strip carriage returns from pasted text and
+					// replace newlines with spaces for single-line input.
+					ch = strings.ReplaceAll(ch, "\r\n", " ")
+					ch = strings.ReplaceAll(ch, "\r", " ")
+					ch = strings.ReplaceAll(ch, "\n", " ")
+					ch = strings.TrimSpace(ch)
+					if ch == "" {
+						break
+					}
 				}
 				// Toggle welcome collapse when typing "/"
 				if len(m.input) == 0 && ch == "/" && len(m.messages) == 0 {
 					m.welcomeCollapsed = !m.welcomeCollapsed
 				}
 				runes := []rune(m.input)
+				pastedRunes := []rune(ch)
 				m.input = string(runes[:m.cursorPos]) + ch + string(runes[m.cursorPos:])
-				m.cursorPos++
+				m.cursorPos += len(pastedRunes)
 				m.historyIdx = -1 // reset history browsing on new input
 				m.spinnerFrame = 0
 				m.updateAutocomplete()

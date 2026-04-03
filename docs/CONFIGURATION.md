@@ -35,6 +35,8 @@ modes:
     file_explorer: openai/gpt-4o-mini
     sub_agent: z-ai/glm-5
 
+request_timeout: 300              # LLM request timeout in seconds (default: 90)
+
 mcp_servers:
   - name: my-server
     command: npx
@@ -195,3 +197,13 @@ To use local models via Ollama:
      normal:
        main: ollama/llama3
    ```
+
+## Request Timeout
+
+The default LLM request timeout is 90 seconds. Local models (Ollama, llama.cpp) are often slower and may need more time. Set `request_timeout` in your config (in seconds):
+
+```yaml
+request_timeout: 300  # 5 minutes
+```
+
+This applies to all LLM providers. If not set, the default 90-second timeout is used.

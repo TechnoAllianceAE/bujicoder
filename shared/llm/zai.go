@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"os"
+	"time"
 )
 
 // Z.AI endpoint variants:
@@ -23,7 +24,11 @@ type ZAIProvider struct {
 // NewZAIProvider creates a new Zhipu AI provider.
 // Uses the Coding Plan endpoint by default. Set ZAI_API_URL env var to override,
 // or set ZAI_PAYGO=1 to use the pay-as-you-go endpoint.
-func NewZAIProvider(apiKey string) *ZAIProvider {
+func NewZAIProvider(apiKey string, timeout ...time.Duration) *ZAIProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	apiURL := zaiCodingURL
 	if u := os.Getenv("ZAI_API_URL"); u != "" {
 		apiURL = u
@@ -35,6 +40,7 @@ func NewZAIProvider(apiKey string) *ZAIProvider {
 			APIURL:       apiURL,
 			APIKey:       apiKey,
 			ProviderName: "z-ai",
+			Timeout:      t,
 		}),
 	}
 }

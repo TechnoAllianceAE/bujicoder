@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 )
 
 const kilocodeGatewayURL = "https://api.kilo.ai/api/gateway/chat/completions"
@@ -20,12 +21,17 @@ type KilocodeProvider struct {
 }
 
 // NewKilocodeProvider creates a new Kilocode provider.
-func NewKilocodeProvider(apiKey string) *KilocodeProvider {
+func NewKilocodeProvider(apiKey string, timeout ...time.Duration) *KilocodeProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &KilocodeProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       kilocodeGatewayURL,
 			APIKey:       apiKey,
 			ProviderName: "kilocode",
+			Timeout:      t,
 			ExtraHeaders: map[string]string{
 				"HTTP-Referer": "https://bujicoder.com",
 				"X-Title":      "BujiCoder",

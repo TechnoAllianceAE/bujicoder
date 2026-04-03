@@ -21,11 +21,16 @@ type AnthropicProvider struct {
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
-func NewAnthropicProvider(apiKey string) *AnthropicProvider {
+// An optional timeout overrides the default 90-second HTTP request timeout.
+func NewAnthropicProvider(apiKey string, timeout ...time.Duration) *AnthropicProvider {
+	t := 90 * time.Second
+	if len(timeout) > 0 && timeout[0] > 0 {
+		t = timeout[0]
+	}
 	return &AnthropicProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: t,
 		},
 	}
 }

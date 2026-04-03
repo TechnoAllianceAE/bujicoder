@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"time"
 )
 
 const xaiAPIURL = "https://api.x.ai/v1/chat/completions"
@@ -12,12 +13,17 @@ type XAIProvider struct {
 }
 
 // NewXAIProvider creates a new XAI provider.
-func NewXAIProvider(apiKey string) *XAIProvider {
+func NewXAIProvider(apiKey string, timeout ...time.Duration) *XAIProvider {
+	var t time.Duration
+	if len(timeout) > 0 {
+		t = timeout[0]
+	}
 	return &XAIProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
 			APIURL:       xaiAPIURL,
 			APIKey:       apiKey,
 			ProviderName: "x-ai",
+			Timeout:      t,
 		}),
 	}
 }

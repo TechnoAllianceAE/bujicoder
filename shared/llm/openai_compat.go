@@ -20,6 +20,8 @@ type OpenAICompatConfig struct {
 	ExtraHeaders map[string]string
 	// ZeroCost forces cost to 0 (e.g., for Ollama local models).
 	ZeroCost bool
+	// Timeout overrides the default HTTP request timeout. Zero means use the default (90s).
+	Timeout time.Duration
 }
 
 // openAICompatProvider implements the shared streaming logic for OpenAI-compatible APIs.
@@ -29,10 +31,14 @@ type openAICompatProvider struct {
 }
 
 func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = 90 * time.Second
+	}
 	return &openAICompatProvider{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: timeout,
 		},
 	}
 }
