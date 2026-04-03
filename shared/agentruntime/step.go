@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"strings"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
@@ -468,11 +469,9 @@ func toolInputSchema(toolName string) map[string]any {
 }
 
 // hashArgs creates a hash of tool arguments for loop detection.
-// Uses a simple hash to detect identical tool calls.
+// Uses FNV-1a for better collision resistance than simple polynomial hashing.
 func hashArgs(argsJSON string) string {
-	h := uint64(0)
-	for _, c := range argsJSON {
-		h = h*31 + uint64(c)
-	}
-	return fmt.Sprintf("%016x", h)
+	h := fnv.New64a()
+	h.Write([]byte(argsJSON))
+	return fmt.Sprintf("%016x", h.Sum64())
 }

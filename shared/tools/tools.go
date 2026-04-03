@@ -693,6 +693,9 @@ func webSearch() func(ctx context.Context, args json.RawMessage) (string, error)
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
 			return "", fmt.Errorf("web search: %w", err)
 		}
 		defer resp.Body.Close()
@@ -781,6 +784,18 @@ func symbols(workDir string) func(ctx context.Context, args json.RawMessage) (st
 // safePath resolves a path relative to workDir and ensures the result stays
 // within workDir. Returns an error if the path escapes the boundary.
 func safePath(workDir, path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("access denied: empty path")
+	}
+	// Reject null bytes which can bypass path checks in some OS calls.
+	if strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("access denied: path contains null byte")
+	}
+	// Reject excessively long paths (Windows MAX_PATH=260, but be generous).
+	if len(path) > 4096 {
+		return "", fmt.Errorf("access denied: path exceeds maximum length")
+	}
+
 	resolved := path
 	if !filepath.IsAbs(path) {
 		resolved = filepath.Join(workDir, path)

@@ -75,14 +75,29 @@ func (c *Cache) Get(relPath string) (string, error) {
 		}
 	}
 
-	// Cache miss or stale — read from disk.
-	return c.refresh(relPath)
+	// Cache miss or stale — acquire write lock and double-check before refresh
+	// to prevent concurrent goroutines from refreshing the same entry.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Double-check: another goroutine may have refreshed while we waited for the lock.
+	if entry, ok := c.entries[relPath]; ok && !entry.stale(c.ttl) {
+		absPath := filepath.Join(c.root, relPath)
+		if info, err := os.Stat(absPath); err == nil && info.ModTime().Equal(entry.ModTime) {
+			entry.AccessedAt = time.Now()
+			return entry.Content, nil
+		}
+	}
+
+	return c.refreshLocked(relPath)
 }
 
 // Prefetch reads the given paths into the cache in one batch.
 func (c *Cache) Prefetch(paths []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	for _, p := range paths {
-		_, _ = c.refresh(p)
+		_, _ = c.refreshLocked(p)
 	}
 }
 
@@ -113,8 +128,9 @@ func (c *Cache) Stats() (int, []string) {
 	return len(c.entries), paths
 }
 
-// refresh reads a file from disk and updates the cache.
-func (c *Cache) refresh(relPath string) (string, error) {
+// refreshLocked reads a file from disk and updates the cache.
+// Caller must hold c.mu write lock.
+func (c *Cache) refreshLocked(relPath string) (string, error) {
 	absPath := filepath.Join(c.root, relPath)
 	info, err := os.Stat(absPath)
 	if err != nil {
@@ -147,10 +163,7 @@ func (c *Cache) refresh(relPath string) (string, error) {
 		AccessedAt: time.Now(),
 	}
 
-	c.mu.Lock()
 	c.entries[relPath] = entry
-	c.mu.Unlock()
-
 	return content, nil
 }
 
