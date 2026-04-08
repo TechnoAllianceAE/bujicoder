@@ -80,14 +80,18 @@ type zaiModelsResponse struct {
 	Data []zaiModelEntry `json:"data"`
 }
 
-// zaiDefaultPricing provides pricing for Z.AI models in USD per million
-// tokens, matching the rates listed on OpenRouter.
+// zaiDefaultPricing provides pricing for Z.AI models in USD per million tokens.
+// All plan users: GLM-5.1, GLM-5-Turbo, GLM-4.7, GLM-4.6, GLM-4.5-Air
+// Max/Pro plan users additionally: GLM-5
+// Source: https://z.ai/model-api
 var zaiDefaultPricing = map[string]struct{ Input, Output float64 }{
+	"glm-5.1":     {Input: 1.00, Output: 3.00},
+	"glm-5-turbo": {Input: 0.50, Output: 1.50},
+	"glm-5":       {Input: 0.95, Output: 2.55},
+	"glm-4.7":     {Input: 0.30, Output: 1.40},
+	"glm-4.6":     {Input: 0.35, Output: 1.71},
 	"glm-4.5":     {Input: 0.55, Output: 2.00},
 	"glm-4.5-air": {Input: 0.13, Output: 0.85},
-	"glm-4.6":     {Input: 0.35, Output: 1.71},
-	"glm-4.7":     {Input: 0.30, Output: 1.40},
-	"glm-5":       {Input: 0.95, Output: 2.55},
 }
 
 const zaiDefaultContextLength = 128000
@@ -292,8 +296,9 @@ func (c *ModelCatalog) MergeTogetherModels(ctx context.Context) error {
 }
 
 // MergeZAIModels fetches models from the Z.AI API and merges them into the
-// existing catalog. Models already present (e.g. from OpenRouter with
-// authoritative pricing) are not overwritten.
+// existing catalog. For models already present (e.g. from OpenRouter), the
+// source is updated to "zai" to indicate direct availability and z-ai pricing
+// is applied. New models not yet in the catalog are added.
 func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 	if c.zaiKey == "" {
 		return nil
@@ -308,7 +313,18 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 	}
 	c.mu.Lock()
 	for k, v := range zai {
-		if _, exists := c.models[k]; !exists {
+		if existing, exists := c.models[k]; exists {
+			// Model already in catalog (from OpenRouter/static) — update source
+			// to "zai" and apply z-ai pricing, but keep OpenRouter's richer
+			// metadata (context_length, modalities, params).
+			existing.Source = "zai"
+			existing.SupportsTools = true
+			if v.PromptCost > 0 {
+				existing.PromptCost = v.PromptCost
+				existing.CompletionCost = v.CompletionCost
+			}
+			c.models[k] = existing
+		} else {
 			c.models[k] = v
 		}
 	}
@@ -349,6 +365,7 @@ func fetchZAIModels(ctx context.Context, client *http.Client, apiKey string) (ma
 			Source:        "zai",
 			ContextLength: zaiDefaultContextLength,
 			Created:       entry.Created,
+			SupportsTools: true,
 		}
 		if pricing, ok := zaiDefaultPricing[entry.ID]; ok {
 			info.PromptCost = pricing.Input / 1_000_000
