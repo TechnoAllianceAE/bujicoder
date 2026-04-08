@@ -54,20 +54,20 @@ func ClassifyError(err error) *UserError {
 		return &UserError{Err: err, UserMsg: "Rate limit exceeded", Action: "Too many requests. Wait a moment and try again.", Retryable: true}
 
 	case contains(msg, "session usage limit"), contains(msg, "Key limit exceeded"):
-		return &UserError{Err: err, UserMsg: "Usage limit reached", Action: "You've hit your plan's usage limit. Contact your admin or upgrade."}
+		return &UserError{Err: err, UserMsg: "Usage limit reached", Action: "You've hit the provider's usage limit. Wait or check your plan."}
 
 	// Provider errors
 	case contains(msg, "insufficient credits"), contains(msg, "billing"):
-		return &UserError{Err: err, UserMsg: "Insufficient credits", Action: "Your account has no remaining credits. Contact your admin."}
+		return &UserError{Err: err, UserMsg: "Insufficient credits", Action: "Your account has no remaining credits. Top up or switch providers."}
 
 	case contains(msg, "model") && contains(msg, "not found"):
 		return &UserError{Err: err, UserMsg: "Model not available", Action: "The requested model doesn't exist or isn't configured. Try a different model."}
 
-	case contains(msg, "disabled by the administrator"), contains(msg, "exceeding the"):
-		return &UserError{Err: err, UserMsg: "Model blocked by admin", Action: "This model has been disabled. Contact your admin or use a different model."}
+	case contains(msg, "disabled"), contains(msg, "exceeding the"):
+		return &UserError{Err: err, UserMsg: "Model not allowed", Action: "This model is restricted. Try a different model."}
 
 	case contains(msg, "all models failed"):
-		return &UserError{Err: err, UserMsg: "All models unavailable", Action: "The primary model and all fallbacks failed. Try again later or contact your admin.", Retryable: true}
+		return &UserError{Err: err, UserMsg: "All models unavailable", Action: "The primary model and all fallbacks failed. Try again later.", Retryable: true}
 
 	case contains(msg, "provider error"):
 		return &UserError{Err: err, UserMsg: "Model provider error", Action: "The upstream model provider returned an error. Try again.", Retryable: true}
