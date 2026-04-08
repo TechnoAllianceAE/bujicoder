@@ -242,7 +242,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Z.AI models during catalog refresh")
 		} else {
 			for k, v := range zai {
-				if _, exists := models[k]; !exists {
+				if existing, exists := models[k]; exists {
+					// Model exists from OpenRouter — update source to "zai"
+					// and apply z-ai direct pricing, but keep OpenRouter metadata
+					existing.Source = "zai"
+					existing.SupportsTools = true
+					if v.PromptCost > 0 {
+						existing.PromptCost = v.PromptCost
+						existing.CompletionCost = v.CompletionCost
+					}
+					models[k] = existing
+				} else {
 					models[k] = v
 				}
 			}
