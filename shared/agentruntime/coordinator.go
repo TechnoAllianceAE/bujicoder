@@ -488,7 +488,7 @@ Be concise and actionable.`
 		if ev.Delta != nil {
 			response.WriteString(ev.Delta.Text)
 			if cfg.OnEvent != nil {
-				cfg.OnEvent(Event{Type: EventDelta, Text: ev.Delta.Text, AgentID: "coordinator"})
+				cfg.OnEvent(Event{Type: EventDelta, Text: ev.Delta.Text, AgentID: "coordinator", Model: routedModel})
 			}
 		}
 		if ev.Error != nil && !ev.Error.Retryable {

@@ -49,6 +49,7 @@ type Event struct {
 	StepNumber int
 	Usage      *llm.UsageInfo
 	AgentID    string // identifies which sub-agent emitted this event
+	Model      string // model ID used for this step (e.g. "anthropic/claude-sonnet-4")
 }
 
 // OnEvent is a callback invoked for each runtime event.
@@ -137,7 +138,7 @@ func (r *Runtime) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		}
 
 		if cfg.OnEvent != nil {
-			cfg.OnEvent(Event{Type: EventStepStart, StepNumber: step, AgentID: cfg.AgentDef.ID})
+			cfg.OnEvent(Event{Type: EventStepStart, StepNumber: step, AgentID: cfg.AgentDef.ID, Model: cfg.AgentDef.Model})
 		}
 
 		stepResult, err := executeStep(ctx, r, state, cfg)

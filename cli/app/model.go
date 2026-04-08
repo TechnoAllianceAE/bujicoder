@@ -269,8 +269,9 @@ type Model struct {
 	historySaved  string   // input saved when user starts browsing
 
 	// Verbose session logging (/verbose toggle)
-	verboseEnabled bool     // whether verbose logging is active
-	verboseFile    *os.File // open log file handle (nil when disabled)
+	verboseEnabled  bool              // whether verbose logging is active
+	verboseFile     *os.File          // open log file handle (nil when disabled)
+	verboseDeltaBuf map[string]string // per-agent buffered LLM text, flushed at boundaries
 
 	// Viewport rendering debounce
 	viewportDirty bool // true when content changed and viewport needs rebuild
@@ -349,6 +350,25 @@ func (m *Model) verboseLog(format string, args ...any) {
 	m.verboseFile.WriteString(line)
 }
 
+// flushVerboseDeltas writes any buffered LLM text for the given agent and clears the buffer.
+func (m *Model) flushVerboseDeltas(agent string) {
+	if m.verboseDeltaBuf == nil {
+		return
+	}
+	if buf := m.verboseDeltaBuf[agent]; len(strings.TrimSpace(buf)) > 0 {
+		m.verboseLog("[agent:%s] LLM ▸ %s", agent, strings.TrimSpace(buf))
+		delete(m.verboseDeltaBuf, agent)
+	}
+}
+
+// verboseAgentTag returns a log prefix like "[agent:researcher model:openai/gpt-4o]".
+func verboseAgentTag(agent, model string) string {
+	if model != "" {
+		return fmt.Sprintf("[agent:%s model:%s]", agent, model)
+	}
+	return fmt.Sprintf("[agent:%s]", agent)
+}
+
 // verboseLogEvent logs an agent runtime event with context.
 func (m *Model) verboseLogEvent(ev agentruntime.Event) {
 	if !m.verboseEnabled || m.verboseFile == nil {
@@ -358,20 +378,22 @@ func (m *Model) verboseLogEvent(ev agentruntime.Event) {
 	if agent == "" {
 		agent = "base"
 	}
+	tag := verboseAgentTag(agent, ev.Model)
 	switch ev.Type {
 	case agentruntime.EventStepStart:
-		m.verboseLog("──── STEP %d [agent:%s] ────", ev.StepNumber, agent)
+		m.verboseLog("──── STEP %d %s ────", ev.StepNumber, tag)
 	case agentruntime.EventStepEnd:
-		m.verboseLog("──── STEP %d END [agent:%s] ────", ev.StepNumber, agent)
+		m.flushVerboseDeltas(agent)
+		m.verboseLog("──── STEP %d END %s ────", ev.StepNumber, tag)
 	case agentruntime.EventDelta:
-		// Accumulate text deltas — logged at step end or tool call boundaries.
-		// Log individual deltas only if they contain substantial text.
-		text := strings.TrimSpace(ev.Text)
-		if len(text) > 0 {
-			m.verboseLog("[agent:%s] LLM ▸ %s", agent, text)
+		// Accumulate text deltas — flushed at step end, tool call, or completion boundaries.
+		if m.verboseDeltaBuf == nil {
+			m.verboseDeltaBuf = make(map[string]string)
 		}
+		m.verboseDeltaBuf[agent] += ev.Text
 	case agentruntime.EventToolCall:
-		m.verboseLog("[agent:%s] TOOL CALL ▸ %s (id:%s)\n         args: %s", agent, ev.ToolName, ev.ToolCallID, ev.ArgsJSON)
+		m.flushVerboseDeltas(agent)
+		m.verboseLog("%s TOOL CALL ▸ %s (id:%s)\n         args: %s", tag, ev.ToolName, ev.ToolCallID, ev.ArgsJSON)
 	case agentruntime.EventToolResult:
 		result := ev.Text
 		if len(result) > 2000 {
@@ -381,19 +403,21 @@ func (m *Model) verboseLogEvent(ev agentruntime.Event) {
 		if ev.IsError {
 			errTag = " [ERROR]"
 		}
-		m.verboseLog("[agent:%s] TOOL RESULT%s ▸ %s (id:%s)\n         %s", agent, errTag, ev.ToolName, ev.ToolCallID, result)
+		m.verboseLog("%s TOOL RESULT%s ▸ %s (id:%s)\n         %s", tag, errTag, ev.ToolName, ev.ToolCallID, result)
 	case agentruntime.EventStatus:
-		m.verboseLog("[agent:%s] STATUS ▸ %s", agent, ev.Text)
+		m.verboseLog("%s STATUS ▸ %s", tag, ev.Text)
 	case agentruntime.EventComplete:
+		m.flushVerboseDeltas(agent)
 		if ev.Usage != nil {
-			m.verboseLog("[agent:%s] COMPLETE ▸ input_tokens=%d output_tokens=%d cost=%.4f¢", agent, ev.Usage.InputTokens, ev.Usage.OutputTokens, float64(ev.Usage.CostCents))
+			m.verboseLog("%s COMPLETE ▸ input_tokens=%d output_tokens=%d cost=%.4f¢", tag, ev.Usage.InputTokens, ev.Usage.OutputTokens, float64(ev.Usage.CostCents))
 		} else {
-			m.verboseLog("[agent:%s] COMPLETE", agent)
+			m.verboseLog("%s COMPLETE", tag)
 		}
 	case agentruntime.EventCompact:
-		m.verboseLog("[agent:%s] CONTEXT COMPACTED ▸ %s", agent, ev.Text)
+		m.verboseLog("%s CONTEXT COMPACTED ▸ %s", tag, ev.Text)
 	case agentruntime.EventError:
-		m.verboseLog("[agent:%s] ERROR ▸ %s", agent, ev.Text)
+		m.flushVerboseDeltas(agent)
+		m.verboseLog("%s ERROR ▸ %s", tag, ev.Text)
 	}
 }
 
@@ -2140,6 +2164,12 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					break
 				}
 				ch := msg.String()
+				// Filter out terminal OSC escape sequence responses (e.g. background
+				// color query replies like "\e]11;rgb:1717/1414/2121\e\\") that leak
+				// into the input buffer on Windows.
+				if strings.Contains(ch, ";rgb:") || strings.Contains(ch, "]11;") || strings.Contains(ch, "]10;") {
+					break
+				}
 				if isPaste {
 					// Strip carriage returns from pasted text and
 					// replace newlines with spaces for single-line input.

@@ -1,3 +1,23 @@
+# v0.9.1
+
+## Bug Fixes
+
+- **fix: verbose logging token-per-line spam** — LLM streaming deltas were logged individually (one line per token), producing unreadable output. Deltas are now buffered per agent and flushed as a single line at natural boundaries (step end, tool call, completion).
+
+- **fix: verbose logs now show agent model** — Log lines include both agent ID and model, e.g. `[agent:researcher model:openai/gpt-4o] LLM >` so you can tell which sub-agent and model produced each output.
+
+- **fix: OSC escape sequences leaking into input on Windows** — The terminal's background color query response (`\e]11;rgb:...\e\\`) was being interpreted as keyboard input, filling the prompt with garbage characters on startup. These escape sequences are now filtered out.
+
+## Upgrade
+
+```bash
+curl -fsSL https://community.bujicoder.com/install.sh | bash
+```
+
+**Full Changelog**: https://github.com/TechnoAllianceAE/bujicoder/compare/v0.9.0...v0.9.1
+
+---
+
 # v0.9.0
 
 ## New Features

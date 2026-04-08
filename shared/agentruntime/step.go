@@ -196,7 +196,7 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 		if ev.Delta != nil {
 			textBuf.WriteString(ev.Delta.Text)
 			if cfg.OnEvent != nil {
-				cfg.OnEvent(Event{Type: EventDelta, Text: ev.Delta.Text, AgentID: cfg.AgentDef.ID})
+				cfg.OnEvent(Event{Type: EventDelta, Text: ev.Delta.Text, AgentID: cfg.AgentDef.ID, Model: req.Model})
 			}
 		}
 		if ev.ToolCall != nil {
@@ -208,6 +208,7 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 					ToolName:   ev.ToolCall.Name,
 					ArgsJSON:   ev.ToolCall.ArgumentsJSON,
 					AgentID:    cfg.AgentDef.ID,
+					Model:      req.Model,
 				})
 			}
 		}
