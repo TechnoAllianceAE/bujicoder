@@ -18,33 +18,47 @@ import (
 )
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "--version", "-v":
+	// Parse flags
+	var prompt string
+	verbose := false
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		switch {
+		case arg == "--version" || arg == "-v":
 			fmt.Printf("buji %s\n", buildinfo.String())
 			return
-		case "--help", "-h":
+		case arg == "--help" || arg == "-h":
 			printUsage()
 			return
-		case "update":
+		case arg == "update":
 			if err := selfupdate.ApplyUpdate(context.Background()); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
 			return
-		case "uninstall":
+		case arg == "uninstall":
 			runUninstall("buji")
 			return
+		case arg == "--verbose":
+			verbose = true
+		case arg == "-p" || arg == "--prompt":
+			if i+1 < len(os.Args) {
+				i++
+				prompt = os.Args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires an argument\n", arg)
+				os.Exit(1)
+			}
 		}
 	}
 
-	// Check for --verbose flag anywhere in args.
-	verbose := false
-	for _, arg := range os.Args[1:] {
-		if arg == "--verbose" {
-			verbose = true
-			break
+	// Non-interactive mode: run a single prompt and exit.
+	if prompt != "" {
+		if err := app.RunNonInteractive(prompt, verbose); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
+		return
 	}
 
 	opts := []tea.ProgramOption{}
@@ -81,12 +95,13 @@ func printUsage() {
 	fmt.Println(`BujiCoder - AI Coding Assistant
 
 Usage:
-  buji              Start interactive TUI
-  buji --verbose    Start with verbose logging to stderr
-  buji update       Update to the latest version
-  buji uninstall    Remove buji and optionally ~/.bujicoder
-  buji --version    Show version
-  buji --help       Show this help
+  buji                    Start interactive TUI
+  buji -p "prompt"        Run a single prompt non-interactively
+  buji --verbose          Start with verbose logging to stderr
+  buji update             Update to the latest version
+  buji uninstall          Remove buji and optionally ~/.bujicoder
+  buji --version          Show version
+  buji --help             Show this help
 
 TUI Commands:
   /mode <mode>       Switch cost mode (normal · heavy · max · plan)
