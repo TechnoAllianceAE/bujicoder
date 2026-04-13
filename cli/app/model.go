@@ -237,6 +237,10 @@ type Model struct {
 	// Structured logger (writes JSON to ~/.bujicoder/logs/)
 	log zerolog.Logger
 
+	// Orchestrator wraps all runtime components for shared TUI/GUI use.
+	// Currently populated alongside the legacy fields below during migration.
+	orchestrator *AgentOrchestrator
+
 	// Local agent runtime (CLI-side tool execution)
 	agentRuntime    *agentruntime.Runtime
 	agentRegistry   *agent.Registry
