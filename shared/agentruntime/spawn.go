@@ -99,7 +99,12 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 				CostMode:          parentCfg.CostMode,
 				ModelResolver:     parentCfg.ModelResolver,
 				ProposalCollector: collector,
-				SharedMemory:      parentCfg.SharedMemory, // Share memory across agents
+				ContextCache:      parentCfg.ContextCache,  // Safe to share (read-only TTL cache)
+				SharedMemory:      parentCfg.SharedMemory,  // Share memory across agents
+				HookManager:       parentCfg.HookManager,   // Inherit hooks
+				SessionMemory:     parentCfg.SessionMemory,  // Inherit memories (read-only)
+				// NOTE: SnapshotManager and LSPManager intentionally nil for sub-agents
+				// to prevent snapshot flooding and LSP server overload from parallel agents.
 				OnEvent: func(ev Event) {
 					if parentCfg.OnEvent == nil {
 						return

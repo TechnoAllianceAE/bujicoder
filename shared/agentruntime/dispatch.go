@@ -155,6 +155,16 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 
 // executeSingleTool runs a single tool call and returns the result text and error flag.
 func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, cfg RunConfig) (string, bool) {
+	// Pre-tool hooks: if any hook blocks (exit code 2), abort before execution.
+	if cfg.HookManager != nil {
+		argsMap := parseToolArgs(tc.ArgumentsJSON)
+		for _, r := range cfg.HookManager.RunHooks("PreToolUse", tc.Name, argsMap) {
+			if r.Blocked {
+				return r.Message, true
+			}
+		}
+	}
+
 	var resultText string
 	var isError bool
 
@@ -280,7 +290,22 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 		}
 	}
 
+	// Post-tool hooks: fire after execution (informational, cannot block).
+	if cfg.HookManager != nil {
+		argsMap := parseToolArgs(tc.ArgumentsJSON)
+		cfg.HookManager.RunHooks("PostToolUse", tc.Name, argsMap)
+	}
+
 	return resultText, isError
+}
+
+// parseToolArgs converts a JSON string to a map for hook/permission input.
+func parseToolArgs(argsJSON string) map[string]any {
+	var m map[string]any
+	if err := json.Unmarshal([]byte(argsJSON), &m); err != nil {
+		return nil
+	}
+	return m
 }
 
 // isWriteTool returns true if the tool modifies files on disk.

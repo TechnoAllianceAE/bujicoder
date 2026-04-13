@@ -11,8 +11,10 @@ import (
 	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
 	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
+	"github.com/TechnoAllianceAE/bujicoder/shared/hooks"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
 	"github.com/TechnoAllianceAE/bujicoder/shared/lsp"
+	"github.com/TechnoAllianceAE/bujicoder/shared/memory"
 	"github.com/TechnoAllianceAE/bujicoder/shared/snapshot"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
@@ -72,6 +74,10 @@ type RunConfig struct {
 	LSPManager        *lsp.Manager                // When set, LSP diagnostics run after file edits
 	TodoList          *tools.TodoList             // When set, agents can track tasks
 	SharedMemory      *SharedMemory              // When set, enables inter-agent knowledge sharing
+
+	// Extensibility (ported from bc2 — all optional, nil = no-op)
+	HookManager   *hooks.Manager   // When set, Pre/PostToolUse hooks fire around tool calls
+	SessionMemory *memory.Store    // When set, cross-session project memories injected into prompt
 }
 
 // RunResult summarises a completed agent run.

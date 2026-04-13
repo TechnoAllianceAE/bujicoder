@@ -17,6 +17,8 @@ import (
 type ModelPricing struct {
 	PromptCostPerToken     float64 // USD per token
 	CompletionCostPerToken float64 // USD per token
+	CacheReadPerToken      float64 // USD per token (typically discounted vs prompt)
+	CacheWritePerToken     float64 // USD per token (typically same as prompt or slightly more)
 }
 
 // PricingService fetches model pricing from the OpenRouter API, caches it
@@ -92,6 +94,11 @@ func (p *PricingService) GetPricing(model string) (ModelPricing, bool) {
 // CalculateCostCents computes the cost in cents for a given model and token
 // counts. Returns 0 for unknown models (logged at debug level).
 func (p *PricingService) CalculateCostCents(model string, inputTokens, outputTokens int) int64 {
+	return p.CalculateCostCentsWithCache(model, inputTokens, outputTokens, 0, 0)
+}
+
+// CalculateCostCentsWithCache computes cost including cache token pricing.
+func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int) int64 {
 	p.mu.RLock()
 	pricing, ok := p.prices[model]
 	p.mu.RUnlock()
@@ -102,7 +109,9 @@ func (p *PricingService) CalculateCostCents(model string, inputTokens, outputTok
 	}
 
 	costUSD := float64(inputTokens)*pricing.PromptCostPerToken +
-		float64(outputTokens)*pricing.CompletionCostPerToken
+		float64(outputTokens)*pricing.CompletionCostPerToken +
+		float64(cacheReadTokens)*pricing.CacheReadPerToken +
+		float64(cacheWriteTokens)*pricing.CacheWritePerToken
 	costCents := int64(math.Ceil(costUSD * 100))
 	return costCents
 }

@@ -44,11 +44,13 @@ type ErrorEvent struct {
 
 // UsageInfo contains token usage and cost data.
 type UsageInfo struct {
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
-	CostCents    int64  `json:"cost_cents"`
-	Model        string `json:"model"`
-	Provider     string `json:"provider"`
+	InputTokens      int    `json:"input_tokens"`
+	OutputTokens     int    `json:"output_tokens"`
+	CacheReadTokens  int    `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int    `json:"cache_write_tokens,omitempty"`
+	CostCents        int64  `json:"cost_cents"`
+	Model            string `json:"model"`
+	Provider         string `json:"provider"`
 }
 
 // Message represents a chat message.

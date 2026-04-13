@@ -48,6 +48,12 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 				sp += "\n\n" + summary
 			}
 		}
+		// Inject persistent cross-session memories from the memory store.
+		if cfg.SessionMemory != nil {
+			if memPrompt := cfg.SessionMemory.GetPrompt(); memPrompt != "" {
+				sp += "\n\n" + memPrompt
+			}
+		}
 		req.SystemPrompt = &sp
 	}
 
