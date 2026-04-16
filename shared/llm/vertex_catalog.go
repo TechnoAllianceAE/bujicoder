@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 var defaultVertexPublishers = []string{
@@ -49,26 +51,36 @@ func (v *VertexProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 }
 
 func (v *VertexProvider) RefreshModelCatalog(ctx context.Context) ([]ModelInfo, error) {
+	log.Info().Str("host", v.vertexCatalogHost()).Str("region", v.region).Msg("vertex catalog: starting refresh")
+
 	modelsByID := make(map[string]ModelInfo)
 	var successCount int
 	var firstErr error
 	for i, publisher := range defaultVertexPublishers {
 		if i > 0 {
-			// Light backpressure to avoid bursty request storms across publishers.
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
+		before := len(modelsByID)
 		if err := v.fetchPublisherModels(ctx, publisher, modelsByID); err != nil {
+			log.Warn().Err(err).Str("publisher", publisher).Msg("vertex catalog: publisher fetch failed")
 			if firstErr == nil {
 				firstErr = err
 			}
 			continue
 		}
+		added := len(modelsByID) - before
+		if added > 0 {
+			log.Debug().Str("publisher", publisher).Int("models", added).Msg("vertex catalog: fetched publisher")
+		}
 		successCount++
 	}
+
+	log.Info().Int("publishers_ok", successCount).Int("total_models", len(modelsByID)).Msg("vertex catalog: refresh complete")
+
 	if successCount == 0 && firstErr != nil {
 		return nil, firstErr
 	}
@@ -127,36 +139,38 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 		if err != nil {
 			return err
 		}
-		// Skip unavailable publishers gracefully — not all publishers
-		// are available in every region or project. 403/404 is expected
-		// for publishers like x-ai, deepseek, qwen that aren't in Model Garden.
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
 			resp.Body.Close()
+			log.Debug().Str("publisher", publisher).Int("status", resp.StatusCode).Msg("vertex catalog: publisher not available, skipping")
 			return nil
 		}
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
+			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
 			resp.Body.Close()
-			return fmt.Errorf("vertex list %s: unexpected status %d: %s", publisher, resp.StatusCode, strings.TrimSpace(string(body)))
+			return fmt.Errorf("vertex list %s: unexpected status %d: %s", publisher, resp.StatusCode, strings.TrimSpace(string(errBody)))
 		}
 
-		var body vertexPublisherModelsResponse
-		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		var respBody vertexPublisherModelsResponse
+		if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 			resp.Body.Close()
+			log.Warn().Err(err).Str("publisher", publisher).Msg("vertex catalog: failed to decode response")
 			return err
 		}
 		resp.Body.Close()
-		for _, model := range body.PublisherModels {
+
+		log.Debug().Str("publisher", publisher).Int("models_in_page", len(respBody.PublisherModels)).Str("nextPage", respBody.NextPageToken).Msg("vertex catalog: page received")
+
+		for _, model := range respBody.PublisherModels {
 			info, ok := vertexPublisherModelToInfo(model)
 			if !ok {
 				continue
 			}
 			out[info.ID] = info
 		}
-		if body.NextPageToken == "" {
+		if respBody.NextPageToken == "" {
 			return nil
 		}
-		pageToken = body.NextPageToken
+		pageToken = respBody.NextPageToken
 	}
 }
 
