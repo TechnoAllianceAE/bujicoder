@@ -158,13 +158,18 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 			return fmt.Errorf("vertex list %s: unexpected status %d: %s", publisher, resp.StatusCode, strings.TrimSpace(string(errBody)))
 		}
 
+		rawBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB limit
+		resp.Body.Close()
+		if readErr != nil {
+			log.Warn().Err(readErr).Str("publisher", publisher).Int("bytes_read", len(rawBody)).Msg("vertex catalog: failed to read response body")
+			return readErr
+		}
+
 		var respBody vertexPublisherModelsResponse
-		if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
-			resp.Body.Close()
-			log.Warn().Err(err).Str("publisher", publisher).Msg("vertex catalog: failed to decode response")
+		if err := json.Unmarshal(rawBody, &respBody); err != nil {
+			log.Warn().Err(err).Str("publisher", publisher).Int("body_len", len(rawBody)).Str("body_prefix", string(rawBody[:min(200, len(rawBody))])).Msg("vertex catalog: failed to decode response")
 			return err
 		}
-		resp.Body.Close()
 
 		log.Debug().Str("publisher", publisher).Int("models_in_page", len(respBody.PublisherModels)).Str("nextPage", respBody.NextPageToken).Msg("vertex catalog: page received")
 
