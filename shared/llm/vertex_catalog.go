@@ -141,25 +141,29 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 		}
 
 		resp, err := v.client.Do(req)
-		cancel()
 		if err != nil {
-			// Log the URL for debugging (don't leak credentials — URL is public endpoint)
+			cancel()
 			log.Warn().Err(err).Str("publisher", publisher).Str("url", url).Msg("vertex catalog: HTTP request failed")
 			return err
 		}
+		// NOTE: cancel() is deferred until after body read — the response body
+		// is tied to the request context and canceling it prematurely kills the read.
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
 			resp.Body.Close()
+			cancel()
 			log.Debug().Str("publisher", publisher).Int("status", resp.StatusCode).Msg("vertex catalog: publisher not available, skipping")
 			return nil
 		}
 		if resp.StatusCode != http.StatusOK {
 			errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
 			resp.Body.Close()
+			cancel()
 			return fmt.Errorf("vertex list %s: unexpected status %d: %s", publisher, resp.StatusCode, strings.TrimSpace(string(errBody)))
 		}
 
 		rawBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB limit
 		resp.Body.Close()
+		cancel() // Safe to cancel now — body fully read
 		if readErr != nil {
 			log.Warn().Err(readErr).Str("publisher", publisher).Int("bytes_read", len(rawBody)).Msg("vertex catalog: failed to read response body")
 			return readErr
@@ -167,7 +171,7 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 
 		var respBody vertexPublisherModelsResponse
 		if err := json.Unmarshal(rawBody, &respBody); err != nil {
-			log.Warn().Err(err).Str("publisher", publisher).Int("body_len", len(rawBody)).Str("body_prefix", string(rawBody[:min(200, len(rawBody))])).Msg("vertex catalog: failed to decode response")
+			log.Warn().Err(err).Str("publisher", publisher).Int("body_len", len(rawBody)).Msg("vertex catalog: failed to decode response")
 			return err
 		}
 
