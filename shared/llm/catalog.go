@@ -158,6 +158,8 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 }
 
 // LoadModelCatalog reads a models.json file and returns an indexed catalog.
+// Bedrock models from the curated embedded table are always merged in, so
+// routing/dropdowns show Bedrock even when no dynamic fetch runs.
 func LoadModelCatalog(path string) (*ModelCatalog, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -169,8 +171,15 @@ func LoadModelCatalog(path string) (*ModelCatalog, error) {
 		return nil, fmt.Errorf("parse models file: %w", err)
 	}
 
+	models := parseModelEntries(file.Data, "static")
+	if bedrock, _, err := parseBedrockCatalog(); err == nil {
+		for k, v := range bedrock {
+			models[k] = v
+		}
+	}
+
 	return &ModelCatalog{
-		models:        parseModelEntries(file.Data, "static"),
+		models:        models,
 		source:        "static",
 		lastRefreshed: time.Now(),
 	}, nil
@@ -259,6 +268,16 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 		}
 	}
 
+	// Bedrock models always come from the curated embedded table — no API
+	// key required, since AWS has no runtime pricing endpoint.
+	if bedrock, _, err := parseBedrockCatalog(); err == nil {
+		for k, v := range bedrock {
+			models[k] = v
+		}
+	} else {
+		c.log.Warn().Err(err).Msg("failed to parse embedded Bedrock catalog")
+	}
+
 	c.mu.Lock()
 	c.models = models
 	c.lastRefreshed = time.Now()
@@ -337,6 +356,24 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 		} else {
 			c.models[k] = v
 		}
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// MergeBedrockModels injects the curated Bedrock models from the embedded
+// bedrock_models.json into the live catalog. Idempotent — re-calls replace
+// existing bedrock/* entries. Unlike the Together/Z.AI mergers, this one
+// needs no API key: AWS Bedrock has no runtime pricing endpoint so the data
+// is shipped in-binary.
+func (c *ModelCatalog) MergeBedrockModels() error {
+	bedrock, _, err := parseBedrockCatalog()
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range bedrock {
+		c.models[k] = v
 	}
 	c.mu.Unlock()
 	return nil

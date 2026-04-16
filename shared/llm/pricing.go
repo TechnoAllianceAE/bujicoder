@@ -30,6 +30,7 @@ type PricingService struct {
 	apiKey      string
 	togetherKey string
 	zaiKey      string
+	vertex      *VertexProvider
 	client      *http.Client
 	log         zerolog.Logger
 	stopCh      chan struct{}
@@ -61,6 +62,14 @@ func (p *PricingService) Start(ctx context.Context) error {
 	p.mu.Unlock()
 	p.log.Info().Int("models", len(baseline)).Msg("loaded static cost registry")
 
+	// Bedrock pricing is always loaded from the curated embedded table —
+	// AWS has no runtime pricing API so this is the only way. Do it before
+	// the network fetch so Bedrock requests can be priced even when
+	// OpenRouter is unreachable.
+	if err := p.loadBedrockPricing(); err != nil {
+		p.log.Warn().Err(err).Msg("failed to load bedrock pricing table")
+	}
+
 	// Overlay fresh API pricing on top. Non-fatal on failure — static prices
 	// serve as fallback until the next successful refresh.
 	if err := p.fetchPricing(ctx); err != nil {
@@ -68,6 +77,23 @@ func (p *PricingService) Start(ctx context.Context) error {
 	}
 
 	go p.refreshLoop()
+	return nil
+}
+
+// loadBedrockPricing parses the embedded bedrock_models.json and inserts
+// per-token rates into the live price map. Called from Start and also at the
+// end of fetchPricing so a refresh cannot wipe Bedrock rates.
+func (p *PricingService) loadBedrockPricing() error {
+	_, prices, err := parseBedrockCatalog()
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	for id, pricing := range prices {
+		p.prices[id] = pricing
+	}
+	p.mu.Unlock()
+	p.log.Info().Int("models", len(prices)).Str("version", BedrockCatalogVersion()).Msg("loaded bedrock pricing from embedded catalog")
 	return nil
 }
 
@@ -158,42 +184,52 @@ func (p *PricingService) SetZAIKey(key string) {
 	p.zaiKey = key
 }
 
+// SetVertexProvider configures a live Vertex provider so pricing can be
+// discovered dynamically from Google's published Vertex pricing page and
+// applied to the provider's current model catalog.
+func (p *PricingService) SetVertexProvider(v *VertexProvider) {
+	p.vertex = v
+}
+
 // fetchPricing calls the OpenRouter models API (and optionally the Together AI
 // models API) and populates the price map.
 func (p *PricingService) fetchPricing(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
-
-	var body openRouterModelResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
-
-	prices := make(map[string]ModelPricing, len(body.Data))
+	prices := make(map[string]ModelPricing)
 	var skipped int
-	for _, m := range body.Data {
-		promptRate, err1 := strconv.ParseFloat(m.Pricing.Prompt, 64)
-		completionRate, err2 := strconv.ParseFloat(m.Pricing.Completion, 64)
-		if err1 != nil || err2 != nil {
-			skipped++
-			continue
+
+	if p.apiKey != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
+		if err != nil {
+			return fmt.Errorf("build request: %w", err)
 		}
-		prices[m.ID] = ModelPricing{
-			PromptCostPerToken:     promptRate,
-			CompletionCostPerToken: completionRate,
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+		resp, err := p.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("http get: %w", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status %d", resp.StatusCode)
+		}
+
+		var body openRouterModelResponse
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+
+		for _, m := range body.Data {
+			promptRate, err1 := strconv.ParseFloat(m.Pricing.Prompt, 64)
+			completionRate, err2 := strconv.ParseFloat(m.Pricing.Completion, 64)
+			if err1 != nil || err2 != nil {
+				skipped++
+				continue
+			}
+			prices[m.ID] = ModelPricing{
+				PromptCostPerToken:     promptRate,
+				CompletionCostPerToken: completionRate,
+			}
 		}
 	}
 
@@ -207,6 +243,12 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 		p.mergeZAIPricing(prices)
 	}
 
+	if p.vertex != nil {
+		if err := p.mergeVertexPricing(ctx, prices); err != nil {
+			p.log.Warn().Err(err).Msg("failed to fetch Vertex pricing")
+		}
+	}
+
 	// Merge API prices on top of existing map (preserves static baseline for
 	// models not returned by the API).
 	p.mu.Lock()
@@ -214,6 +256,14 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 		p.prices[id] = pricing
 	}
 	p.mu.Unlock()
+
+	// Re-overlay the curated Bedrock table. OpenRouter does not return
+	// Bedrock-prefixed entries today, but this is cheap and makes the
+	// refresh path idempotent — Bedrock rates survive even if a future
+	// OpenRouter response happens to include bedrock/* IDs with stale prices.
+	if err := p.loadBedrockPricing(); err != nil {
+		p.log.Warn().Err(err).Msg("failed to re-apply bedrock pricing after refresh")
+	}
 
 	p.log.Info().Int("api_models", len(prices)).Int("total_models", len(p.prices)).Int("skipped", skipped).Msg("refreshed model prices")
 	return nil

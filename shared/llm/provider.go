@@ -174,6 +174,18 @@ func (r *Registry) Unregister(name string) {
 	delete(r.providers, name)
 }
 
+// HasProvider reports whether a provider with the given name is registered.
+func (r *Registry) HasProvider(name string) bool {
+	_, ok := r.providers[name]
+	return ok
+}
+
+// GetProvider returns a registered provider by name.
+func (r *Registry) GetProvider(name string) (Provider, bool) {
+	p, ok := r.providers[name]
+	return p, ok
+}
+
 // HasProviders returns true if at least one provider or a default fallback is registered.
 func (r *Registry) HasProviders() bool {
 	return len(r.providers) > 0 || r.defaultProvider != nil

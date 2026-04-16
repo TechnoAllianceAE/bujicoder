@@ -75,6 +75,23 @@ func TestRegistryRegisterAndRoute(t *testing.T) {
 	}
 }
 
+func TestRegistryHasProvider(t *testing.T) {
+	reg := NewRegistry()
+	if reg.HasProvider("vertex") {
+		t.Fatal("expected empty registry to report no vertex provider")
+	}
+
+	reg.Register(&mockProvider{name: "vertex"})
+	if !reg.HasProvider("vertex") {
+		t.Fatal("expected registered vertex provider to be found")
+	}
+
+	reg.Unregister("vertex")
+	if reg.HasProvider("vertex") {
+		t.Fatal("expected unregistered vertex provider to be absent")
+	}
+}
+
 func TestMockProviderStream(t *testing.T) {
 	p := &mockProvider{name: "test"}
 	ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{})
