@@ -64,23 +64,6 @@ func (p *PricingService) mergeLiteLLMPricing(ctx context.Context, prices map[str
 			continue
 		}
 
-		var bujiID string
-		switch {
-		case strings.HasPrefix(litellmID, "vertex_ai/"):
-			bujiID = litellmToVertexID(litellmID)
-			vertexCount++
-		case strings.HasPrefix(litellmID, "bedrock/"):
-			bujiID = litellmToBedrockID(litellmID)
-			bedrockCount++
-		default:
-			continue // Only import Vertex + Bedrock from LiteLLM; other providers
-			// use their own APIs (OpenRouter, Together, ZAI).
-		}
-
-		if bujiID == "" {
-			continue
-		}
-
 		pricing := ModelPricing{
 			PromptCostPerToken:     entry.InputCostPerToken,
 			CompletionCostPerToken: entry.OutputCostPerToken,
@@ -88,10 +71,28 @@ func (p *PricingService) mergeLiteLLMPricing(ctx context.Context, prices map[str
 			CacheWritePerToken:     entry.CacheCreationInput,
 		}
 
+		var bujiIDs []string
+		switch {
+		case strings.HasPrefix(litellmID, "vertex_ai/"):
+			bujiIDs = litellmToVertexIDs(litellmID)
+			vertexCount++
+		case strings.HasPrefix(litellmID, "bedrock/"):
+			id := litellmToBedrockID(litellmID)
+			if id != "" {
+				bujiIDs = []string{id}
+			}
+			bedrockCount++
+		default:
+			continue // Only import Vertex + Bedrock from LiteLLM; other providers
+			// use their own APIs (OpenRouter, Together, ZAI).
+		}
+
 		// Only set if not already present — OpenRouter/native API prices
 		// take precedence over LiteLLM's static catalog.
-		if _, exists := prices[bujiID]; !exists {
-			prices[bujiID] = pricing
+		for _, bujiID := range bujiIDs {
+			if _, exists := prices[bujiID]; !exists {
+				prices[bujiID] = pricing
+			}
 		}
 	}
 
@@ -103,16 +104,10 @@ func (p *PricingService) mergeLiteLLMPricing(ctx context.Context, prices map[str
 	return nil
 }
 
-// litellmToVertexID converts a LiteLLM vertex_ai/ model ID to BujiCoder's
-// vertex/ naming convention.
-//
-// LiteLLM format: "vertex_ai/claude-sonnet-4-6", "vertex_ai/gemini-2.0-flash-001"
-// BujiCoder format: "vertex/anthropic/claude-sonnet-4-6", "vertex/gemini-2.0-flash-001"
-//
-// LiteLLM uses "vertex_ai/" prefix for all Vertex models, with some using
-// publisher sub-prefixes (e.g. "vertex_ai/meta/llama-4-scout-...") and some
-// using flat names (e.g. "vertex_ai/claude-opus-4-6").
-func litellmToVertexID(litellmID string) string {
+// litellmToVertexIDs converts a LiteLLM vertex_ai/ model ID to one or more
+// BujiCoder vertex/ IDs. Returns multiple IDs to handle version-suffix
+// variations (e.g. "gemini-2.0-flash-001" also registers as "gemini-2.0-flash").
+func litellmToVertexIDs(litellmID string) []string {
 	name := strings.TrimPrefix(litellmID, "vertex_ai/")
 
 	// Strip @version suffixes (e.g. "claude-haiku-4-5@20251001" → "claude-haiku-4-5")
@@ -120,15 +115,57 @@ func litellmToVertexID(litellmID string) string {
 		name = name[:i]
 	}
 
-	// LiteLLM already uses publisher/ prefix for non-Google models
-	// (e.g. "meta/llama-4-scout", "deepseek-ai/deepseek-v3.1-maas")
-	// but uses flat names for Claude (e.g. "claude-opus-4-6").
-	// Map known Claude/Anthropic models to vertex/anthropic/ prefix.
-	if strings.HasPrefix(name, "claude-") {
-		return "vertex/anthropic/" + name
+	// Strip -maas suffix used by some Vertex partner models
+	baseName := strings.TrimSuffix(name, "-maas")
+
+	// Map Claude models to vertex/anthropic/ prefix
+	makeID := func(n string) string {
+		if strings.HasPrefix(n, "claude-") {
+			return "vertex/anthropic/" + n
+		}
+		return "vertex/" + n
 	}
 
-	return "vertex/" + name
+	primary := makeID(baseName)
+	ids := []string{primary}
+
+	// Also register a stripped-version variant for Google models.
+	// LiteLLM often has "gemini-2.0-flash-001" but Vertex catalog
+	// lists "gemini-2.0-flash". Register both so pricing matches.
+	if !strings.Contains(baseName, "/") { // Only for flat Google model names
+		stripped := stripVersionSuffix(baseName)
+		if stripped != baseName {
+			ids = append(ids, makeID(stripped))
+		}
+	}
+
+	return ids
+}
+
+// stripVersionSuffix removes trailing version numbers from model names.
+// "gemini-2.0-flash-001" → "gemini-2.0-flash"
+// "gemini-2.5-pro-preview-05-06" → "gemini-2.5-pro-preview"
+// "claude-opus-4-6" → "claude-opus-4-6" (no change — not a version suffix)
+func stripVersionSuffix(name string) string {
+	// Match trailing -NNN or -YYMMDD patterns
+	parts := strings.Split(name, "-")
+	if len(parts) < 3 {
+		return name
+	}
+	last := parts[len(parts)-1]
+	// If last segment is all digits and looks like a version (001, 002, etc.)
+	// or a date (20251001), strip it
+	allDigits := true
+	for _, c := range last {
+		if c < '0' || c > '9' {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits && len(last) >= 2 {
+		return strings.Join(parts[:len(parts)-1], "-")
+	}
+	return name
 }
 
 // litellmToBedrockID converts a LiteLLM bedrock/ model ID to BujiCoder format.
