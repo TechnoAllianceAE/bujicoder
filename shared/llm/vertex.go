@@ -54,7 +54,10 @@ func NewVertexProviderFromJSON(ctx context.Context, projectID, region string, cr
 	if err != nil {
 		return nil, fmt.Errorf("vertex: parse credentials json: %w", err)
 	}
-	client := oauth2.NewClient(ctx, creds.TokenSource)
+	// Use context.Background for the OAuth2 HTTP client so the token source
+	// can refresh tokens even after the initial constructor context ends.
+	// The constructor's ctx is only used for initial credential validation.
+	client := oauth2.NewClient(context.Background(), creds.TokenSource)
 	return &VertexProvider{
 		projectID: projectID,
 		region:    region,

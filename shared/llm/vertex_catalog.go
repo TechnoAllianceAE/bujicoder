@@ -133,7 +133,7 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 			url += "&pageToken=" + pageToken
 		}
 
-		reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		reqCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 		if err != nil {
 			cancel()
@@ -143,6 +143,8 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 		resp, err := v.client.Do(req)
 		cancel()
 		if err != nil {
+			// Log the URL for debugging (don't leak credentials — URL is public endpoint)
+			log.Warn().Err(err).Str("publisher", publisher).Str("url", url).Msg("vertex catalog: HTTP request failed")
 			return err
 		}
 		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
