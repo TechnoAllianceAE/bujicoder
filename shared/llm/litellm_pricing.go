@@ -96,9 +96,50 @@ func (p *PricingService) mergeLiteLLMPricing(ctx context.Context, prices map[str
 		}
 	}
 
+	// Second pass: for Vertex Gemini models not found in the vertex_ai/ namespace,
+	// fall back to the generic gemini/ or unprefixed pricing from LiteLLM.
+	// Vertex AI Gemini uses the same per-token rates as the standard Gemini API.
+	var fallbackCount int
+	for litellmID, entry := range catalog {
+		if entry.InputCostPerToken <= 0 && entry.OutputCostPerToken <= 0 {
+			continue
+		}
+		// Only process gemini/ and unprefixed gemini- entries
+		var modelName string
+		switch {
+		case strings.HasPrefix(litellmID, "gemini/"):
+			modelName = strings.TrimPrefix(litellmID, "gemini/")
+		case strings.HasPrefix(litellmID, "gemini-"):
+			modelName = litellmID
+		default:
+			continue
+		}
+
+		vertexID := "vertex/" + modelName
+		if _, exists := prices[vertexID]; !exists {
+			prices[vertexID] = ModelPricing{
+				PromptCostPerToken:     entry.InputCostPerToken,
+				CompletionCostPerToken: entry.OutputCostPerToken,
+				CacheReadPerToken:      entry.CacheReadInput,
+				CacheWritePerToken:     entry.CacheCreationInput,
+			}
+			fallbackCount++
+
+			// Also register stripped-version variant
+			stripped := "vertex/" + stripVersionSuffix(modelName)
+			if stripped != vertexID {
+				if _, exists := prices[stripped]; !exists {
+					prices[stripped] = prices[vertexID]
+					fallbackCount++
+				}
+			}
+		}
+	}
+
 	p.log.Info().
 		Int("vertex_models", vertexCount).
 		Int("bedrock_models", bedrockCount).
+		Int("gemini_fallbacks", fallbackCount).
 		Msg("merged LiteLLM pricing catalog")
 
 	return nil
