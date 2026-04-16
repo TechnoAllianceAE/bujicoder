@@ -94,12 +94,21 @@ func (v *VertexProvider) CatalogLastRefreshed() time.Time {
 	return v.catalogLastRefreshed
 }
 
+// vertexCatalogHost returns the Vertex AI platform host for model catalog requests.
+// Uses the regional endpoint for specific regions, or the global endpoint otherwise.
+func (v *VertexProvider) vertexCatalogHost() string {
+	if v.region == "" || v.region == "global" {
+		return "aiplatform.googleapis.com"
+	}
+	return v.region + "-aiplatform.googleapis.com"
+}
+
 func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher string, out map[string]ModelInfo) error {
 	pageToken := ""
 	for {
 		url := fmt.Sprintf(
-			"https://%s-aiplatform.googleapis.com/v1/publishers/%s/models?pageSize=200",
-			v.region,
+			"https://%s/v1beta1/publishers/%s/models?pageSize=200&listAllVersions=true",
+			v.vertexCatalogHost(),
 			publisher,
 		)
 		if pageToken != "" {
@@ -117,6 +126,13 @@ func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher str
 		cancel()
 		if err != nil {
 			return err
+		}
+		// Skip unavailable publishers gracefully — not all publishers
+		// are available in every region or project. 403/404 is expected
+		// for publishers like x-ai, deepseek, qwen that aren't in Model Garden.
+		if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return nil
 		}
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4*1024))
