@@ -245,8 +245,15 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 
 	if p.vertex != nil {
 		if err := p.mergeVertexPricing(ctx, prices); err != nil {
-			p.log.Warn().Err(err).Msg("failed to fetch Vertex pricing")
+			p.log.Warn().Err(err).Msg("failed to fetch Vertex pricing from Google")
 		}
+	}
+
+	// LiteLLM community catalog — comprehensive Vertex + Bedrock pricing.
+	// This runs after provider-native fetches so it only fills gaps (models
+	// not already priced by OpenRouter, Together, ZAI, or Google scraper).
+	if err := p.mergeLiteLLMPricing(ctx, prices); err != nil {
+		p.log.Warn().Err(err).Msg("failed to fetch LiteLLM pricing catalog")
 	}
 
 	// Merge API prices on top of existing map (preserves static baseline for
@@ -257,10 +264,8 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 	}
 	p.mu.Unlock()
 
-	// Re-overlay the curated Bedrock table. OpenRouter does not return
-	// Bedrock-prefixed entries today, but this is cheap and makes the
-	// refresh path idempotent — Bedrock rates survive even if a future
-	// OpenRouter response happens to include bedrock/* IDs with stale prices.
+	// Re-overlay the curated Bedrock table for any models not covered by
+	// LiteLLM or that have more specific regional pricing.
 	if err := p.loadBedrockPricing(); err != nil {
 		p.log.Warn().Err(err).Msg("failed to re-apply bedrock pricing after refresh")
 	}
