@@ -53,19 +53,25 @@ func (v *VertexProvider) ListModels(ctx context.Context) ([]ModelInfo, error) {
 func (v *VertexProvider) RefreshModelCatalog(ctx context.Context) ([]ModelInfo, error) {
 	log.Info().Str("host", v.vertexCatalogHost()).Str("region", v.region).Msg("vertex catalog: starting refresh")
 
+	// Use a dedicated context with generous timeout instead of the caller's
+	// context, which may be a short-lived HTTP request context. The Google
+	// publisher alone can return 100+ models across multiple pages.
+	refreshCtx, refreshCancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer refreshCancel()
+
 	modelsByID := make(map[string]ModelInfo)
 	var successCount int
 	var firstErr error
 	for i, publisher := range defaultVertexPublishers {
 		if i > 0 {
 			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			case <-refreshCtx.Done():
+				return nil, refreshCtx.Err()
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
 		before := len(modelsByID)
-		if err := v.fetchPublisherModels(ctx, publisher, modelsByID); err != nil {
+		if err := v.fetchPublisherModels(refreshCtx, publisher, modelsByID); err != nil {
 			log.Warn().Err(err).Str("publisher", publisher).Msg("vertex catalog: publisher fetch failed")
 			if firstErr == nil {
 				firstErr = err
