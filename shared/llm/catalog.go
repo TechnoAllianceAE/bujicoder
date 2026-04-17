@@ -259,19 +259,20 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Z.AI models during catalog refresh")
 		} else {
 			for k, v := range zai {
-				// Check both the direct key (z-ai/model) and the OpenRouter-prefixed
-				// key (openrouter/z-ai/model) since OpenRouter models are now prefixed.
+				// Check the OpenRouter-prefixed key (openrouter/z-ai/model).
+				// If found, promote it: remove the openrouter/ entry and store
+				// under the direct z-ai/ key so routing goes through Z.AI.
 				orKey := "openrouter/" + k
 				if existing, exists := models[orKey]; exists {
-					// Model exists from OpenRouter — update source to "zai"
-					// and apply z-ai direct pricing, but keep OpenRouter metadata
 					existing.Source = "zai"
+					existing.ID = k // z-ai/model, not openrouter/z-ai/model
 					existing.SupportsTools = true
 					if v.PromptCost > 0 {
 						existing.PromptCost = v.PromptCost
 						existing.CompletionCost = v.CompletionCost
 					}
-					models[orKey] = existing
+					delete(models, orKey)
+					models[k] = existing
 				} else if existing, exists := models[k]; exists {
 					existing.Source = "zai"
 					existing.SupportsTools = true
@@ -361,20 +362,19 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 	}
 	c.mu.Lock()
 	for k, v := range zai {
-		// Check both the direct key (z-ai/model) and the OpenRouter-prefixed
-		// key (openrouter/z-ai/model) since OpenRouter models are now prefixed.
+		// Promote from openrouter/ to direct z-ai/ key when Z.AI is available.
 		orKey := "openrouter/" + k
 		if existing, exists := c.models[orKey]; exists {
 			existing.Source = "zai"
+			existing.ID = k
 			existing.SupportsTools = true
 			if v.PromptCost > 0 {
 				existing.PromptCost = v.PromptCost
 				existing.CompletionCost = v.CompletionCost
 			}
-			c.models[orKey] = existing
+			delete(c.models, orKey)
+			c.models[k] = existing
 		} else if existing, exists := c.models[k]; exists {
-			// Model already in catalog (from static/other source) — update source
-			// to "zai" and apply z-ai pricing, but keep richer metadata.
 			existing.Source = "zai"
 			existing.SupportsTools = true
 			if v.PromptCost > 0 {
