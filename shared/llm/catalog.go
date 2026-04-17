@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -120,8 +121,15 @@ type ModelCatalog struct {
 func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo {
 	models := make(map[string]ModelInfo, len(entries))
 	for _, entry := range entries {
+		// Prefix IDs with "openrouter/" so naming is uniform with other
+		// providers (together/, z-ai/, bedrock/) and the gateway router
+		// can look up models by their qualified name.
+		id := entry.ID
+		if source == "openrouter" {
+			id = "openrouter/" + entry.ID
+		}
 		info := ModelInfo{
-			ID:            entry.ID,
+			ID:            id,
 			Name:          entry.Name,
 			Source:        source,
 			ContextLength: entry.ContextLength,
@@ -152,7 +160,7 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 		if entry.KnowledgeCutoff != nil {
 			info.KnowledgeCutoff = *entry.KnowledgeCutoff
 		}
-		models[entry.ID] = info
+		models[id] = info
 	}
 	return models
 }
@@ -251,9 +259,20 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Z.AI models during catalog refresh")
 		} else {
 			for k, v := range zai {
-				if existing, exists := models[k]; exists {
+				// Check both the direct key (z-ai/model) and the OpenRouter-prefixed
+				// key (openrouter/z-ai/model) since OpenRouter models are now prefixed.
+				orKey := "openrouter/" + k
+				if existing, exists := models[orKey]; exists {
 					// Model exists from OpenRouter — update source to "zai"
 					// and apply z-ai direct pricing, but keep OpenRouter metadata
+					existing.Source = "zai"
+					existing.SupportsTools = true
+					if v.PromptCost > 0 {
+						existing.PromptCost = v.PromptCost
+						existing.CompletionCost = v.CompletionCost
+					}
+					models[orKey] = existing
+				} else if existing, exists := models[k]; exists {
 					existing.Source = "zai"
 					existing.SupportsTools = true
 					if v.PromptCost > 0 {
@@ -342,10 +361,20 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 	}
 	c.mu.Lock()
 	for k, v := range zai {
-		if existing, exists := c.models[k]; exists {
-			// Model already in catalog (from OpenRouter/static) — update source
-			// to "zai" and apply z-ai pricing, but keep OpenRouter's richer
-			// metadata (context_length, modalities, params).
+		// Check both the direct key (z-ai/model) and the OpenRouter-prefixed
+		// key (openrouter/z-ai/model) since OpenRouter models are now prefixed.
+		orKey := "openrouter/" + k
+		if existing, exists := c.models[orKey]; exists {
+			existing.Source = "zai"
+			existing.SupportsTools = true
+			if v.PromptCost > 0 {
+				existing.PromptCost = v.PromptCost
+				existing.CompletionCost = v.CompletionCost
+			}
+			c.models[orKey] = existing
+		} else if existing, exists := c.models[k]; exists {
+			// Model already in catalog (from static/other source) — update source
+			// to "zai" and apply z-ai pricing, but keep richer metadata.
 			existing.Source = "zai"
 			existing.SupportsTools = true
 			if v.PromptCost > 0 {
@@ -525,21 +554,32 @@ func (c *ModelCatalog) LastRefreshed() time.Time {
 	return c.lastRefreshed
 }
 
-// Validate checks whether a model ID exists in the catalog.
+// Validate checks whether a model ID exists in the catalog. It also tries
+// an "openrouter/"-prefixed lookup for backward compatibility.
 func (c *ModelCatalog) Validate(model string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if _, ok := c.models[model]; !ok {
-		return fmt.Errorf("unknown model %q: not found in model catalog", model)
+	if _, ok := c.models[model]; ok {
+		return nil
 	}
-	return nil
+	if strings.Contains(model, "/") && !strings.HasPrefix(model, "openrouter/") {
+		if _, ok := c.models["openrouter/"+model]; ok {
+			return nil
+		}
+	}
+	return fmt.Errorf("unknown model %q: not found in model catalog", model)
 }
 
-// Get returns the ModelInfo for a given model ID.
+// Get returns the ModelInfo for a given model ID. If the exact ID is not
+// found, it also tries an "openrouter/"-prefixed lookup since OpenRouter
+// models are stored with that prefix for uniform naming.
 func (c *ModelCatalog) Get(model string) (ModelInfo, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	info, ok := c.models[model]
+	if !ok && strings.Contains(model, "/") && !strings.HasPrefix(model, "openrouter/") {
+		info, ok = c.models["openrouter/"+model]
+	}
 	return info, ok
 }
 
@@ -548,6 +588,9 @@ func (c *ModelCatalog) SupportsVision(modelID string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	info, ok := c.models[modelID]
+	if !ok && strings.Contains(modelID, "/") && !strings.HasPrefix(modelID, "openrouter/") {
+		info, ok = c.models["openrouter/"+modelID]
+	}
 	if !ok {
 		return false
 	}
