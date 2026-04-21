@@ -146,6 +146,7 @@ type ModelCatalog struct {
 	zaiKey       string
 	fireworksKey string
 	kilocodeKey  string
+	groqKey      string
 	client       *http.Client
 	log          zerolog.Logger
 	stopCh       chan struct{}
@@ -232,8 +233,11 @@ func LoadModelCatalog(path string) (*ModelCatalog, error) {
 }
 
 // FetchModelCatalog creates a dynamic model catalog by fetching available
-// models from the OpenRouter API. Call StartAutoRefresh to periodically
-// update the catalog in the background.
+// models from the OpenRouter API. apiKey may be empty — in that case
+// OpenRouter is skipped and the catalog is populated from the embedded
+// Bedrock table plus whichever additional providers have keys set via
+// Set*Key before/after the initial fetch. Call StartAutoRefresh to
+// periodically update the catalog in the background.
 func FetchModelCatalog(apiKey string, log zerolog.Logger) (*ModelCatalog, error) {
 	catalog := &ModelCatalog{
 		models: make(map[string]ModelInfo),
@@ -254,31 +258,40 @@ func FetchModelCatalog(apiKey string, log zerolog.Logger) (*ModelCatalog, error)
 	return catalog, nil
 }
 
-// fetchFromAPI calls the OpenRouter /api/v1/models endpoint (and optionally
-// the Together AI /v1/models endpoint) and updates the catalog's model map.
+// fetchFromAPI calls the configured aggregator endpoints and merges results
+// into the catalog's model map. OpenRouter is the primary source when its
+// key is set; additional keys (Together, Z.AI, Fireworks, Kilocode, Groq)
+// overlay extra models. When no OpenRouter key is configured the refresh
+// still runs and populates whatever providers are available plus Bedrock.
 func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
-	if err != nil {
-		return fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	models := make(map[string]ModelInfo)
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
+	if c.apiKey != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/models", nil)
+		if err != nil {
+			return fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", resp.StatusCode)
-	}
+		resp, err := c.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("http get: %w", err)
+		}
+		defer resp.Body.Close()
 
-	var file modelsFile
-	if err := json.NewDecoder(resp.Body).Decode(&file); err != nil {
-		return fmt.Errorf("decode response: %w", err)
-	}
+		if resp.StatusCode != http.StatusOK {
+			return fmt.Errorf("unexpected status %d", resp.StatusCode)
+		}
 
-	models := parseModelEntries(file.Data, "openrouter")
+		var file modelsFile
+		if err := json.NewDecoder(resp.Body).Decode(&file); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+
+		for k, v := range parseModelEntries(file.Data, "openrouter") {
+			models[k] = v
+		}
+	}
 
 	if c.togetherKey != "" {
 		together, err := fetchTogetherModels(ctx, c.client, c.togetherKey)
@@ -343,6 +356,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Kilocode models during catalog refresh")
 		} else {
 			for k, v := range kilo {
+				models[k] = v
+			}
+		}
+	}
+
+	if c.groqKey != "" {
+		groq, err := fetchGroqModels(ctx, c.client, c.groqKey)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch Groq models during catalog refresh")
+		} else {
+			for k, v := range groq {
 				models[k] = v
 			}
 		}
@@ -485,6 +509,91 @@ func (c *ModelCatalog) MergeKilocodeModels(ctx context.Context) error {
 	}
 	c.mu.Unlock()
 	return nil
+}
+
+// groqModelEntry matches the Groq /openai/v1/models JSON shape.
+type groqModelEntry struct {
+	ID            string `json:"id"`
+	Object        string `json:"object"`
+	Created       int64  `json:"created"`
+	OwnedBy       string `json:"owned_by"`
+	Active        bool   `json:"active"`
+	ContextWindow int    `json:"context_window"`
+}
+
+type groqModelsResponse struct {
+	Object string           `json:"object"`
+	Data   []groqModelEntry `json:"data"`
+}
+
+// SetGroqKey configures a Groq API key so that Groq models are included
+// during catalog refresh.
+func (c *ModelCatalog) SetGroqKey(key string) {
+	c.groqKey = key
+}
+
+// MergeGroqModels fetches models from the Groq /openai/v1/models endpoint
+// and merges them into the existing catalog, prefixed with "groq/" so the
+// router directs them to the Groq provider.
+func (c *ModelCatalog) MergeGroqModels(ctx context.Context) error {
+	if c.groqKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	groq, err := fetchGroqModels(ctx, client, c.groqKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range groq {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchGroqModels calls the Groq /openai/v1/models endpoint and returns
+// models as a ModelInfo map keyed by "groq/<model-id>". Only active models
+// are included. Groq does not return pricing in the /models response, so
+// PromptCost and CompletionCost stay zero — real costs must come from an
+// external pricing source (e.g. the LiteLLM pricing registry).
+func fetchGroqModels(ctx context.Context, client *http.Client, apiKey string) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.groq.com/openai/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build groq request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("groq http get: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("groq unexpected status %d", resp.StatusCode)
+	}
+	var body groqModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode groq response: %w", err)
+	}
+	models := make(map[string]ModelInfo)
+	for _, entry := range body.Data {
+		if !entry.Active {
+			continue
+		}
+		id := "groq/" + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        "groq",
+			ContextLength: entry.ContextWindow,
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
 }
 
 // fetchKilocodeModels calls the Kilo Gateway /models endpoint and returns
@@ -709,10 +818,11 @@ func (c *ModelCatalog) StartAutoRefresh() {
 	}()
 }
 
-// Refresh manually triggers a catalog refresh by fetching from the OpenRouter
-// API. Returns an error for static catalogs (loaded from file).
+// Refresh manually triggers a catalog refresh by re-fetching from every
+// configured aggregator. Returns an error for static catalogs (loaded from
+// a file), which have no keys and cannot refresh.
 func (c *ModelCatalog) Refresh() error {
-	if c.apiKey == "" {
+	if c.source != "dynamic" {
 		return fmt.Errorf("cannot refresh static model catalog")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
