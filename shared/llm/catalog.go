@@ -97,6 +97,40 @@ var zaiDefaultPricing = map[string]struct{ Input, Output float64 }{
 
 const zaiDefaultContextLength = 128000
 
+// fireworksModelEntry matches the Fireworks AI /v1/models JSON shape (OpenAI-compat).
+type fireworksModelEntry struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	OwnedBy string `json:"owned_by"`
+}
+
+type fireworksModelsResponse struct {
+	Object string                `json:"object"`
+	Data   []fireworksModelEntry `json:"data"`
+}
+
+// fireworksDefaultPricing provides pricing for popular Fireworks AI models
+// in USD per million tokens. Source: https://fireworks.ai/pricing
+var fireworksDefaultPricing = map[string]struct{ Input, Output float64 }{
+	"accounts/fireworks/models/llama-v3p1-8b-instruct":                  {Input: 0.20, Output: 0.20},
+	"accounts/fireworks/models/llama-v3p1-70b-instruct":                 {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/llama-v3p1-405b-instruct":                {Input: 3.00, Output: 3.00},
+	"accounts/fireworks/models/llama-v3p3-70b-instruct":                 {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/llama4-scout-instruct-basic":             {Input: 0.15, Output: 0.60},
+	"accounts/fireworks/models/llama4-maverick-instruct-basic":          {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/mixtral-8x7b-instruct":                   {Input: 0.50, Output: 0.50},
+	"accounts/fireworks/models/mixtral-8x22b-instruct":                  {Input: 1.20, Output: 1.20},
+	"accounts/fireworks/models/qwen2p5-72b-instruct":                    {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/qwen2p5-coder-32b-instruct":              {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/qwen3-30b-a3b":                           {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/qwen3-235b-a22b":                         {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/deepseek-v3":                             {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/deepseek-r1":                             {Input: 3.00, Output: 7.00},
+	"accounts/fireworks/models/kimi-k2-instruct":                        {Input: 0.50, Output: 2.50},
+	"accounts/fireworks/models/gemma2-9b-it":                            {Input: 0.20, Output: 0.20},
+	"accounts/fireworks/models/phi-3-vision-128k-instruct":              {Input: 0.20, Output: 0.20},
+}
+
 // ModelCatalog indexes available models by ID for validation.
 // It is safe for concurrent reads after creation. Dynamic catalogs
 // (created via FetchModelCatalog) also support concurrent refresh.
@@ -107,13 +141,14 @@ type ModelCatalog struct {
 	lastRefreshed time.Time
 
 	// Dynamic refresh fields (only populated for dynamic catalogs).
-	apiKey      string
-	togetherKey string
-	zaiKey      string
-	client      *http.Client
-	log         zerolog.Logger
-	stopCh      chan struct{}
-	stopOnce    sync.Once
+	apiKey       string
+	togetherKey  string
+	zaiKey       string
+	fireworksKey string
+	client       *http.Client
+	log          zerolog.Logger
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 }
 
 // parseModelEntries converts raw model entries into a ModelInfo map.
@@ -288,6 +323,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 		}
 	}
 
+	if c.fireworksKey != "" {
+		fw, err := fetchFireworksModels(ctx, c.client, c.fireworksKey)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch Fireworks models during catalog refresh")
+		} else {
+			for k, v := range fw {
+				models[k] = v
+			}
+		}
+	}
+
 	// Bedrock models always come from the curated embedded table — no API
 	// key required, since AWS has no runtime pricing endpoint.
 	if bedrock, _, err := parseBedrockCatalog(); err == nil {
@@ -388,6 +434,78 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 	}
 	c.mu.Unlock()
 	return nil
+}
+
+// SetFireworksKey configures a Fireworks AI API key so that Fireworks models
+// are included during catalog refresh.
+func (c *ModelCatalog) SetFireworksKey(key string) {
+	c.fireworksKey = key
+}
+
+// MergeFireworksModels fetches models from the Fireworks AI API and merges
+// them into the existing catalog. Models are prefixed with "fireworks/" so the
+// router directs them to the Fireworks provider.
+func (c *ModelCatalog) MergeFireworksModels(ctx context.Context) error {
+	if c.fireworksKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	fw, err := fetchFireworksModels(ctx, client, c.fireworksKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range fw {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchFireworksModels calls the Fireworks AI /v1/models endpoint and returns
+// models as a ModelInfo map keyed by "fireworks/<model-id>".
+func fetchFireworksModels(ctx context.Context, client *http.Client, apiKey string) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.fireworks.ai/inference/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build fireworks request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fireworks http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fireworks unexpected status %d", resp.StatusCode)
+	}
+
+	var body fireworksModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode fireworks response: %w", err)
+	}
+
+	models := make(map[string]ModelInfo)
+	for _, entry := range body.Data {
+		id := "fireworks/" + entry.ID
+		info := ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        "fireworks",
+			ContextLength: 131072, // common default; most Fireworks models support 128K
+			SupportsTools: true,
+		}
+		if pricing, ok := fireworksDefaultPricing[entry.ID]; ok {
+			info.PromptCost = pricing.Input / 1_000_000
+			info.CompletionCost = pricing.Output / 1_000_000
+		}
+		models[id] = info
+	}
+	return models, nil
 }
 
 // MergeBedrockModels injects the curated Bedrock models from the embedded
