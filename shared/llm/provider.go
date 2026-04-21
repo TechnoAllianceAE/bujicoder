@@ -154,6 +154,7 @@ type Provider interface {
 // Registry maps provider names to Provider implementations.
 type Registry struct {
 	providers       map[string]Provider
+	aliases         map[string]string // short name → canonical provider name
 	defaultProvider Provider
 	catalog         *ModelCatalog
 	pricing         *PricingService
@@ -161,7 +162,10 @@ type Registry struct {
 
 // NewRegistry creates a new provider registry.
 func NewRegistry() *Registry {
-	return &Registry{providers: make(map[string]Provider)}
+	return &Registry{
+		providers: make(map[string]Provider),
+		aliases:   make(map[string]string),
+	}
 }
 
 // Register adds a provider to the registry.
@@ -169,9 +173,53 @@ func (r *Registry) Register(provider Provider) {
 	r.providers[provider.Name()] = provider
 }
 
-// Unregister removes a provider from the registry by name.
+// Unregister removes a provider from the registry by name. Any aliases
+// pointing at this provider are also removed.
 func (r *Registry) Unregister(name string) {
 	delete(r.providers, name)
+	for short, canonical := range r.aliases {
+		if canonical == name {
+			delete(r.aliases, short)
+		}
+	}
+}
+
+// RegisterAlias maps a short name to an existing canonical provider name.
+// Returns an error if the short name collides with a registered provider
+// or another alias pointing to a different provider.
+func (r *Registry) RegisterAlias(shortName, canonical string) error {
+	if shortName == "" || canonical == "" {
+		return fmt.Errorf("alias and canonical name must be non-empty")
+	}
+	if shortName == canonical {
+		return nil
+	}
+	if _, exists := r.providers[shortName]; exists {
+		return fmt.Errorf("alias %q collides with registered provider name", shortName)
+	}
+	if existing, ok := r.aliases[shortName]; ok && existing != canonical {
+		return fmt.Errorf("alias %q already maps to %q", shortName, existing)
+	}
+	r.aliases[shortName] = canonical
+	return nil
+}
+
+// UnregisterAliasesFor drops all aliases pointing at the given canonical name.
+func (r *Registry) UnregisterAliasesFor(canonical string) {
+	for short, c := range r.aliases {
+		if c == canonical {
+			delete(r.aliases, short)
+		}
+	}
+}
+
+// ResolveAlias returns the canonical provider name for a short name, or the
+// input unchanged if no alias exists.
+func (r *Registry) ResolveAlias(name string) string {
+	if canonical, ok := r.aliases[name]; ok {
+		return canonical
+	}
+	return name
 }
 
 // HasProvider reports whether a provider with the given name is registered.
@@ -230,6 +278,10 @@ func (r *Registry) Route(model string) (Provider, string, error) {
 
 	providerName := parts[0]
 	modelName := parts[1]
+
+	if canonical, ok := r.aliases[providerName]; ok {
+		providerName = canonical
+	}
 
 	if provider, ok := r.providers[providerName]; ok {
 		return provider, modelName, nil
