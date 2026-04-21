@@ -165,7 +165,7 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 		if source == "openrouter" {
 			id = "openrouter/" + entry.ID
 		} else if source == "kilocode" {
-			id = "kilo/" + entry.ID
+			id = "kilocode/" + entry.ID
 		}
 		info := ModelInfo{
 			ID:            id,
@@ -489,7 +489,7 @@ func (c *ModelCatalog) SetKilocodeKey(key string) {
 }
 
 // MergeKilocodeModels fetches models from the Kilo Gateway /models endpoint
-// and merges them into the existing catalog, prefixed with "kilo/" so the
+// and merges them into the existing catalog, prefixed with "kilocode/" so the
 // router directs them to the Kilocode provider.
 func (c *ModelCatalog) MergeKilocodeModels(ctx context.Context) error {
 	if c.kilocodeKey == "" {
@@ -597,7 +597,7 @@ func fetchGroqModels(ctx context.Context, client *http.Client, apiKey string) (m
 }
 
 // fetchKilocodeModels calls the Kilo Gateway /models endpoint and returns
-// models as a ModelInfo map keyed by "kilo/<provider>/<model>". The endpoint
+// models as a ModelInfo map keyed by "kilocode/<provider>/<model>". The endpoint
 // is public (no auth required) and returns the OpenRouter-compatible schema
 // including pricing, context length, and supported parameters, so no
 // hardcoded tables are required.
