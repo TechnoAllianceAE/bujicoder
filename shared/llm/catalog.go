@@ -145,6 +145,7 @@ type ModelCatalog struct {
 	togetherKey  string
 	zaiKey       string
 	fireworksKey string
+	kilocodeKey  string
 	client       *http.Client
 	log          zerolog.Logger
 	stopCh       chan struct{}
@@ -162,6 +163,8 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 		id := entry.ID
 		if source == "openrouter" {
 			id = "openrouter/" + entry.ID
+		} else if source == "kilocode" {
+			id = "kilo/" + entry.ID
 		}
 		info := ModelInfo{
 			ID:            id,
@@ -334,6 +337,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 		}
 	}
 
+	if c.kilocodeKey != "" {
+		kilo, err := fetchKilocodeModels(ctx, c.client)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch Kilocode models during catalog refresh")
+		} else {
+			for k, v := range kilo {
+				models[k] = v
+			}
+		}
+	}
+
 	// Bedrock models always come from the curated embedded table — no API
 	// key required, since AWS has no runtime pricing endpoint.
 	if bedrock, _, err := parseBedrockCatalog(); err == nil {
@@ -440,6 +454,62 @@ func (c *ModelCatalog) MergeZAIModels(ctx context.Context) error {
 // are included during catalog refresh.
 func (c *ModelCatalog) SetFireworksKey(key string) {
 	c.fireworksKey = key
+}
+
+// SetKilocodeKey configures a Kilocode API key so that Kilo Gateway models
+// are included during catalog refresh. The Kilo /models endpoint itself is
+// public; the key is used as a gate so Kilo models only appear when the
+// operator has actually configured the provider.
+func (c *ModelCatalog) SetKilocodeKey(key string) {
+	c.kilocodeKey = key
+}
+
+// MergeKilocodeModels fetches models from the Kilo Gateway /models endpoint
+// and merges them into the existing catalog, prefixed with "kilo/" so the
+// router directs them to the Kilocode provider.
+func (c *ModelCatalog) MergeKilocodeModels(ctx context.Context) error {
+	if c.kilocodeKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	kilo, err := fetchKilocodeModels(ctx, client)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range kilo {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchKilocodeModels calls the Kilo Gateway /models endpoint and returns
+// models as a ModelInfo map keyed by "kilo/<provider>/<model>". The endpoint
+// is public (no auth required) and returns the OpenRouter-compatible schema
+// including pricing, context length, and supported parameters, so no
+// hardcoded tables are required.
+func fetchKilocodeModels(ctx context.Context, client *http.Client) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.kilo.ai/api/gateway/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build kilocode request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("kilocode http get: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("kilocode unexpected status %d", resp.StatusCode)
+	}
+	var file modelsFile
+	if err := json.NewDecoder(resp.Body).Decode(&file); err != nil {
+		return nil, fmt.Errorf("decode kilocode response: %w", err)
+	}
+	return parseModelEntries(file.Data, "kilocode"), nil
 }
 
 // MergeFireworksModels fetches models from the Fireworks AI API and merges
