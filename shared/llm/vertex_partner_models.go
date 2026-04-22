@@ -60,9 +60,10 @@ func (v *VertexProvider) streamRawPredict(
 		return nil, fmt.Errorf("marshal vertex rawPredict envelope: %w", err)
 	}
 
+	region := v.regionFor(publisher)
 	url := fmt.Sprintf(
 		"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/%s/models/%s:streamRawPredict",
-		v.region, v.projectID, v.region, publisher, modelName,
+		region, v.projectID, region, publisher, modelName,
 	)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(envelope))
 	if err != nil {

@@ -18,13 +18,47 @@ import (
 
 // VertexProvider implements the Provider interface for Google Cloud's Vertex AI.
 // It relies on Google Application Default Credentials for authentication.
+//
+// Vertex hosts multiple publishers (Google, Anthropic, Mistral, Meta…) and each
+// publisher pins its models to a subset of regions. A single default `region`
+// doesn't suit every publisher — Claude in particular is not served from
+// us-central1 even though Gemini is. publisherRegions lets the operator map a
+// publisher name to a region override; requests fall back to `region` when the
+// publisher has no entry.
 type VertexProvider struct {
-	projectID string
-	region    string
-	client    *http.Client
+	projectID        string
+	region           string
+	publisherRegions map[string]string
+	client           *http.Client
 	catalogMu sync.RWMutex
 	catalogCache []ModelInfo
 	catalogLastRefreshed time.Time
+}
+
+// SetPublisherRegion overrides the default region for a single publisher
+// (e.g. "anthropic" → "us-east5"). Empty region clears the override.
+func (v *VertexProvider) SetPublisherRegion(publisher, region string) {
+	if v == nil {
+		return
+	}
+	if v.publisherRegions == nil {
+		v.publisherRegions = make(map[string]string)
+	}
+	if region == "" {
+		delete(v.publisherRegions, publisher)
+		return
+	}
+	v.publisherRegions[publisher] = region
+}
+
+// regionFor returns the region to use for a given publisher, falling back to
+// the default region if there's no override. The default region is also used
+// when publisher is "google" or empty.
+func (v *VertexProvider) regionFor(publisher string) string {
+	if r, ok := v.publisherRegions[publisher]; ok && r != "" {
+		return r
+	}
+	return v.region
 }
 
 // NewVertexProvider creates a new Vertex AI provider.
@@ -89,8 +123,9 @@ func (v *VertexProvider) streamGoogleCompletion(ctx context.Context, req *Comple
 		return nil, fmt.Errorf("marshal vertex request: %w", err)
 	}
 
-	url := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse", 
-		v.region, v.projectID, v.region, modelName)
+	region := v.regionFor("google")
+	url := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse",
+		region, v.projectID, region, modelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
