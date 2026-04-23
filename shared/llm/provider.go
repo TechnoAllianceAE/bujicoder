@@ -57,19 +57,25 @@ type UsageInfo struct {
 type Message struct {
 	Role    string        `json:"role"`
 	Content []ContentPart `json:"content"`
+	// CacheBreakpoint, when true, signals providers that support prompt caching
+	// to insert a cache marker after this message. Anthropic allows up to 4
+	// breakpoints per request. Zero value means no breakpoint — safe default.
+	CacheBreakpoint bool `json:"cache_breakpoint,omitempty"`
 }
 
 // UnmarshalJSON handles both string and array content formats.
 // The CLI sends content as a plain string, while tool-use messages use an array.
 func (m *Message) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
+		Role            string          `json:"role"`
+		Content         json.RawMessage `json:"content"`
+		CacheBreakpoint bool            `json:"cache_breakpoint,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	m.Role = raw.Role
+	m.CacheBreakpoint = raw.CacheBreakpoint
 
 	if len(raw.Content) == 0 {
 		return nil
@@ -141,6 +147,13 @@ type CompletionRequest struct {
 	OAuthToken string
 	// KiroToken, when set, uses AWS CodeWhisperer's token for authentication instead of the server API key.
 	KiroToken string
+	// SystemCacheable, when true, attaches a prompt-cache marker to the system
+	// prompt on providers that support it (Anthropic, Bedrock, Vertex Anthropic).
+	// Safe to ignore on providers that don't.
+	SystemCacheable bool
+	// ToolsCacheable, when true, attaches a prompt-cache marker to the tools
+	// array. Pairs with SystemCacheable for agent loops where both rarely change.
+	ToolsCacheable bool
 }
 
 // Provider is the interface that LLM provider adapters must implement.

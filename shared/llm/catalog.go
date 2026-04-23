@@ -147,6 +147,7 @@ type ModelCatalog struct {
 	fireworksKey string
 	kilocodeKey  string
 	groqKey      string
+	cerebrasKey  string
 	client       *http.Client
 	log          zerolog.Logger
 	stopCh       chan struct{}
@@ -372,6 +373,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 		}
 	}
 
+	if c.cerebrasKey != "" {
+		cereb, err := fetchCerebrasModels(ctx, c.client, c.cerebrasKey)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch Cerebras models during catalog refresh")
+		} else {
+			for k, v := range cereb {
+				models[k] = v
+			}
+		}
+	}
+
 	// Bedrock models always come from the curated embedded table — no API
 	// key required, since AWS has no runtime pricing endpoint.
 	if bedrock, _, err := parseBedrockCatalog(); err == nil {
@@ -589,6 +601,86 @@ func fetchGroqModels(ctx context.Context, client *http.Client, apiKey string) (m
 			Name:          entry.ID,
 			Source:        "groq",
 			ContextLength: entry.ContextWindow,
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
+}
+
+// cerebrasModelEntry matches the Cerebras /v1/models JSON shape.
+// The endpoint returns only id/object/created/owned_by — no context window
+// or pricing — so those fields stay zero.
+type cerebrasModelEntry struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
+}
+
+type cerebrasModelsResponse struct {
+	Object string               `json:"object"`
+	Data   []cerebrasModelEntry `json:"data"`
+}
+
+// SetCerebrasKey configures a Cerebras API key so that Cerebras models are
+// included during catalog refresh.
+func (c *ModelCatalog) SetCerebrasKey(key string) {
+	c.cerebrasKey = key
+}
+
+// MergeCerebrasModels fetches models from the Cerebras /v1/models endpoint
+// and merges them into the existing catalog, prefixed with "cerebras/" so
+// the router directs them to the Cerebras provider.
+func (c *ModelCatalog) MergeCerebrasModels(ctx context.Context) error {
+	if c.cerebrasKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	cereb, err := fetchCerebrasModels(ctx, client, c.cerebrasKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range cereb {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchCerebrasModels calls the Cerebras /v1/models endpoint and returns
+// models as a ModelInfo map keyed by "cerebras/<model-id>". Cerebras does
+// not return pricing or context length in its /models response, so those
+// fields stay zero — external pricing sources may fill them in later.
+func fetchCerebrasModels(ctx context.Context, client *http.Client, apiKey string) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.cerebras.ai/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build cerebras request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("cerebras http get: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("cerebras unexpected status %d", resp.StatusCode)
+	}
+	var body cerebrasModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode cerebras response: %w", err)
+	}
+	models := make(map[string]ModelInfo)
+	for _, entry := range body.Data {
+		id := "cerebras/" + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        "cerebras",
 			Created:       entry.Created,
 			SupportsTools: true,
 		}

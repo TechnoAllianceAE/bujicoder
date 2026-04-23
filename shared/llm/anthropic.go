@@ -91,7 +91,17 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	}
 
 	if req.SystemPrompt != nil {
-		body["system"] = *req.SystemPrompt
+		if req.SystemCacheable {
+			// Array form with cache_control gets Anthropic to cache the system
+			// prompt. The string form is ignored for caching.
+			body["system"] = []map[string]any{{
+				"type":          "text",
+				"text":          *req.SystemPrompt,
+				"cache_control": map[string]any{"type": "ephemeral"},
+			}}
+		} else {
+			body["system"] = *req.SystemPrompt
+		}
 	}
 	if req.MaxTokens != nil {
 		body["max_tokens"] = *req.MaxTokens
@@ -105,7 +115,8 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	var messages []map[string]any
 	for _, m := range req.Messages {
 		msg := map[string]any{"role": m.Role}
-		if len(m.Content) == 1 && m.Content[0].Type == "text" {
+		// CacheBreakpoint forces the array form so we can attach cache_control.
+		if len(m.Content) == 1 && m.Content[0].Type == "text" && !m.CacheBreakpoint {
 			msg["content"] = m.Content[0].Text
 		} else {
 			var content []map[string]any
@@ -152,6 +163,10 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 					})
 				}
 			}
+			// Cache marker attaches to the last content block of this message.
+			if m.CacheBreakpoint && len(content) > 0 {
+				content[len(content)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
+			}
 			msg["content"] = content
 		}
 		messages = append(messages, msg)
@@ -166,6 +181,12 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 				"description":  t.Description,
 				"input_schema": t.InputSchema,
 			})
+		}
+		// Anthropic caches everything up to the marked tool definition, so we
+		// attach it to the last entry — that makes the whole tools array part
+		// of the cached prefix.
+		if req.ToolsCacheable && len(tools) > 0 {
+			tools[len(tools)-1]["cache_control"] = map[string]any{"type": "ephemeral"}
 		}
 		body["tools"] = tools
 	}
@@ -248,6 +269,15 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 			if outputTokens, ok := usageInfo["output_tokens"].(float64); ok {
 				usage.OutputTokens = int(outputTokens)
 			}
+			// Anthropic occasionally re-reports cache counters on message_delta;
+			// overwrite only when a non-zero value arrives so we don't clobber
+			// the values captured at message_start.
+			if v, ok := usageInfo["cache_read_input_tokens"].(float64); ok && v > 0 {
+				usage.CacheReadTokens = int(v)
+			}
+			if v, ok := usageInfo["cache_creation_input_tokens"].(float64); ok && v > 0 {
+				usage.CacheWriteTokens = int(v)
+			}
 
 			finishReason := "stop"
 			if stopReason == "tool_use" {
@@ -266,6 +296,12 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 			usageInfo, _ := msg["usage"].(map[string]any)
 			if inputTokens, ok := usageInfo["input_tokens"].(float64); ok {
 				usage.InputTokens = int(inputTokens)
+			}
+			if v, ok := usageInfo["cache_read_input_tokens"].(float64); ok {
+				usage.CacheReadTokens = int(v)
+			}
+			if v, ok := usageInfo["cache_creation_input_tokens"].(float64); ok {
+				usage.CacheWriteTokens = int(v)
 			}
 			if model, ok := msg["model"].(string); ok {
 				usage.Model = model
