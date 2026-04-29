@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-const kilocodeGatewayURL = "https://api.kilo.ai/api/gateway/chat/completions"
+const kilocodeGatewayURL = "https://api.kilo.ai/api/openrouter/chat/completions"
 
 // KilocodeProvider implements the Provider interface for the Kilo AI Gateway.
 // The gateway is OpenAI-compatible and provides unified access to 500+ models
@@ -33,8 +33,9 @@ func NewKilocodeProvider(apiKey string, timeout ...time.Duration) *KilocodeProvi
 			ProviderName: "kilocode",
 			Timeout:      t,
 			ExtraHeaders: map[string]string{
-				"HTTP-Referer": "https://bujicoder.com",
-				"X-Title":      "BujiCoder",
+				"HTTP-Referer": "https://kilocode.ai",
+				"X-Title":      "Kilo Code",
+				"User-Agent":   "Kilo-Code/BujiCoder",
 			},
 		}),
 	}

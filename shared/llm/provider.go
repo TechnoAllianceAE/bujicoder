@@ -173,12 +173,50 @@ type Registry struct {
 	pricing         *PricingService
 }
 
-// NewRegistry creates a new provider registry.
+// knownProviders is the set of canonical provider prefixes the gateway
+// recognizes. Mirrors gateway/providerloader.SupportedProviders; kept here to
+// avoid an import cycle. A model whose prefix is in this set is treated as
+// "speaking for" that provider, so we never silently reroute it to OpenRouter
+// when the named provider is not configured.
+var knownProviders = map[string]struct{}{
+	"anthropic":  {},
+	"openai":     {},
+	"openrouter": {},
+	"google":     {},
+	"x-ai":       {},
+	"z-ai":       {},
+	"together":   {},
+	"groq":       {},
+	"cerebras":   {},
+	"fireworks":  {},
+	"kilocode":   {},
+	"ollama":     {},
+	"vertex":     {},
+	"bedrock":    {},
+	"azure":      {},
+}
+
+// defaultAliases is the built-in short→canonical map seeded on every Registry.
+// These resolve regardless of admin configuration so common shorthands are
+// stable across deployments. Admin-configured ShortName aliases layer on top.
+var defaultAliases = map[string]string{
+	"kilo": "kilocode",
+	"or":   "openrouter",
+	"oai":  "openai",
+	"goog": "google",
+	"gem":  "google",
+}
+
+// NewRegistry creates a new provider registry seeded with default aliases.
 func NewRegistry() *Registry {
-	return &Registry{
+	r := &Registry{
 		providers: make(map[string]Provider),
-		aliases:   make(map[string]string),
+		aliases:   make(map[string]string, len(defaultAliases)),
 	}
+	for short, canonical := range defaultAliases {
+		r.aliases[short] = canonical
+	}
+	return r
 }
 
 // Register adds a provider to the registry.
@@ -278,15 +316,26 @@ func (r *Registry) GetPricing() *PricingService {
 	return r.pricing
 }
 
-// Route determines the provider for a given model string (e.g., "openai/gpt-oss-120b:free").
-// If the model's prefix provider is directly registered, it is used.
-// Otherwise, the request is routed through OpenRouter with the full model ID.
-// The model catalog (models.json) is used only for the admin UI listing;
-// it does not restrict which models can be used for completions.
+// Route determines the provider and resolved model id for a model string.
+// The format is strict: "<provider>/<rest>" where <provider> is a registered
+// provider name or a registered alias, and <rest> is the model id passed
+// verbatim to that provider (it may itself contain slashes — e.g.
+// "openrouter/anthropic/claude-sonnet-4" routes to OpenRouter with model
+// "anthropic/claude-sonnet-4"; "together/Qwen/Qwen3-Coder-..." routes to
+// Together with model "Qwen/Qwen3-Coder-...").
+//
+// There are no implicit fallbacks. Cross-provider failover is the explicit
+// responsibility of the Fallbacks service (see gateway routeWithFallback).
+// If the prefix is not a registered provider, Route fails so the caller can
+// fix the configuration rather than silently routing somewhere unexpected.
+//
+// The single exception is SetDefault, used by the CLI to forward every
+// request to the gateway proxy — that catch-all is opt-in and forwards the
+// full qualified id unchanged.
 func (r *Registry) Route(model string) (Provider, string, error) {
 	parts := strings.SplitN(model, "/", 2)
 	if len(parts) != 2 {
-		return nil, "", fmt.Errorf("invalid model format %q: expected 'provider/model'", model)
+		return nil, "", fmt.Errorf("invalid model format %q: expected '<provider>/<model>' with a registered provider prefix", model)
 	}
 
 	providerName := parts[0]
@@ -300,14 +349,12 @@ func (r *Registry) Route(model string) (Provider, string, error) {
 		return provider, modelName, nil
 	}
 
-	// Fall back to default provider (e.g. gateway proxy in CLI mode).
 	if r.defaultProvider != nil {
 		return r.defaultProvider, model, nil
 	}
 
-	if orProvider, ok := r.providers["openrouter"]; ok {
-		return orProvider, model, nil
+	if _, isCanonical := knownProviders[providerName]; isCanonical {
+		return nil, "", fmt.Errorf("provider %q is not configured for model %q: add credentials in admin or use an explicit prefix for a configured provider (e.g. openrouter/<id>)", providerName, model)
 	}
-
-	return nil, "", fmt.Errorf("unknown provider %q and no openrouter fallback available", providerName)
+	return nil, "", fmt.Errorf("unknown provider %q for model %q: prefix must be a registered provider or alias", providerName, model)
 }
