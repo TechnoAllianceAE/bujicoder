@@ -62,8 +62,8 @@ func (v *VertexProvider) streamRawPredict(
 
 	region := v.regionFor(publisher)
 	url := fmt.Sprintf(
-		"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/%s/models/%s:streamRawPredict",
-		region, v.projectID, region, publisher, modelName,
+		"https://%s/v1/projects/%s/locations/%s/publishers/%s/models/%s:streamRawPredict",
+		vertexHostForRegion(region), v.projectID, region, publisher, modelName,
 	)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(envelope))
 	if err != nil {

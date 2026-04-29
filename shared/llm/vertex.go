@@ -124,8 +124,8 @@ func (v *VertexProvider) streamGoogleCompletion(ctx context.Context, req *Comple
 	}
 
 	region := v.regionFor("google")
-	url := fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse",
-		region, v.projectID, region, modelName)
+	url := fmt.Sprintf("https://%s/v1/projects/%s/locations/%s/publishers/google/models/%s:streamGenerateContent?alt=sse",
+		vertexHostForRegion(region), v.projectID, region, modelName)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {

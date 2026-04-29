@@ -115,10 +115,19 @@ func (v *VertexProvider) CatalogLastRefreshed() time.Time {
 // vertexCatalogHost returns the Vertex AI platform host for model catalog requests.
 // Uses the regional endpoint for specific regions, or the global endpoint otherwise.
 func (v *VertexProvider) vertexCatalogHost() string {
-	if v.region == "" || v.region == "global" {
+	return vertexHostForRegion(v.region)
+}
+
+// vertexHostForRegion picks the right Vertex hostname for a given location.
+// Regional locations use `{region}-aiplatform.googleapis.com`; the special
+// `global` location (and empty) use the bare `aiplatform.googleapis.com`,
+// which is required to reach preview/global-only models such as the
+// gemini-3.x preview line.
+func vertexHostForRegion(region string) string {
+	if region == "" || region == "global" {
 		return "aiplatform.googleapis.com"
 	}
-	return v.region + "-aiplatform.googleapis.com"
+	return region + "-aiplatform.googleapis.com"
 }
 
 func (v *VertexProvider) fetchPublisherModels(ctx context.Context, publisher string, out map[string]ModelInfo) error {
