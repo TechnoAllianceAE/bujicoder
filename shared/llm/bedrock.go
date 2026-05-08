@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // BedrockProvider implements the Provider interface for AWS Bedrock using the
@@ -51,8 +53,9 @@ func (b *BedrockProvider) StreamCompletion(ctx context.Context, req *CompletionR
 		return nil, fmt.Errorf("marshal bedrock request: %w", err)
 	}
 
+	modelID := resolveBedrockModelID(req.Model, b.region)
 	url := fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/converse-stream",
-		b.region, req.Model)
+		b.region, modelID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -155,10 +158,23 @@ func (b *BedrockProvider) buildRequest(req *CompletionRequest) map[string]any {
 		}
 
 		if len(contentBlocks) > 0 {
-			messages = append(messages, map[string]any{
-				"role":    role,
-				"content": contentBlocks,
-			})
+			// Bedrock requires strict role alternation. When the previous
+			// message has the same role (e.g. multiple tool results that arrive
+			// as separate "tool" messages and all collapse into "user"), merge
+			// the content blocks into the previous message instead of emitting
+			// a second consecutive same-role message — Bedrock would reject it
+			// with "Expected toolResult blocks at messages.N.content for the
+			// following Ids:" because not all toolUse IDs from the prior
+			// assistant turn would appear in a single user message.
+			if n := len(messages); n > 0 && messages[n-1]["role"] == role {
+				prev := messages[n-1]["content"].([]map[string]any)
+				messages[n-1]["content"] = append(prev, contentBlocks...)
+			} else {
+				messages = append(messages, map[string]any{
+					"role":    role,
+					"content": contentBlocks,
+				})
+			}
 		}
 	}
 	body["messages"] = messages
@@ -225,6 +241,12 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 		var evt map[string]any
 		if len(msg.payload) > 0 {
 			if err := json.Unmarshal(msg.payload, &evt); err != nil {
+				log.Warn().
+					Err(err).
+					Str("event_type", eventType).
+					Str("message_type", messageType).
+					Int("payload_len", len(msg.payload)).
+					Msg("bedrock: failed to unmarshal event payload")
 				continue
 			}
 		}
@@ -307,6 +329,47 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 		fr = "tool_calls"
 	}
 	ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+}
+
+// resolveBedrockModelID applies cross-region inference profile prefix when
+// required. Modern Anthropic Claude models on Bedrock (3.5+, Sonnet 4+, Opus
+// 4+, Haiku 4+) cannot be invoked with on-demand throughput using bare model
+// IDs — they require an inference profile ID with a region prefix
+// (us./eu./apac.). If the caller already supplied a prefixed ID, return as-is.
+func resolveBedrockModelID(model, region string) string {
+	// Already prefixed with a known inference-profile region — pass through.
+	for _, p := range []string{"us.", "eu.", "apac.", "us-gov.", "global."} {
+		if strings.HasPrefix(model, p) {
+			return model
+		}
+	}
+	// Only Anthropic models need the profile prefix today. Nova / AI21 / Cohere
+	// / Meta on Bedrock can still be invoked with bare IDs in most regions.
+	if !strings.HasPrefix(model, "anthropic.") {
+		return model
+	}
+	prefix := bedrockRegionToInferencePrefix(region)
+	if prefix == "" {
+		return model
+	}
+	return prefix + "." + model
+}
+
+// bedrockRegionToInferencePrefix maps an AWS region to the cross-region
+// inference profile prefix used by Bedrock. Returns empty string if the region
+// has no known profile (caller leaves the model ID untouched).
+func bedrockRegionToInferencePrefix(region string) string {
+	switch {
+	case strings.HasPrefix(region, "us-gov-"):
+		return "us-gov"
+	case strings.HasPrefix(region, "us-"):
+		return "us"
+	case strings.HasPrefix(region, "eu-"):
+		return "eu"
+	case strings.HasPrefix(region, "ap-"):
+		return "apac"
+	}
+	return ""
 }
 
 func intField(m map[string]any, key string) int {
