@@ -333,4 +333,13 @@ func (v *VertexProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
 		}
 	}
+
+	// Distinguish clean EOF from a network/parse error so the gateway can
+	// surface truncations instead of treating them as successful streams.
+	if err := scanner.Err(); err != nil {
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "stream_truncated",
+			Message: fmt.Sprintf("vertex stream read error: %v", err),
+		}}
+	}
 }

@@ -37,7 +37,13 @@ func NewBedrockProvider(apiKey, region string) *BedrockProvider {
 	return &BedrockProvider{
 		apiKey: apiKey,
 		region: region,
-		client: &http.Client{Timeout: 120 * time.Second},
+		client: &http.Client{
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: 120 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+			},
+		},
 	}
 }
 

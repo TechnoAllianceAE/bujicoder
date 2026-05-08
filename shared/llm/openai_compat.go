@@ -31,14 +31,26 @@ type openAICompatProvider struct {
 }
 
 func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = 90 * time.Second
+	// http.Client.Timeout caps the ENTIRE request lifecycle including body
+	// reads. For SSE streams that can run for many minutes (long completions,
+	// thinking models, slow upstream providers), a hard timeout silently
+	// kills the connection mid-stream — the scanner returns EOF, the channel
+	// closes, and the gateway logs a "successful" stream that produced 0
+	// tokens. Use ResponseHeaderTimeout for the connect/headers phase and
+	// rely on the request context for total stream duration. The cfg.Timeout
+	// override now only bounds connect+headers, not the body.
+	headerTimeout := cfg.Timeout
+	if headerTimeout == 0 {
+		headerTimeout = 90 * time.Second
 	}
 	return &openAICompatProvider{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: timeout,
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: headerTimeout,
+				IdleConnTimeout:       90 * time.Second,
+			},
 		},
 	}
 }
@@ -346,6 +358,17 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 				lastFinishReason = fr
 			}
 		}
+	}
+
+	// Distinguish clean EOF from a network/parse error. Without this, an
+	// upstream connection drop reads as a successful stream that produced
+	// nothing — the user sees the AI tool die mid-response with no error.
+	scannerErr := scanner.Err()
+	if scannerErr != nil {
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "stream_truncated",
+			Message: fmt.Sprintf("%s stream read error: %v", p.cfg.ProviderName, scannerErr),
+		}}
 	}
 
 	// If stream ended without [DONE] and we haven't emitted Complete, do it now.

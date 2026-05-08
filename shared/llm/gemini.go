@@ -20,16 +20,22 @@ type GeminiProvider struct {
 }
 
 // NewGeminiProvider creates a new Gemini provider.
-// An optional timeout overrides the default 90-second HTTP request timeout.
+// The optional timeout bounds the connect/headers phase, NOT the streaming
+// body — long completions must not be killed by a client deadline. Total
+// stream duration is bounded by the request context.
 func NewGeminiProvider(apiKey string, timeout ...time.Duration) *GeminiProvider {
-	t := 90 * time.Second
+	headerTimeout := 90 * time.Second
 	if len(timeout) > 0 && timeout[0] > 0 {
-		t = timeout[0]
+		headerTimeout = timeout[0]
 	}
 	return &GeminiProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: t,
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: headerTimeout,
+				IdleConnTimeout:       90 * time.Second,
+			},
 		},
 	}
 }
@@ -245,5 +251,14 @@ func (g *GeminiProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 			}
 			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
 		}
+	}
+
+	// Distinguish clean EOF from a network/parse error so the gateway can
+	// surface truncations instead of treating them as successful streams.
+	if err := scanner.Err(); err != nil {
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "stream_truncated",
+			Message: fmt.Sprintf("gemini stream read error: %v", err),
+		}}
 	}
 }

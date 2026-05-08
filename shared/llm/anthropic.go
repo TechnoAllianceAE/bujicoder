@@ -21,16 +21,23 @@ type AnthropicProvider struct {
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
-// An optional timeout overrides the default 90-second HTTP request timeout.
+// The optional timeout bounds the connect/headers phase, NOT the streaming
+// body. Long completions and thinking-model responses must not be killed by
+// a client-level deadline — total stream duration is bounded by the request
+// context (5 min in the gateway, configurable elsewhere).
 func NewAnthropicProvider(apiKey string, timeout ...time.Duration) *AnthropicProvider {
-	t := 90 * time.Second
+	headerTimeout := 90 * time.Second
 	if len(timeout) > 0 && timeout[0] > 0 {
-		t = timeout[0]
+		headerTimeout = timeout[0]
 	}
 	return &AnthropicProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: t,
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: headerTimeout,
+				IdleConnTimeout:       90 * time.Second,
+			},
 		},
 	}
 }
@@ -307,5 +314,14 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 				usage.Model = model
 			}
 		}
+	}
+
+	// Distinguish clean EOF from a network/parse error so the gateway can
+	// log truncations instead of treating them as successful streams.
+	if err := scanner.Err(); err != nil {
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "stream_truncated",
+			Message: fmt.Sprintf("anthropic stream read error: %v", err),
+		}}
 	}
 }

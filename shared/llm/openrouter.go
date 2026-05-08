@@ -21,16 +21,22 @@ type OpenRouterProvider struct {
 }
 
 // NewOpenRouterProvider creates a new OpenRouter provider.
-// An optional timeout overrides the default 90-second HTTP request timeout.
+// The optional timeout bounds the connect/headers phase, NOT the streaming
+// body — long completions must not be killed by a client deadline. Total
+// stream duration is bounded by the request context.
 func NewOpenRouterProvider(apiKey string, timeout ...time.Duration) *OpenRouterProvider {
-	t := 90 * time.Second
+	headerTimeout := 90 * time.Second
 	if len(timeout) > 0 && timeout[0] > 0 {
-		t = timeout[0]
+		headerTimeout = timeout[0]
 	}
 	return &OpenRouterProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Timeout: t,
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: headerTimeout,
+				IdleConnTimeout:       90 * time.Second,
+			},
 		},
 	}
 }
@@ -305,6 +311,16 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 				lastFinishReason = fr
 			}
 		}
+	}
+
+	// Distinguish clean EOF from a connection drop / parse error so the
+	// gateway can log truncations as errors instead of "successful" empty
+	// streams.
+	if err := scanner.Err(); err != nil {
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "stream_truncated",
+			Message: fmt.Sprintf("openrouter stream read error: %v", err),
+		}}
 	}
 
 	// If stream ended without [DONE] and we haven't emitted Complete, do it now.
