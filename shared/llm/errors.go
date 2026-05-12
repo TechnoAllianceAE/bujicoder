@@ -95,6 +95,8 @@ func isRetryableStatus(statusCode int) bool {
 	case 503: // Service Unavailable
 		fallthrough
 	case 504: // Gateway Timeout
+		fallthrough
+	case 520, 521, 522, 523, 524, 525, 526, 527: // Cloudflare edge errors (524 = origin timeout)
 		return true
 	default:
 		return false
