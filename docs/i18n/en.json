@@ -21,7 +21,7 @@
     "items": [
       { "icon": "&#9889;", "title": "Zero-Dependency Go Binary", "desc": "No Node. No npm. No Python. No Docker. A single compiled binary that starts instantly. Download it, run it, done. Under 30 MB for the entire tool." },
       { "icon": "&#9881;", "title": "Granular Model Control", "desc": "Assign different models to different agent roles. Use a cheap model for file exploration, a powerful one for editing, and a reasoning model for planning — all in a single session." },
-      { "icon": "&#127760;", "title": "Any Provider, Your Choice", "desc": "OpenRouter, Groq, Cerebras, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama — bring your own API keys and switch providers freely." },
+      { "icon": "&#127760;", "title": "Any Provider, Your Choice", "desc": "OpenRouter, Groq, Cerebras, Fireworks, HuggingFace, Cloudflare, Together AI, Amazon Bedrock, Google Vertex, OpenAI, Anthropic, xAI, Ollama — bring your own API keys and switch providers freely." },
       { "icon": "&#129302;", "title": "13 Specialized Agents", "desc": "Not one generic chatbot. A team of 13 purpose-built agents — editor, planner, researcher, reviewer, git committer, and more — each with their own tools and system prompts." },
       { "icon": "&#9878;", "title": "Parallel Evolution Mode", "desc": "In Max mode, multiple agents implement competing solutions simultaneously. A judge agent evaluates and picks the best one. It's like having a coding tournament for every task." },
       { "icon": "&#128176;", "title": "Three Cost Modes", "desc": "<strong>Normal</strong> for fast/cheap everyday coding. <strong>Heavy</strong> for harder tasks with smarter models. <strong>Max</strong> for mission-critical work with the most powerful models and parallel evolution." },
@@ -39,6 +39,9 @@
       { "name": "OpenRouter", "desc": "200+ models, one API key" },
       { "name": "Groq", "desc": "Ultra-low latency inference" },
       { "name": "Cerebras", "desc": "Wafer-scale speed" },
+      { "name": "Fireworks AI", "desc": "Fast OSS model serving" },
+      { "name": "HuggingFace", "desc": "Inference Providers router" },
+      { "name": "Cloudflare", "desc": "Workers AI edge inference" },
       { "name": "Together AI", "desc": "Open-source model hosting" },
       { "name": "OpenAI", "desc": "GPT-4o & family" },
       { "name": "Anthropic", "desc": "Claude Opus, Sonnet, Haiku" },

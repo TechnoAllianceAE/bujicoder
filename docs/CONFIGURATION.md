@@ -18,6 +18,10 @@ api_keys:
   xai: xai-...                    # xAI (Grok)
   groq: gsk_...                   # Groq
   cerebras: csk-...               # Cerebras
+  fireworks: fw_...               # Fireworks AI
+  huggingface: hf_...             # HuggingFace Inference Providers
+  cloudflare: ...                 # Cloudflare Workers AI (token)
+  cloudflare_account_id: ...      # Cloudflare account ID (32-char hex)
   together: ...                   # Together AI
   ollama_url: http://localhost:11434  # Ollama (local models)
 

@@ -173,6 +173,36 @@ api_keys:
             </tbody>
         </table>
 
+        <h3>Fireworks AI</h3>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>fireworks</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>fw_...</code></td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://fireworks.ai/api-keys" target="_blank" rel="noopener">fireworks.ai/api-keys</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Cloudflare Workers AI</h3>
+        <p>Model IDs use Cloudflare's <code>@cf/&lt;publisher&gt;/&lt;model&gt;</code> form.</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>cloudflare</code> (token) + <code>cloudflare_account_id</code></td></tr>
+                <tr><td><strong>Permission</strong></td><td>Workers AI - Read/Run</td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener">dash.cloudflare.com</a></td></tr>
+            </tbody>
+        </table>
+
+        <h3>HuggingFace Inference Providers</h3>
+        <p>Single token routes to underlying inference provider via <code>router.huggingface.co</code>. Model IDs use HF format (e.g. <code>meta-llama/Meta-Llama-3-8B-Instruct</code>).</p>
+        <table>
+            <tbody>
+                <tr><td><strong>Config key</strong></td><td><code>huggingface</code></td></tr>
+                <tr><td><strong>Key format</strong></td><td><code>hf_...</code></td></tr>
+                <tr><td><strong>Permission</strong></td><td>Make calls to Inference Providers</td></tr>
+                <tr><td><strong>Get a key</strong></td><td><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a></td></tr>
+            </tbody>
+        </table>
+
         <h3>Together AI</h3>
         <table>
             <tbody>

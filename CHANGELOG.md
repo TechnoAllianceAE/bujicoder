@@ -4,6 +4,71 @@ All notable changes to BujiCoder are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 conventions.
 
+## [v0.9.4] — 2026-05-12
+
+Provider expansion release: three new inference backends and reliability
+fixes around streaming and retries.
+
+### Added
+
+- **HuggingFace Inference Providers** (`shared/llm/huggingface.go`) — single
+  `hf_...` access token routes through `router.huggingface.co` to the
+  underlying provider for any model on the HF router. Model IDs use HF
+  format (e.g. `meta-llama/Meta-Llama-3-8B-Instruct`).
+- **Cloudflare Workers AI** (`shared/llm/cloudflare.go`) — OpenAI-compatible
+  endpoint at `api.cloudflare.com/client/v4/accounts/<id>/ai/v1`. Requires
+  an API token with `Workers AI - Read/Run` plus the account ID. Model IDs
+  use Cloudflare's `@cf/<publisher>/<model>` form.
+- **Fireworks AI** (`shared/llm/fireworks.go`) — dynamic catalog and
+  pricing for serverless OSS models.
+- **Short-name provider aliases** — register providers under multiple names
+  (e.g. `or` → `openrouter`) for routing.
+- **Dynamic Groq + Kilocode catalogs** — model lists fetched live from each
+  provider's API; OpenRouter key now optional.
+- **Cerebras model catalog** + prompt-cache plumbing for cached-token
+  usage and pricing.
+- **Per-publisher Vertex region routing** — different publishers can use
+  different regions in a single provider instance.
+
+### Fixed
+
+- **Streaming truncation** — removed the 90s `http.Client.Timeout` that
+  silently killed long SSE streams mid-flight; only connect/headers are
+  bounded now, body uses request context.
+- **Cloudflare 520–527 retryable** — origin-unreachable status codes now
+  surface as retryable errors.
+- **Bedrock inference-profile prefix** + merging of consecutive tool
+  results to satisfy Anthropic API ordering on Bedrock.
+- **Vertex global location** uses the bare hostname (no region prefix).
+- **Kilocode API path** corrected to `/api/openrouter/chat/completions`;
+  catalog entries use canonical `kilocode/` prefix.
+- **Z.AI catalog promotion** — Z.AI models surface under the `z-ai/`
+  prefix instead of `openrouter/`.
+
+## [v0.9.3] — 2026-04-17
+
+Uniform model naming and Azure/Bedrock/Vertex provider rollout.
+
+### Added
+
+- **Azure OpenAI, AWS Bedrock, GCP Vertex providers** with dynamic LiteLLM
+  pricing for Vertex + Bedrock and Vertex catalog discovery via the
+  v1beta1 publishers endpoint.
+- **OpenRouter uniform naming** — model IDs are prefixed with
+  `openrouter/` so display + routing match across the catalog.
+
+### Fixed
+
+- **Streaming context cancel** — defer context cancel until after the
+  response body is fully read; eliminates spurious "context canceled"
+  errors at the tail of streams.
+- **Vertex OAuth refresh** uses `context.Background` so a cancelled
+  per-request context cannot kill the shared token client.
+- **Vertex catalog refresh** runs on an independent 3-minute context.
+- **Vertex Gemini pricing** falls back to the generic `gemini/` namespace
+  when a publisher-scoped entry is missing.
+- **LiteLLM pricing** matches version-stripped model IDs.
+
 ## [v0.9.2] — 2026-04-13
 
 Large feature release bundling the **Phase 1–5 runtime extensibility work**

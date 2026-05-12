@@ -21,7 +21,7 @@
     "items": [
       { "icon": "&#9889;", "title": "ゼロ依存Goバイナリ", "desc": "Node不要。npm不要。Python不要。Docker不要。単一のコンパイル済みバイナリが瞬時に起動。ダウンロードして実行するだけ。ツール全体で30MB未満。" },
       { "icon": "&#9881;", "title": "きめ細かいモデル制御", "desc": "エージェントロールごとに異なるモデルを割り当て。ファイル探索には安価なモデル、編集には強力なモデル、計画には推論モデルを — すべて1セッションで。" },
-      { "icon": "&#127760;", "title": "お好みのプロバイダー", "desc": "OpenRouter、Groq、Cerebras、Together AI、Amazon Bedrock、Google Vertex、OpenAI、Anthropic、xAI、Ollama — APIキーを持ち込んで、プロバイダーを自由に切り替え。" },
+      { "icon": "&#127760;", "title": "お好みのプロバイダー", "desc": "OpenRouter、Groq、Cerebras、Fireworks、HuggingFace、Cloudflare、Together AI、Amazon Bedrock、Google Vertex、OpenAI、Anthropic、xAI、Ollama — APIキーを持ち込んで、プロバイダーを自由に切り替え。" },
       { "icon": "&#129302;", "title": "13の専門エージェント", "desc": "汎用チャットボットは1つではありません。エディター、プランナー、リサーチャー、レビュアー、gitコミッターなど、13の目的別エージェントチーム — それぞれが独自のツールとシステムプロンプトを持ちます。" },
       { "icon": "&#9878;", "title": "パラレルエボリューションモード", "desc": "Maxモードでは、複数のエージェントが競合するソリューションを同時に実装します。ジャッジエージェントが評価して最良のものを選択。すべてのタスクでコーディングトーナメントを開催しているようなものです。" },
       { "icon": "&#128176;", "title": "3つのコストモード", "desc": "高速/安価な日常コーディング用の<strong>Normal</strong>。よりスマートなモデルで難しいタスク用の<strong>Heavy</strong>。最も強力なモデルとパラレルエボリューションによるミッションクリティカルな作業用の<strong>Max</strong>。" },
@@ -39,6 +39,9 @@
       { "name": "OpenRouter", "desc": "200以上のモデル、1つのAPIキー" },
       { "name": "Groq", "desc": "超低遅延推論" },
       { "name": "Cerebras", "desc": "ウェハースケールの速度" },
+      { "name": "Fireworks AI", "desc": "高速OSSモデル配信" },
+      { "name": "HuggingFace", "desc": "Inference Providersルーター" },
+      { "name": "Cloudflare", "desc": "Workers AIエッジ推論" },
       { "name": "Together AI", "desc": "オープンソースモデルホスティング" },
       { "name": "OpenAI", "desc": "GPT-4o＆ファミリー" },
       { "name": "Anthropic", "desc": "Claude Opus、Sonnet、Haiku" },
