@@ -46,11 +46,7 @@ func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
 	return &openAICompatProvider{
 		cfg: cfg,
 		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				ResponseHeaderTimeout: headerTimeout,
-				IdleConnTimeout:       90 * time.Second,
-			},
+			Transport: newPooledTransport(headerTimeout),
 		},
 	}
 }
