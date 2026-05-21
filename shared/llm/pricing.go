@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,10 +126,7 @@ func (p *PricingService) CalculateCostCents(model string, inputTokens, outputTok
 
 // CalculateCostCentsWithCache computes cost including cache token pricing.
 func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int) int64 {
-	p.mu.RLock()
-	pricing, ok := p.prices[model]
-	p.mu.RUnlock()
-
+	pricing, ok := p.lookup(model)
 	if !ok {
 		p.log.Debug().Str("model", model).Msg("no pricing for model")
 		return 0
@@ -140,6 +138,32 @@ func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, 
 		float64(cacheWriteTokens)*pricing.CacheWritePerToken
 	costCents := int64(math.Ceil(costUSD * 100))
 	return costCents
+}
+
+// lookup resolves pricing for a model id, tolerating provider-qualified names.
+// The price map is keyed by the vendor id (e.g. "z-ai/glm-5.1",
+// "minimax/minimax-m2.7"), but routing passes fully-qualified names with a
+// provider prefix (e.g. "openrouter/z-ai/glm-5.1", "kilocode/z-ai/glm-5.1").
+// Try the exact key first, then strip leading path segments one at a time and
+// retry — longest (most specific) form wins, and only a real map hit is
+// accepted, so an unknown model still returns ok=false.
+func (p *PricingService) lookup(model string) (ModelPricing, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if pricing, ok := p.prices[model]; ok {
+		return pricing, true
+	}
+	for {
+		i := strings.IndexByte(model, '/')
+		if i < 0 {
+			break
+		}
+		model = model[i+1:]
+		if pricing, ok := p.prices[model]; ok {
+			return pricing, true
+		}
+	}
+	return ModelPricing{}, false
 }
 
 // refreshLoop periodically re-fetches pricing data until Stop is called.
