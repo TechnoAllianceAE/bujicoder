@@ -3,8 +3,28 @@ package llm
 import (
 	"crypto/tls"
 	"net/http"
+	"sync"
 	"time"
 )
+
+// transportCache holds shared *http.Transport instances keyed by header
+// timeout. Multiple providers (and multiple API keys for the same provider)
+// that share a header timeout reuse one transport, so connections to a given
+// upstream host are pooled across all of them instead of each provider
+// keeping its own isolated pool. http.Transport maintains per-host idle pools
+// internally, so a single transport safely serves several upstream hosts.
+var transportCache sync.Map // map[time.Duration]*http.Transport
+
+// sharedPooledTransport returns a process-wide transport for the given header
+// timeout, creating it once on first use. Prefer this over newPooledTransport
+// in provider constructors so connection reuse spans providers/keys.
+func sharedPooledTransport(headerTimeout time.Duration) *http.Transport {
+	if v, ok := transportCache.Load(headerTimeout); ok {
+		return v.(*http.Transport)
+	}
+	actual, _ := transportCache.LoadOrStore(headerTimeout, newPooledTransport(headerTimeout))
+	return actual.(*http.Transport)
+}
 
 // newPooledTransport creates an http.Transport tuned for high-concurrency
 // streaming connections to upstream LLM providers.

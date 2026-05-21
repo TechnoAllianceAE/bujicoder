@@ -32,7 +32,7 @@ func NewOpenRouterProvider(apiKey string, timeout ...time.Duration) *OpenRouterP
 	return &OpenRouterProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Transport: newPooledTransport(headerTimeout),
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }

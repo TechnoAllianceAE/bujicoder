@@ -38,7 +38,7 @@ func NewBedrockProvider(apiKey, region string) *BedrockProvider {
 		apiKey: apiKey,
 		region: region,
 		client: &http.Client{
-			Transport: newPooledTransport(120 * time.Second),
+			Transport: sharedPooledTransport(120 * time.Second),
 		},
 	}
 }

@@ -46,7 +46,7 @@ func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
 	return &openAICompatProvider{
 		cfg: cfg,
 		client: &http.Client{
-			Transport: newPooledTransport(headerTimeout),
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }

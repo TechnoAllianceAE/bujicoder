@@ -33,7 +33,7 @@ func NewAnthropicProvider(apiKey string, timeout ...time.Duration) *AnthropicPro
 	return &AnthropicProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Transport: newPooledTransport(headerTimeout),
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }
