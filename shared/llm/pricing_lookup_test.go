@@ -50,3 +50,23 @@ func TestPricingLookupQualifiedNames(t *testing.T) {
 		t.Errorf("CalculateCostCents qualified = %d, want > 0", c)
 	}
 }
+
+// TestMergeZAIPricingOverridesZero verifies an OpenRouter zero-rate placeholder
+// (e.g. unpublished pricing for z-ai/glm-5.1) is overridden by the hardcoded
+// Z.AI rate, while a real OpenRouter rate is preserved.
+func TestMergeZAIPricingOverridesZero(t *testing.T) {
+	p := NewPricingService("", zerolog.Nop())
+	p.SetZAIKey("dummy")
+	prices := map[string]ModelPricing{
+		"z-ai/glm-5.1": {PromptCostPerToken: 0, CompletionCostPerToken: 0}, // OpenRouter placeholder
+		"z-ai/glm-5":   {PromptCostPerToken: 0.0000006, CompletionCostPerToken: 0.00000192},
+	}
+	p.mergeZAIPricing(prices)
+
+	if got := prices["z-ai/glm-5.1"]; got.PromptCostPerToken == 0 || got.CompletionCostPerToken == 0 {
+		t.Errorf("glm-5.1 zero placeholder not overridden: %+v", got)
+	}
+	if got := prices["z-ai/glm-5"]; got.PromptCostPerToken != 0.0000006 {
+		t.Errorf("glm-5 real OpenRouter rate clobbered: %+v", got)
+	}
+}

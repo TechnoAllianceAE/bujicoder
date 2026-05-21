@@ -298,14 +298,18 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 	return nil
 }
 
-// mergeZAIPricing adds fallback Z.AI pricing for models not already present
-// in the price map (e.g. from OpenRouter). OpenRouter pricing is authoritative;
-// the hardcoded rates are only used for models Z.AI offers but OpenRouter
-// hasn't listed yet.
+// mergeZAIPricing adds fallback Z.AI pricing for models OpenRouter hasn't
+// priced. OpenRouter pricing is authoritative when it carries a real rate, but
+// for newly-released models it often lists prompt/completion as "0" (pricing
+// not yet published) — that zero placeholder would otherwise make cost
+// calculation silently report 0. So apply the hardcoded rate when the model is
+// absent OR present with both rates at zero. Genuinely free variants use a
+// ":free" suffix that is not in zaiDefaultPricing, so they stay free.
 func (p *PricingService) mergeZAIPricing(prices map[string]ModelPricing) {
 	for modelID, rate := range zaiDefaultPricing {
 		id := "z-ai/" + modelID
-		if _, exists := prices[id]; !exists {
+		existing, exists := prices[id]
+		if !exists || (existing.PromptCostPerToken == 0 && existing.CompletionCostPerToken == 0) {
 			prices[id] = ModelPricing{
 				PromptCostPerToken:     rate.Input / 1_000_000,
 				CompletionCostPerToken: rate.Output / 1_000_000,
