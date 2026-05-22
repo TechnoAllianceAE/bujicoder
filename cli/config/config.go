@@ -104,6 +104,7 @@ type APIKeysConfig struct {
 	Together   string `yaml:"together,omitempty"`
 	Groq       string `yaml:"groq,omitempty"`
 	Cerebras   string `yaml:"cerebras,omitempty"`
+	OpenCode   string `yaml:"opencode,omitempty"`
 	OllamaURL  string `yaml:"ollama_url,omitempty"`
 	LlamacppURL string `yaml:"llamacpp_url,omitempty"`
 }
@@ -162,6 +163,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		configVal = u.APIKeys.Groq
 	case "cerebras":
 		configVal = u.APIKeys.Cerebras
+	case "opencode":
+		configVal = u.APIKeys.OpenCode
 	case "ollama":
 		configVal = u.APIKeys.OllamaURL
 	case "llamacpp":
@@ -186,6 +189,7 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		"together":   "TOGETHER_API_KEY",
 		"groq":       "GROQ_API_KEY",
 		"cerebras":   "CEREBRAS_API_KEY",
+		"opencode":   "OPENCODE_API_KEY",
 		"ollama":     "OLLAMA_URL",
 		"llamacpp":   "LLAMACPP_URL",
 	}

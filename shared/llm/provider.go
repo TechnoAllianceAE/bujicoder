@@ -189,6 +189,7 @@ var knownProviders = map[string]struct{}{
 	"groq":       {},
 	"cerebras":   {},
 	"fireworks":  {},
+	"opencode":   {},
 	"kilocode":   {},
 	"ollama":     {},
 	"vertex":     {},

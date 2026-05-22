@@ -148,6 +148,7 @@ type ModelCatalog struct {
 	kilocodeKey  string
 	groqKey      string
 	cerebrasKey  string
+	opencodeKey  string
 	client       *http.Client
 	log          zerolog.Logger
 	stopCh       chan struct{}
@@ -379,6 +380,17 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Cerebras models during catalog refresh")
 		} else {
 			for k, v := range cereb {
+				models[k] = v
+			}
+		}
+	}
+
+	if c.opencodeKey != "" {
+		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeKey)
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch OpenCode models during catalog refresh")
+		} else {
+			for k, v := range oc {
 				models[k] = v
 			}
 		}
@@ -681,6 +693,85 @@ func fetchCerebrasModels(ctx context.Context, client *http.Client, apiKey string
 			ID:            id,
 			Name:          entry.ID,
 			Source:        "cerebras",
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
+}
+
+// opencodeModelEntry matches the OpenCode Zen /v1/models JSON shape
+// (OpenAI-compatible: id/object/created/owned_by).
+type opencodeModelEntry struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
+}
+
+type opencodeModelsResponse struct {
+	Object string               `json:"object"`
+	Data   []opencodeModelEntry `json:"data"`
+}
+
+// SetOpenCodeKey configures an OpenCode Zen API key so that OpenCode models
+// are included during catalog refresh.
+func (c *ModelCatalog) SetOpenCodeKey(key string) {
+	c.opencodeKey = key
+}
+
+// MergeOpenCodeModels fetches models from the OpenCode Zen /v1/models endpoint
+// and merges them into the existing catalog, prefixed with "opencode/" so the
+// router directs them to the OpenCode provider.
+func (c *ModelCatalog) MergeOpenCodeModels(ctx context.Context) error {
+	if c.opencodeKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	oc, err := fetchOpenCodeModels(ctx, client, c.opencodeKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range oc {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchOpenCodeModels calls the OpenCode Zen /v1/models endpoint and returns
+// models as a ModelInfo map keyed by "opencode/<model-id>". The endpoint does
+// not return pricing or context length, so those fields stay zero — external
+// pricing sources may fill them in later.
+func fetchOpenCodeModels(ctx context.Context, client *http.Client, apiKey string) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://opencode.ai/zen/go/v1/models", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build opencode request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("opencode http get: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("opencode unexpected status %d", resp.StatusCode)
+	}
+	var body opencodeModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode opencode response: %w", err)
+	}
+	models := make(map[string]ModelInfo)
+	for _, entry := range body.Data {
+		id := "opencode/" + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        "opencode",
 			Created:       entry.Created,
 			SupportsTools: true,
 		}

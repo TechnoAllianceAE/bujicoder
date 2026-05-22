@@ -1217,6 +1217,9 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 	if key := getKey("cerebras", "CEREBRAS_API_KEY"); key != "" {
 		reg.Register(llm.NewCerebrasProvider(key, timeout))
 	}
+	if key := getKey("opencode", "OPENCODE_API_KEY"); key != "" {
+		reg.Register(llm.NewOpenCodeProvider(key, timeout))
+	}
 	if key := getKey("kilocode", "KILOCODE_API_KEY"); key != "" {
 		kiloProvider := llm.NewKilocodeProvider(key, timeout)
 		reg.Register(kiloProvider)
