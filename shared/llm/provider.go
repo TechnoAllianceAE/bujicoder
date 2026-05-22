@@ -20,6 +20,12 @@ type StreamEvent struct {
 // DeltaEvent is an incremental text chunk.
 type DeltaEvent struct {
 	Text string `json:"text"`
+	// IsReasoning marks this delta as chain-of-thought reasoning content
+	// (e.g. DeepSeek/GLM reasoning_content) rather than the final answer.
+	// Text still carries the reasoning so existing consumers render it as
+	// text; format converters that support native thinking blocks (Anthropic)
+	// branch on this flag to emit a separate thinking content block.
+	IsReasoning bool `json:"is_reasoning,omitempty"`
 }
 
 // ToolCallEvent is a complete tool call from the model.
@@ -106,6 +112,14 @@ type ContentPart struct {
 	ArgumentsJSON string    `json:"arguments_json,omitempty"`
 	IsError       bool      `json:"is_error,omitempty"`
 	ImageURL      *ImageURL `json:"image_url,omitempty"` // For vision: inline base64 or remote URL
+	// Reasoning holds chain-of-thought text for Type=="reasoning" parts (mapped
+	// from Anthropic thinking blocks / DeepSeek reasoning_content). Providers
+	// that support thinking mode (e.g. DeepSeek via OpenCode) must echo this
+	// back as reasoning_content on the assistant message or the upstream 400s.
+	Reasoning string `json:"reasoning,omitempty"`
+	// Signature is the opaque thinking-block signature (Anthropic). Carried so
+	// it round-trips; not required by reasoning_content-style providers.
+	Signature string `json:"signature,omitempty"`
 }
 
 // ImageURL represents an image attachment for multimodal messages.

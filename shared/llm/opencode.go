@@ -25,10 +25,11 @@ func NewOpenCodeProvider(apiKey string, timeout ...time.Duration) *OpenCodeProvi
 	}
 	return &OpenCodeProvider{
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
-			APIURL:       opencodeAPIURL,
-			APIKey:       apiKey,
-			ProviderName: "opencode",
-			Timeout:      t,
+			APIURL:            opencodeAPIURL,
+			APIKey:            apiKey,
+			ProviderName:      "opencode",
+			Timeout:           t,
+			SupportsReasoning: true,
 		}),
 	}
 }

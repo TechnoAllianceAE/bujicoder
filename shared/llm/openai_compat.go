@@ -20,6 +20,11 @@ type OpenAICompatConfig struct {
 	ExtraHeaders map[string]string
 	// ZeroCost forces cost to 0 (e.g., for Ollama local models).
 	ZeroCost bool
+	// SupportsReasoning enables echoing reasoning ContentParts back as the
+	// `reasoning_content` field on assistant messages. Required by DeepSeek
+	// thinking-mode (via OpenCode Zen): the prior turn's reasoning_content
+	// must be passed back or the API rejects the request with a 400.
+	SupportsReasoning bool
 	// Timeout overrides the default HTTP request timeout. Zero means use the default (90s).
 	Timeout time.Duration
 }
@@ -147,8 +152,9 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 
 		msg := map[string]any{"role": m.Role}
 
-		// Collect text, image, and tool_call parts.
+		// Collect text, image, tool_call, and reasoning parts.
 		var textBuf strings.Builder
+		var reasoningBuf strings.Builder
 		var toolCalls []map[string]any
 		var hasImages bool
 		var contentParts []map[string]any
@@ -156,6 +162,8 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 			switch part.Type {
 			case "text":
 				textBuf.WriteString(part.Text)
+			case "reasoning":
+				reasoningBuf.WriteString(part.Reasoning)
 			case "image_url":
 				hasImages = true
 				if part.ImageURL != nil {
@@ -194,6 +202,12 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 		// intentionally omitted. Providers accept tool_calls without content.
 		if len(toolCalls) > 0 {
 			msg["tool_calls"] = toolCalls
+		}
+		// Echo reasoning back as reasoning_content. DeepSeek thinking-mode
+		// rejects the request otherwise: "The reasoning_content in the
+		// thinking mode must be passed back to the API."
+		if p.cfg.SupportsReasoning && reasoningBuf.Len() > 0 {
+			msg["reasoning_content"] = reasoningBuf.String()
 		}
 		messages = append(messages, msg)
 	}
@@ -311,9 +325,11 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		delta, _ := choice["delta"].(map[string]any)
 		finishReason, _ := choice["finish_reason"].(string)
 
-		// Handle reasoning_content (e.g. Z.AI GLM-5 chain-of-thought) as text delta.
+		// Handle reasoning_content (e.g. Z.AI GLM-5, DeepSeek chain-of-thought).
+		// Flagged IsReasoning so thinking-aware converters (Anthropic) emit a
+		// native thinking block; Text still carries it for other formats.
 		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
-			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning}}
+			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning, IsReasoning: true}}
 			producedOutput = true
 		}
 		if content, ok := delta["content"].(string); ok && content != "" {
