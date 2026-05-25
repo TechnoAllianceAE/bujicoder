@@ -779,6 +779,81 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, apiKey string
 	return models, nil
 }
 
+// MergeOpenAICompatModels fetches models from an arbitrary OpenAI-compatible
+// /models endpoint and merges them into the catalog, prefixed with
+// "<provider>/" so the router directs them to that provider. Used for
+// admin-registered custom providers (e.g. deepseek). baseURL may be a bare
+// host, a versioned base (".../v1"), or the chat-completions URL itself; the
+// canonical "/models" path is derived from it. Pricing/context are not assumed
+// from the response, so those stay zero unless the endpoint supplies them.
+func (c *ModelCatalog) MergeOpenAICompatModels(ctx context.Context, provider, baseURL, apiKey string) error {
+	provider = strings.TrimSpace(provider)
+	if provider == "" || strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	models, err := fetchOpenAICompatModels(ctx, client, provider, baseURL, apiKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range models {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchOpenAICompatModels calls "<base>/models" on an OpenAI-compatible API and
+// returns ModelInfo keyed by "<provider>/<model-id>".
+func fetchOpenAICompatModels(ctx context.Context, client *http.Client, provider, baseURL, apiKey string) (map[string]ModelInfo, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	base = strings.TrimSuffix(base, "/chat/completions")
+	modelsURL := base + "/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build %s models request: %w", provider, err)
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s http get: %w", provider, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s models unexpected status %d", provider, resp.StatusCode)
+	}
+	var body struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Created int64  `json:"created"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode %s models response: %w", provider, err)
+	}
+	models := make(map[string]ModelInfo, len(body.Data))
+	for _, entry := range body.Data {
+		if entry.ID == "" {
+			continue
+		}
+		id := provider + "/" + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        provider,
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
+}
+
 // fetchKilocodeModels calls the Kilo Gateway /models endpoint and returns
 // models as a ModelInfo map keyed by "kilocode/<provider>/<model>". The endpoint
 // is public (no auth required) and returns the OpenRouter-compatible schema
