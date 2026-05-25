@@ -17,6 +17,8 @@ const anthropicAPIURL = "https://api.anthropic.com/v1/messages"
 // AnthropicProvider implements the Provider interface for Anthropic's API.
 type AnthropicProvider struct {
 	apiKey string
+	apiURL string
+	name   string
 	client *http.Client
 }
 
@@ -32,14 +34,36 @@ func NewAnthropicProvider(apiKey string, timeout ...time.Duration) *AnthropicPro
 	}
 	return &AnthropicProvider{
 		apiKey: apiKey,
+		apiURL: anthropicAPIURL,
+		name:   "anthropic",
 		client: &http.Client{
 			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }
 
-// Name returns "anthropic".
-func (a *AnthropicProvider) Name() string { return "anthropic" }
+// NewAnthropicProviderWithEndpoint creates an Anthropic-compatible provider
+// pointed at a custom base URL under a custom registry name. Used for custom
+// providers that speak the Anthropic Messages wire format (e.g. DeepSeek's
+// /anthropic endpoint). baseURL may be a bare host or already include the
+// /v1/messages path; the canonical suffix is appended when absent.
+func NewAnthropicProviderWithEndpoint(name, baseURL, apiKey string, timeout ...time.Duration) *AnthropicProvider {
+	p := NewAnthropicProvider(apiKey, timeout...)
+	if name != "" {
+		p.name = name
+	}
+	url := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if url != "" && !strings.HasSuffix(url, "/messages") {
+		url += "/v1/messages"
+	}
+	if url != "" {
+		p.apiURL = url
+	}
+	return p
+}
+
+// Name returns the provider's registry name ("anthropic" by default).
+func (a *AnthropicProvider) Name() string { return a.name }
 
 // APIKey returns the provider's API key for direct passthrough proxying.
 func (a *AnthropicProvider) APIKey() string { return a.apiKey }
@@ -53,7 +77,7 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicAPIURL, bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.apiURL, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create anthropic request: %w", err)
 	}
