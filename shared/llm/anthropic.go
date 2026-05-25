@@ -140,7 +140,39 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	}
 
 	var messages []map[string]any
+	// Anthropic has no "tool" role — tool results are tool_result blocks inside
+	// a user message, and all results for one assistant turn must be grouped in
+	// a single user message. The gateway's canonical internal form is OpenAI-
+	// style (separate role:"tool" messages, one result each), so coalesce any
+	// run of "tool" messages into one user message before emitting.
+	var pendingToolResults []map[string]any
+	flushToolResults := func() {
+		if len(pendingToolResults) > 0 {
+			messages = append(messages, map[string]any{"role": "user", "content": pendingToolResults})
+			pendingToolResults = nil
+		}
+	}
 	for _, m := range req.Messages {
+		if m.Role == "tool" {
+			for _, part := range m.Content {
+				if part.Type != "tool_result" {
+					continue
+				}
+				block := map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": part.ToolCallID,
+					"content":     part.Text,
+					"is_error":    part.IsError,
+				}
+				if m.CacheBreakpoint {
+					block["cache_control"] = map[string]any{"type": "ephemeral"}
+				}
+				pendingToolResults = append(pendingToolResults, block)
+			}
+			continue
+		}
+		flushToolResults()
+
 		msg := map[string]any{"role": m.Role}
 		// CacheBreakpoint forces the array form so we can attach cache_control.
 		if len(m.Content) == 1 && m.Content[0].Type == "text" && !m.CacheBreakpoint {
@@ -198,6 +230,7 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 		}
 		messages = append(messages, msg)
 	}
+	flushToolResults()
 	body["messages"] = messages
 
 	if len(req.Tools) > 0 {
