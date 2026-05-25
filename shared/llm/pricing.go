@@ -136,7 +136,10 @@ func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, 
 		float64(outputTokens)*pricing.CompletionCostPerToken +
 		float64(cacheReadTokens)*pricing.CacheReadPerToken +
 		float64(cacheWriteTokens)*pricing.CacheWritePerToken
-	costCents := int64(math.Ceil(costUSD * 100))
+	if costUSD <= 0 {
+		return 0
+	}
+	costCents := int64(math.Ceil(costUSD*100 - 1e-9))
 	return costCents
 }
 

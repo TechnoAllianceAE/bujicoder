@@ -37,14 +37,14 @@ func TestCalculateCostCents(t *testing.T) {
 			model:        "openai/gpt-4",
 			inputTokens:  1000,
 			outputTokens: 500,
-			wantCents:    7, // (1000*0.00003 + 500*0.00006) * 100 ≈ 6.0 + fp noise → ceil = 7
+			wantCents:    6, // (1000*0.00003 + 500*0.00006) * 100 = 6.0 → exact = 6
 		},
 		{
 			name:         "claude sonnet",
 			model:        "openai/gpt-oss-120b:free",
 			inputTokens:  10000,
 			outputTokens: 2000,
-			wantCents:    7, // (10000*0.000003 + 2000*0.000015) * 100 ≈ 6.0 + fp noise → ceil = 7
+			wantCents:    6, // (10000*0.000003 + 2000*0.000015) * 100 = 6.0 → exact = 6
 		},
 		{
 			name:         "unknown model returns 0",
