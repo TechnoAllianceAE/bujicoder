@@ -18,18 +18,18 @@ import (
 // ModelInfo holds metadata about an available model.
 type ModelInfo struct {
 	ID              string   `json:"id"`
-	Name                string   `json:"name"`
-	Source              string   `json:"source"`
-	ContextLength       int      `json:"context_length"`
-	MaxOutputTokens     int      `json:"max_output_tokens,omitempty"`
-	PromptCost          float64  `json:"prompt_cost"`
-	CompletionCost      float64  `json:"completion_cost"`
-	Created             int64    `json:"created,omitempty"`
-	InputModalities     []string `json:"input_modalities,omitempty"`
-	SupportedParams     []string `json:"supported_parameters,omitempty"`
-	SupportsTools       bool     `json:"supports_tools,omitempty"`
-	Description         string   `json:"description,omitempty"`
-	KnowledgeCutoff     string   `json:"knowledge_cutoff,omitempty"`
+	Name            string   `json:"name"`
+	Source          string   `json:"source"`
+	ContextLength   int      `json:"context_length"`
+	MaxOutputTokens int      `json:"max_output_tokens,omitempty"`
+	PromptCost      float64  `json:"prompt_cost"`
+	CompletionCost  float64  `json:"completion_cost"`
+	Created         int64    `json:"created,omitempty"`
+	InputModalities []string `json:"input_modalities,omitempty"`
+	SupportedParams []string `json:"supported_parameters,omitempty"`
+	SupportsTools   bool     `json:"supports_tools,omitempty"`
+	Description     string   `json:"description,omitempty"`
+	KnowledgeCutoff string   `json:"knowledge_cutoff,omitempty"`
 }
 
 type modelEntry struct {
@@ -112,23 +112,23 @@ type fireworksModelsResponse struct {
 // fireworksDefaultPricing provides pricing for popular Fireworks AI models
 // in USD per million tokens. Source: https://fireworks.ai/pricing
 var fireworksDefaultPricing = map[string]struct{ Input, Output float64 }{
-	"accounts/fireworks/models/llama-v3p1-8b-instruct":                  {Input: 0.20, Output: 0.20},
-	"accounts/fireworks/models/llama-v3p1-70b-instruct":                 {Input: 0.90, Output: 0.90},
-	"accounts/fireworks/models/llama-v3p1-405b-instruct":                {Input: 3.00, Output: 3.00},
-	"accounts/fireworks/models/llama-v3p3-70b-instruct":                 {Input: 0.90, Output: 0.90},
-	"accounts/fireworks/models/llama4-scout-instruct-basic":             {Input: 0.15, Output: 0.60},
-	"accounts/fireworks/models/llama4-maverick-instruct-basic":          {Input: 0.22, Output: 0.88},
-	"accounts/fireworks/models/mixtral-8x7b-instruct":                   {Input: 0.50, Output: 0.50},
-	"accounts/fireworks/models/mixtral-8x22b-instruct":                  {Input: 1.20, Output: 1.20},
-	"accounts/fireworks/models/qwen2p5-72b-instruct":                    {Input: 0.90, Output: 0.90},
-	"accounts/fireworks/models/qwen2p5-coder-32b-instruct":              {Input: 0.90, Output: 0.90},
-	"accounts/fireworks/models/qwen3-30b-a3b":                           {Input: 0.22, Output: 0.88},
-	"accounts/fireworks/models/qwen3-235b-a22b":                         {Input: 0.22, Output: 0.88},
-	"accounts/fireworks/models/deepseek-v3":                             {Input: 0.90, Output: 0.90},
-	"accounts/fireworks/models/deepseek-r1":                             {Input: 3.00, Output: 7.00},
-	"accounts/fireworks/models/kimi-k2-instruct":                        {Input: 0.50, Output: 2.50},
-	"accounts/fireworks/models/gemma2-9b-it":                            {Input: 0.20, Output: 0.20},
-	"accounts/fireworks/models/phi-3-vision-128k-instruct":              {Input: 0.20, Output: 0.20},
+	"accounts/fireworks/models/llama-v3p1-8b-instruct":         {Input: 0.20, Output: 0.20},
+	"accounts/fireworks/models/llama-v3p1-70b-instruct":        {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/llama-v3p1-405b-instruct":       {Input: 3.00, Output: 3.00},
+	"accounts/fireworks/models/llama-v3p3-70b-instruct":        {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/llama4-scout-instruct-basic":    {Input: 0.15, Output: 0.60},
+	"accounts/fireworks/models/llama4-maverick-instruct-basic": {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/mixtral-8x7b-instruct":          {Input: 0.50, Output: 0.50},
+	"accounts/fireworks/models/mixtral-8x22b-instruct":         {Input: 1.20, Output: 1.20},
+	"accounts/fireworks/models/qwen2p5-72b-instruct":           {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/qwen2p5-coder-32b-instruct":     {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/qwen3-30b-a3b":                  {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/qwen3-235b-a22b":                {Input: 0.22, Output: 0.88},
+	"accounts/fireworks/models/deepseek-v3":                    {Input: 0.90, Output: 0.90},
+	"accounts/fireworks/models/deepseek-r1":                    {Input: 3.00, Output: 7.00},
+	"accounts/fireworks/models/kimi-k2-instruct":               {Input: 0.50, Output: 2.50},
+	"accounts/fireworks/models/gemma2-9b-it":                   {Input: 0.20, Output: 0.20},
+	"accounts/fireworks/models/phi-3-vision-128k-instruct":     {Input: 0.20, Output: 0.20},
 }
 
 // ModelCatalog indexes available models by ID for validation.
@@ -141,17 +141,19 @@ type ModelCatalog struct {
 	lastRefreshed time.Time
 
 	// Dynamic refresh fields (only populated for dynamic catalogs).
-	apiKey       string
-	togetherKey  string
-	zaiKey       string
-	fireworksKey string
-	kilocodeKey  string
-	groqKey      string
-	cerebrasKey  string
-	client       *http.Client
-	log          zerolog.Logger
-	stopCh       chan struct{}
-	stopOnce     sync.Once
+	apiKey         string
+	togetherKey    string
+	zaiKey         string
+	fireworksKey   string
+	kilocodeKey    string
+	groqKey        string
+	cerebrasKey    string
+	opencodeKey    string
+	opencodeZenKey string
+	client         *http.Client
+	log            zerolog.Logger
+	stopCh         chan struct{}
+	stopOnce       sync.Once
 }
 
 // parseModelEntries converts raw model entries into a ModelInfo map.
@@ -379,6 +381,28 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			c.log.Warn().Err(err).Msg("failed to fetch Cerebras models during catalog refresh")
 		} else {
 			for k, v := range cereb {
+				models[k] = v
+			}
+		}
+	}
+
+	if c.opencodeKey != "" {
+		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeKey, opencodeGoModelsURL, "opencode/")
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch OpenCode (Go) models during catalog refresh")
+		} else {
+			for k, v := range oc {
+				models[k] = v
+			}
+		}
+	}
+
+	if c.opencodeZenKey != "" {
+		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeZenKey, opencodeZenModelsURL, "opencode-zen/")
+		if err != nil {
+			c.log.Warn().Err(err).Msg("failed to fetch OpenCode (Zen) models during catalog refresh")
+		} else {
+			for k, v := range oc {
 				models[k] = v
 			}
 		}
@@ -681,6 +705,185 @@ func fetchCerebrasModels(ctx context.Context, client *http.Client, apiKey string
 			ID:            id,
 			Name:          entry.ID,
 			Source:        "cerebras",
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
+}
+
+// opencodeModelEntry matches the OpenCode Zen /v1/models JSON shape
+// (OpenAI-compatible: id/object/created/owned_by).
+type opencodeModelEntry struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	OwnedBy string `json:"owned_by"`
+}
+
+type opencodeModelsResponse struct {
+	Object string               `json:"object"`
+	Data   []opencodeModelEntry `json:"data"`
+}
+
+// OpenCode Zen /v1/models listing endpoints, one per subscription tier. They
+// return different model sets; see opencode.go for the chat endpoints.
+const (
+	opencodeGoModelsURL  = "https://opencode.ai/zen/go/v1/models"
+	opencodeZenModelsURL = "https://opencode.ai/zen/v1/models"
+)
+
+// SetOpenCodeKey configures an OpenCode Zen "Go" tier API key so that those
+// models are included during catalog refresh.
+func (c *ModelCatalog) SetOpenCodeKey(key string) {
+	c.opencodeKey = key
+}
+
+// SetOpenCodeZenKey configures an OpenCode Zen base-tier API key so that
+// zen-only models (e.g. "big-pickle") are included during catalog refresh.
+func (c *ModelCatalog) SetOpenCodeZenKey(key string) {
+	c.opencodeZenKey = key
+}
+
+// MergeOpenCodeModels fetches models from the OpenCode Zen "Go" /models
+// endpoint and merges them into the catalog, prefixed with "opencode/" so the
+// router directs them to the OpenCode provider.
+func (c *ModelCatalog) MergeOpenCodeModels(ctx context.Context) error {
+	return c.mergeOpenCodeTier(ctx, c.opencodeKey, opencodeGoModelsURL, "opencode/")
+}
+
+// MergeOpenCodeZenModels fetches models from the OpenCode Zen base /models
+// endpoint and merges them into the catalog, prefixed with "opencode-zen/" so
+// the router directs them to the OpenCode Zen provider.
+func (c *ModelCatalog) MergeOpenCodeZenModels(ctx context.Context) error {
+	return c.mergeOpenCodeTier(ctx, c.opencodeZenKey, opencodeZenModelsURL, "opencode-zen/")
+}
+
+func (c *ModelCatalog) mergeOpenCodeTier(ctx context.Context, apiKey, modelsURL, prefix string) error {
+	if apiKey == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	oc, err := fetchOpenCodeModels(ctx, client, apiKey, modelsURL, prefix)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range oc {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchOpenCodeModels calls an OpenCode Zen /models endpoint and returns models
+// as a ModelInfo map keyed by "<prefix><model-id>". The endpoint does not
+// return pricing or context length, so those fields stay zero — external
+// pricing sources may fill them in later.
+func fetchOpenCodeModels(ctx context.Context, client *http.Client, apiKey, modelsURL, prefix string) (map[string]ModelInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build opencode request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("opencode http get: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("opencode unexpected status %d", resp.StatusCode)
+	}
+	var body opencodeModelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode opencode response: %w", err)
+	}
+	source := strings.TrimSuffix(prefix, "/")
+	models := make(map[string]ModelInfo)
+	for _, entry := range body.Data {
+		id := prefix + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        source,
+			Created:       entry.Created,
+			SupportsTools: true,
+		}
+	}
+	return models, nil
+}
+
+// MergeOpenAICompatModels fetches models from an arbitrary OpenAI-compatible
+// /models endpoint and merges them into the catalog, prefixed with
+// "<provider>/" so the router directs them to that provider. Used for
+// admin-registered custom providers (e.g. deepseek). baseURL may be a bare
+// host, a versioned base (".../v1"), or the chat-completions URL itself; the
+// canonical "/models" path is derived from it. Pricing/context are not assumed
+// from the response, so those stay zero unless the endpoint supplies them.
+func (c *ModelCatalog) MergeOpenAICompatModels(ctx context.Context, provider, baseURL, apiKey string) error {
+	provider = strings.TrimSpace(provider)
+	if provider == "" || strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	client := c.client
+	if client == nil {
+		client = &http.Client{Timeout: 30 * time.Second}
+	}
+	models, err := fetchOpenAICompatModels(ctx, client, provider, baseURL, apiKey)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	for k, v := range models {
+		c.models[k] = v
+	}
+	c.mu.Unlock()
+	return nil
+}
+
+// fetchOpenAICompatModels calls "<base>/models" on an OpenAI-compatible API and
+// returns ModelInfo keyed by "<provider>/<model-id>".
+func fetchOpenAICompatModels(ctx context.Context, client *http.Client, provider, baseURL, apiKey string) (map[string]ModelInfo, error) {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	base = strings.TrimSuffix(base, "/chat/completions")
+	modelsURL := base + "/models"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build %s models request: %w", provider, err)
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s http get: %w", provider, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%s models unexpected status %d", provider, resp.StatusCode)
+	}
+	var body struct {
+		Data []struct {
+			ID      string `json:"id"`
+			Created int64  `json:"created"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return nil, fmt.Errorf("decode %s models response: %w", provider, err)
+	}
+	models := make(map[string]ModelInfo, len(body.Data))
+	for _, entry := range body.Data {
+		if entry.ID == "" {
+			continue
+		}
+		id := provider + "/" + entry.ID
+		models[id] = ModelInfo{
+			ID:            id,
+			Name:          entry.ID,
+			Source:        provider,
 			Created:       entry.Created,
 			SupportsTools: true,
 		}

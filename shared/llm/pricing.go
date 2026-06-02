@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -125,10 +126,7 @@ func (p *PricingService) CalculateCostCents(model string, inputTokens, outputTok
 
 // CalculateCostCentsWithCache computes cost including cache token pricing.
 func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens int) int64 {
-	p.mu.RLock()
-	pricing, ok := p.prices[model]
-	p.mu.RUnlock()
-
+	pricing, ok := p.lookup(model)
 	if !ok {
 		p.log.Debug().Str("model", model).Msg("no pricing for model")
 		return 0
@@ -138,8 +136,37 @@ func (p *PricingService) CalculateCostCentsWithCache(model string, inputTokens, 
 		float64(outputTokens)*pricing.CompletionCostPerToken +
 		float64(cacheReadTokens)*pricing.CacheReadPerToken +
 		float64(cacheWriteTokens)*pricing.CacheWritePerToken
-	costCents := int64(math.Ceil(costUSD * 100))
+	if costUSD <= 0 {
+		return 0
+	}
+	costCents := int64(math.Ceil(costUSD*100 - 1e-9))
 	return costCents
+}
+
+// lookup resolves pricing for a model id, tolerating provider-qualified names.
+// The price map is keyed by the vendor id (e.g. "z-ai/glm-5.1",
+// "minimax/minimax-m2.7"), but routing passes fully-qualified names with a
+// provider prefix (e.g. "openrouter/z-ai/glm-5.1", "kilocode/z-ai/glm-5.1").
+// Try the exact key first, then strip leading path segments one at a time and
+// retry — longest (most specific) form wins, and only a real map hit is
+// accepted, so an unknown model still returns ok=false.
+func (p *PricingService) lookup(model string) (ModelPricing, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if pricing, ok := p.prices[model]; ok {
+		return pricing, true
+	}
+	for {
+		i := strings.IndexByte(model, '/')
+		if i < 0 {
+			break
+		}
+		model = model[i+1:]
+		if pricing, ok := p.prices[model]; ok {
+			return pricing, true
+		}
+	}
+	return ModelPricing{}, false
 }
 
 // refreshLoop periodically re-fetches pricing data until Stop is called.
@@ -274,14 +301,18 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 	return nil
 }
 
-// mergeZAIPricing adds fallback Z.AI pricing for models not already present
-// in the price map (e.g. from OpenRouter). OpenRouter pricing is authoritative;
-// the hardcoded rates are only used for models Z.AI offers but OpenRouter
-// hasn't listed yet.
+// mergeZAIPricing adds fallback Z.AI pricing for models OpenRouter hasn't
+// priced. OpenRouter pricing is authoritative when it carries a real rate, but
+// for newly-released models it often lists prompt/completion as "0" (pricing
+// not yet published) — that zero placeholder would otherwise make cost
+// calculation silently report 0. So apply the hardcoded rate when the model is
+// absent OR present with both rates at zero. Genuinely free variants use a
+// ":free" suffix that is not in zaiDefaultPricing, so they stay free.
 func (p *PricingService) mergeZAIPricing(prices map[string]ModelPricing) {
 	for modelID, rate := range zaiDefaultPricing {
 		id := "z-ai/" + modelID
-		if _, exists := prices[id]; !exists {
+		existing, exists := prices[id]
+		if !exists || (existing.PromptCostPerToken == 0 && existing.CompletionCostPerToken == 0) {
 			prices[id] = ModelPricing{
 				PromptCostPerToken:     rate.Input / 1_000_000,
 				CompletionCostPerToken: rate.Output / 1_000_000,

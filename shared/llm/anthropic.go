@@ -17,6 +17,8 @@ const anthropicAPIURL = "https://api.anthropic.com/v1/messages"
 // AnthropicProvider implements the Provider interface for Anthropic's API.
 type AnthropicProvider struct {
 	apiKey string
+	apiURL string
+	name   string
 	client *http.Client
 }
 
@@ -32,18 +34,36 @@ func NewAnthropicProvider(apiKey string, timeout ...time.Duration) *AnthropicPro
 	}
 	return &AnthropicProvider{
 		apiKey: apiKey,
+		apiURL: anthropicAPIURL,
+		name:   "anthropic",
 		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				ResponseHeaderTimeout: headerTimeout,
-				IdleConnTimeout:       90 * time.Second,
-			},
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }
 
-// Name returns "anthropic".
-func (a *AnthropicProvider) Name() string { return "anthropic" }
+// NewAnthropicProviderWithEndpoint creates an Anthropic-compatible provider
+// pointed at a custom base URL under a custom registry name. Used for custom
+// providers that speak the Anthropic Messages wire format (e.g. DeepSeek's
+// /anthropic endpoint). baseURL may be a bare host or already include the
+// /v1/messages path; the canonical suffix is appended when absent.
+func NewAnthropicProviderWithEndpoint(name, baseURL, apiKey string, timeout ...time.Duration) *AnthropicProvider {
+	p := NewAnthropicProvider(apiKey, timeout...)
+	if name != "" {
+		p.name = name
+	}
+	url := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if url != "" && !strings.HasSuffix(url, "/messages") {
+		url += "/v1/messages"
+	}
+	if url != "" {
+		p.apiURL = url
+	}
+	return p
+}
+
+// Name returns the provider's registry name ("anthropic" by default).
+func (a *AnthropicProvider) Name() string { return a.name }
 
 // APIKey returns the provider's API key for direct passthrough proxying.
 func (a *AnthropicProvider) APIKey() string { return a.apiKey }
@@ -57,7 +77,7 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, anthropicAPIURL, bytes.NewReader(jsonBody))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, a.apiURL, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("create anthropic request: %w", err)
 	}
@@ -120,7 +140,39 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	}
 
 	var messages []map[string]any
+	// Anthropic has no "tool" role — tool results are tool_result blocks inside
+	// a user message, and all results for one assistant turn must be grouped in
+	// a single user message. The gateway's canonical internal form is OpenAI-
+	// style (separate role:"tool" messages, one result each), so coalesce any
+	// run of "tool" messages into one user message before emitting.
+	var pendingToolResults []map[string]any
+	flushToolResults := func() {
+		if len(pendingToolResults) > 0 {
+			messages = append(messages, map[string]any{"role": "user", "content": pendingToolResults})
+			pendingToolResults = nil
+		}
+	}
 	for _, m := range req.Messages {
+		if m.Role == "tool" {
+			for _, part := range m.Content {
+				if part.Type != "tool_result" {
+					continue
+				}
+				block := map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": part.ToolCallID,
+					"content":     part.Text,
+					"is_error":    part.IsError,
+				}
+				if m.CacheBreakpoint {
+					block["cache_control"] = map[string]any{"type": "ephemeral"}
+				}
+				pendingToolResults = append(pendingToolResults, block)
+			}
+			continue
+		}
+		flushToolResults()
+
 		msg := map[string]any{"role": m.Role}
 		// CacheBreakpoint forces the array form so we can attach cache_control.
 		if len(m.Content) == 1 && m.Content[0].Type == "text" && !m.CacheBreakpoint {
@@ -178,6 +230,7 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 		}
 		messages = append(messages, msg)
 	}
+	flushToolResults()
 	body["messages"] = messages
 
 	if len(req.Tools) > 0 {

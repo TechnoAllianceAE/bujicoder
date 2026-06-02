@@ -23,14 +23,14 @@ import (
 	"github.com/rs/zerolog"
 
 	agentdata "github.com/TechnoAllianceAE/bujicoder/agents"
-	"github.com/TechnoAllianceAE/bujicoder/shared/logging"
 	cliconfig "github.com/TechnoAllianceAE/bujicoder/cli/config"
-	"github.com/TechnoAllianceAE/bujicoder/shared/store"
 	"github.com/TechnoAllianceAE/bujicoder/shared/agent"
 	"github.com/TechnoAllianceAE/bujicoder/shared/agentruntime"
 	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
+	"github.com/TechnoAllianceAE/bujicoder/shared/logging"
 	"github.com/TechnoAllianceAE/bujicoder/shared/mcp"
+	"github.com/TechnoAllianceAE/bujicoder/shared/store"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
@@ -176,7 +176,7 @@ type Model struct {
 	messages        []ChatMessage
 	streaming       bool
 	streamBuf       string
-	subAgentStreams  map[string]string // buffers stream string per sub-agent ID
+	subAgentStreams map[string]string // buffers stream string per sub-agent ID
 	streamCh        chan tea.Msg
 	err             error
 	costMode        costmode.Mode
@@ -218,21 +218,21 @@ type Model struct {
 	// Local mode config
 	localCfg   *cliconfig.Config        // cached config for local mode helpers
 	unifiedCfg *cliconfig.UnifiedConfig // unified YAML config
-	localStore *store.Store        // local conversation persistence
+	localStore *store.Store             // local conversation persistence
 
 	// Setup wizard state
-	setupStep       int            // setup step constant (see setup.go)
-	setupAPIKey     string         // API key being entered
-	setupMode       int            // 0=quick, 1=advanced
-	setupProvider   int            // advanced provider index (0-5)
-	setupModels     []string       // fetched model IDs
-	setupModelIdx   int            // current selection in model list
-	setupModeStep   int            // cost mode (0=normal, 1=heavy, 2=max)
-	setupRoleStep   int            // role (0=main, 1=file_explorer, 2=sub_agent)
-	setupSelections [3][3]string   // [mode][role] = model ID
-	setupFetchErr   string         // error from model fetch
-	setupFetching   bool           // loading spinner
-	setupScrollOff  int            // scroll offset for model list
+	setupStep       int          // setup step constant (see setup.go)
+	setupAPIKey     string       // API key being entered
+	setupMode       int          // 0=quick, 1=advanced
+	setupProvider   int          // advanced provider index (0-5)
+	setupModels     []string     // fetched model IDs
+	setupModelIdx   int          // current selection in model list
+	setupModeStep   int          // cost mode (0=normal, 1=heavy, 2=max)
+	setupRoleStep   int          // role (0=main, 1=file_explorer, 2=sub_agent)
+	setupSelections [3][3]string // [mode][role] = model ID
+	setupFetchErr   string       // error from model fetch
+	setupFetching   bool         // loading spinner
+	setupScrollOff  int          // scroll offset for model list
 
 	// Structured logger (writes JSON to ~/.bujicoder/logs/)
 	log zerolog.Logger
@@ -1116,7 +1116,6 @@ func initLocalRuntimeFromConfig(ucfg *cliconfig.UnifiedConfig) tea.Cmd {
 	}
 }
 
-
 // localModelsInfo builds a string showing registered providers and model config for local mode.
 func (m Model) localModelsInfo() string {
 	var b strings.Builder
@@ -1216,6 +1215,9 @@ func registerLocalProviders(reg *llm.Registry, ucfg *cliconfig.UnifiedConfig) {
 	}
 	if key := getKey("cerebras", "CEREBRAS_API_KEY"); key != "" {
 		reg.Register(llm.NewCerebrasProvider(key, timeout))
+	}
+	if key := getKey("opencode", "OPENCODE_API_KEY"); key != "" {
+		reg.Register(llm.NewOpenCodeProvider(key, timeout))
 	}
 	if key := getKey("kilocode", "KILOCODE_API_KEY"); key != "" {
 		kiloProvider := llm.NewKilocodeProvider(key, timeout)
@@ -1420,7 +1422,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				trimmed := strings.TrimSpace(m.input)
 				if trimmed == "/quit" || trimmed == "/exit" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					if m.mcpManager != nil {
 						m.mcpManager.ShutdownAll()
 					}
@@ -1476,7 +1478,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/new" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					m.conversationID = uuid.NewString()
 					m.messages = []ChatMessage{}
 					m.err = nil
@@ -1489,7 +1491,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/history" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					if m.localStore != nil {
 						return m, fetchLocalHistory(m.localStore)
 					}
@@ -1499,7 +1501,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/resume") {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					if len(parts) < 2 {
 						m.messages = append(m.messages, ChatMessage{
@@ -1536,14 +1538,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/models" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: m.localModelsInfo()})
 					return m, nil
 				}
 
 				if userMsg == "/refresh" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					// Reload unified config from disk.
 					if newCfg := cliconfig.LoadUnifiedConfig(); newCfg != nil {
 						m.unifiedCfg = newCfg
@@ -1556,14 +1558,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/usage" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: "Usage tracking available with BujiCoder Enterprise. Visit community.bujicoder.com for details."})
 					return m, nil
 				}
 
 				if userMsg == "/init" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					m.messages = append(m.messages, ChatMessage{
 						Role:    "assistant",
 						Content: gatherCodebaseInfo(),
@@ -1573,7 +1575,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/update" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					if m.updateVersion != "" {
 						m.messages = append(m.messages, ChatMessage{
 							Role:    "assistant",
@@ -1590,7 +1592,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/copy" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					for i := len(m.messages) - 1; i >= 0; i-- {
 						if m.messages[i].Role == "assistant" {
 							return m, copyToClipboardCmd(m.messages[i].Content)
@@ -1607,14 +1609,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if userMsg == "/help" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					m.welcomeCollapsed = false
 					return m, nil
 				}
 
 				if userMsg == "/about" {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					cwd, _ := os.Getwd()
 					var b strings.Builder
 					b.WriteString("BujiCoder -- AI Coding Assistant\n\n")
@@ -1689,7 +1691,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/mcp") {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					subCmd := ""
 					if len(parts) > 1 {
@@ -1835,7 +1837,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 				if strings.HasPrefix(userMsg, "/mode") {
 					m.input = ""
-				m.cursorPos = 0
+					m.cursorPos = 0
 					parts := strings.Fields(userMsg)
 					if len(parts) < 2 {
 						// Show mode picker dropdown

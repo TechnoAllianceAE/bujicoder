@@ -80,7 +80,7 @@ type UnifiedConfig struct {
 	APIKeys        APIKeysConfig                 `yaml:"api_keys"`
 	Modes          map[string]UnifiedModeMapping `yaml:"modes"` // inline model config
 	AgentsDir      string                        `yaml:"agents_dir,omitempty"`
-	MCPServers     []MCPServerConfig             `yaml:"mcp_servers,omitempty"` // MCP tool servers
+	MCPServers     []MCPServerConfig             `yaml:"mcp_servers,omitempty"`     // MCP tool servers
 	RequestTimeout int                           `yaml:"request_timeout,omitempty"` // LLM request timeout in seconds (default: 90)
 }
 
@@ -94,17 +94,18 @@ type MCPServerConfig struct {
 
 // APIKeysConfig holds API keys for various LLM providers.
 type APIKeysConfig struct {
-	OpenRouter string `yaml:"openrouter,omitempty"`
-	Kilocode   string `yaml:"kilocode,omitempty"`
-	Anthropic  string `yaml:"anthropic,omitempty"`
-	OpenAI     string `yaml:"openai,omitempty"`
-	GoogleAI   string `yaml:"google_ai,omitempty"`
-	XAI        string `yaml:"xai,omitempty"`
-	ZAI        string `yaml:"zai,omitempty"`
-	Together   string `yaml:"together,omitempty"`
-	Groq       string `yaml:"groq,omitempty"`
-	Cerebras   string `yaml:"cerebras,omitempty"`
-	OllamaURL  string `yaml:"ollama_url,omitempty"`
+	OpenRouter  string `yaml:"openrouter,omitempty"`
+	Kilocode    string `yaml:"kilocode,omitempty"`
+	Anthropic   string `yaml:"anthropic,omitempty"`
+	OpenAI      string `yaml:"openai,omitempty"`
+	GoogleAI    string `yaml:"google_ai,omitempty"`
+	XAI         string `yaml:"xai,omitempty"`
+	ZAI         string `yaml:"zai,omitempty"`
+	Together    string `yaml:"together,omitempty"`
+	Groq        string `yaml:"groq,omitempty"`
+	Cerebras    string `yaml:"cerebras,omitempty"`
+	OpenCode    string `yaml:"opencode,omitempty"`
+	OllamaURL   string `yaml:"ollama_url,omitempty"`
 	LlamacppURL string `yaml:"llamacpp_url,omitempty"`
 }
 
@@ -162,6 +163,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		configVal = u.APIKeys.Groq
 	case "cerebras":
 		configVal = u.APIKeys.Cerebras
+	case "opencode":
+		configVal = u.APIKeys.OpenCode
 	case "ollama":
 		configVal = u.APIKeys.OllamaURL
 	case "llamacpp":
@@ -186,6 +189,7 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		"together":   "TOGETHER_API_KEY",
 		"groq":       "GROQ_API_KEY",
 		"cerebras":   "CEREBRAS_API_KEY",
+		"opencode":   "OPENCODE_API_KEY",
 		"ollama":     "OLLAMA_URL",
 		"llamacpp":   "LLAMACPP_URL",
 	}

@@ -31,11 +31,7 @@ func NewGeminiProvider(apiKey string, timeout ...time.Duration) *GeminiProvider 
 	return &GeminiProvider{
 		apiKey: apiKey,
 		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				ResponseHeaderTimeout: headerTimeout,
-				IdleConnTimeout:       90 * time.Second,
-			},
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }

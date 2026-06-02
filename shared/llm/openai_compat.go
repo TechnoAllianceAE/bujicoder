@@ -20,6 +20,11 @@ type OpenAICompatConfig struct {
 	ExtraHeaders map[string]string
 	// ZeroCost forces cost to 0 (e.g., for Ollama local models).
 	ZeroCost bool
+	// SupportsReasoning enables echoing reasoning ContentParts back as the
+	// `reasoning_content` field on assistant messages. Required by DeepSeek
+	// thinking-mode (via OpenCode Zen): the prior turn's reasoning_content
+	// must be passed back or the API rejects the request with a 400.
+	SupportsReasoning bool
 	// Timeout overrides the default HTTP request timeout. Zero means use the default (90s).
 	Timeout time.Duration
 }
@@ -46,11 +51,7 @@ func newOpenAICompatProvider(cfg OpenAICompatConfig) *openAICompatProvider {
 	return &openAICompatProvider{
 		cfg: cfg,
 		client: &http.Client{
-			Transport: &http.Transport{
-				Proxy:                 http.ProxyFromEnvironment,
-				ResponseHeaderTimeout: headerTimeout,
-				IdleConnTimeout:       90 * time.Second,
-			},
+			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }
@@ -151,8 +152,9 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 
 		msg := map[string]any{"role": m.Role}
 
-		// Collect text, image, and tool_call parts.
+		// Collect text, image, tool_call, and reasoning parts.
 		var textBuf strings.Builder
+		var reasoningBuf strings.Builder
 		var toolCalls []map[string]any
 		var hasImages bool
 		var contentParts []map[string]any
@@ -160,6 +162,8 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 			switch part.Type {
 			case "text":
 				textBuf.WriteString(part.Text)
+			case "reasoning":
+				reasoningBuf.WriteString(part.Reasoning)
 			case "image_url":
 				hasImages = true
 				if part.ImageURL != nil {
@@ -199,6 +203,12 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 		if len(toolCalls) > 0 {
 			msg["tool_calls"] = toolCalls
 		}
+		// Echo reasoning back as reasoning_content. DeepSeek thinking-mode
+		// rejects the request otherwise: "The reasoning_content in the
+		// thinking mode must be passed back to the API."
+		if p.cfg.SupportsReasoning && reasoningBuf.Len() > 0 {
+			msg["reasoning_content"] = reasoningBuf.String()
+		}
 		messages = append(messages, msg)
 	}
 	body["messages"] = messages
@@ -232,6 +242,31 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 
 	var completeEmitted bool
 	var lastFinishReason string
+	// producedOutput tracks whether the stream emitted any usable content —
+	// text/reasoning deltas or tool calls. Some providers (observed with Z.AI
+	// GLM-5.1) intermittently return a 200 stream with only usage/finish and no
+	// content. Emitting a Complete for that yields a hollow assistant message
+	// that downstream Anthropic clients reject as "empty or malformed". When
+	// nothing was produced we emit an empty_response error instead so the
+	// gateway can fail over to another provider.
+	var producedOutput bool
+	emitTerminal := func(fr string) {
+		if completeEmitted {
+			return
+		}
+		completeEmitted = true
+		if p.cfg.ZeroCost {
+			usage.CostCents = 0
+		}
+		if producedOutput {
+			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+			return
+		}
+		ch <- StreamEvent{Error: &ErrorEvent{
+			Code:    "empty_response",
+			Message: fmt.Sprintf("%s returned an empty response (no content)", p.cfg.ProviderName),
+		}}
+	}
 
 	// Accumulate streaming tool calls — OpenAI sends them incrementally:
 	//   chunk 1: {index:0, id:"call_x", function:{name:"Bash", arguments:""}}
@@ -252,13 +287,14 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		}
 		data := line[6:]
 		if data == "[DONE]" {
-			// If we got usage from a trailing chunk after finish_reason, emit Complete now.
-			if !completeEmitted && lastFinishReason != "" {
-				if p.cfg.ZeroCost {
-					usage.CostCents = 0
-				}
-				ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}}
+			// Emit the terminal event now (Complete if we produced output,
+			// empty_response error otherwise). Default to "stop" when the
+			// provider never sent a finish_reason.
+			fr := lastFinishReason
+			if fr == "" {
+				fr = "stop"
 			}
+			emitTerminal(fr)
 			return
 		}
 
@@ -289,12 +325,16 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		delta, _ := choice["delta"].(map[string]any)
 		finishReason, _ := choice["finish_reason"].(string)
 
-		// Handle reasoning_content (e.g. Z.AI GLM-5 chain-of-thought) as text delta.
+		// Handle reasoning_content (e.g. Z.AI GLM-5, DeepSeek chain-of-thought).
+		// Flagged IsReasoning so thinking-aware converters (Anthropic) emit a
+		// native thinking block; Text still carries it for other formats.
 		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
-			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning}}
+			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning, IsReasoning: true}}
+			producedOutput = true
 		}
 		if content, ok := delta["content"].(string); ok && content != "" {
 			ch <- StreamEvent{Delta: &DeltaEvent{Text: content}}
+			producedOutput = true
 		}
 
 		if toolCalls, ok := delta["tool_calls"].([]any); ok {
@@ -335,6 +375,7 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 						Name:          pt.Name,
 						ArgumentsJSON: pt.Args.String(),
 					}}
+					producedOutput = true
 				}
 			}
 			pendingTools = make(map[int]*pendingToolCall)
@@ -346,14 +387,10 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 				fr = "max_tokens"
 			}
 
-			// If we already have usage (same chunk), emit Complete now.
+			// If we already have usage (same chunk), emit the terminal event now.
 			// Otherwise defer until we get the trailing usage chunk or [DONE].
 			if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-				if p.cfg.ZeroCost {
-					usage.CostCents = 0
-				}
-				ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
-				completeEmitted = true
+				emitTerminal(fr)
 			} else {
 				lastFinishReason = fr
 			}
@@ -371,18 +408,16 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		}}
 	}
 
-	// If stream ended without [DONE] and we haven't emitted Complete, do it now.
-	// Always emit a Complete event — even if no finish_reason was received.
-	// Without this, downstream formatters (especially Anthropic) can't finalize
-	// the message, causing 'undefined is not an object' errors in Claude Code.
-	if !completeEmitted {
+	// If stream ended without [DONE] and we haven't emitted a terminal event,
+	// do it now. emitTerminal sends Complete when output was produced, or an
+	// empty_response error when the provider streamed nothing — downstream
+	// formatters (especially Anthropic) need a terminal to finalize, otherwise
+	// Claude Code throws 'undefined is not an object'.
+	if scannerErr == nil {
 		fr := lastFinishReason
 		if fr == "" {
 			fr = "stop" // default to "stop" if provider never sent finish_reason
 		}
-		if p.cfg.ZeroCost {
-			usage.CostCents = 0
-		}
-		ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+		emitTerminal(fr)
 	}
 }
