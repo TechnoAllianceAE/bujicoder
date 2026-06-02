@@ -105,6 +105,7 @@ type APIKeysConfig struct {
 	Groq        string `yaml:"groq,omitempty"`
 	Cerebras    string `yaml:"cerebras,omitempty"`
 	OpenCode    string `yaml:"opencode,omitempty"`
+	OpenCodeZen string `yaml:"opencode_zen,omitempty"`
 	OllamaURL   string `yaml:"ollama_url,omitempty"`
 	LlamacppURL string `yaml:"llamacpp_url,omitempty"`
 }
@@ -165,6 +166,8 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 		configVal = u.APIKeys.Cerebras
 	case "opencode":
 		configVal = u.APIKeys.OpenCode
+	case "opencode-zen":
+		configVal = u.APIKeys.OpenCodeZen
 	case "ollama":
 		configVal = u.APIKeys.OllamaURL
 	case "llamacpp":
@@ -175,23 +178,24 @@ func (u *UnifiedConfig) GetAPIKey(provider string) string {
 	}
 	// Fall back to env var.
 	envMap := map[string]string{
-		"kilocode":   "KILOCODE_API_KEY",
-		"kilo":       "KILOCODE_API_KEY",
-		"openrouter": "OPENROUTER_API_KEY",
-		"anthropic":  "ANTHROPIC_API_KEY",
-		"openai":     "OPENAI_API_KEY",
-		"google":     "GOOGLE_AI_API_KEY",
-		"google_ai":  "GOOGLE_AI_API_KEY",
-		"gemini":     "GOOGLE_AI_API_KEY",
-		"xai":        "XAI_API_KEY",
-		"zai":        "ZAI_API_KEY",
-		"z-ai":       "ZAI_API_KEY",
-		"together":   "TOGETHER_API_KEY",
-		"groq":       "GROQ_API_KEY",
-		"cerebras":   "CEREBRAS_API_KEY",
-		"opencode":   "OPENCODE_API_KEY",
-		"ollama":     "OLLAMA_URL",
-		"llamacpp":   "LLAMACPP_URL",
+		"kilocode":     "KILOCODE_API_KEY",
+		"kilo":         "KILOCODE_API_KEY",
+		"openrouter":   "OPENROUTER_API_KEY",
+		"anthropic":    "ANTHROPIC_API_KEY",
+		"openai":       "OPENAI_API_KEY",
+		"google":       "GOOGLE_AI_API_KEY",
+		"google_ai":    "GOOGLE_AI_API_KEY",
+		"gemini":       "GOOGLE_AI_API_KEY",
+		"xai":          "XAI_API_KEY",
+		"zai":          "ZAI_API_KEY",
+		"z-ai":         "ZAI_API_KEY",
+		"together":     "TOGETHER_API_KEY",
+		"groq":         "GROQ_API_KEY",
+		"cerebras":     "CEREBRAS_API_KEY",
+		"opencode":     "OPENCODE_API_KEY",
+		"opencode-zen": "OPENCODE_ZEN_API_KEY",
+		"ollama":       "OLLAMA_URL",
+		"llamacpp":     "LLAMACPP_URL",
 	}
 	if envVar, ok := envMap[provider]; ok {
 		return os.Getenv(envVar)
