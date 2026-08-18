@@ -49,7 +49,7 @@
         <a href="mcp-servers.html">MCP Servers</a>
         <a href="agents.html">Agent Architecture</a>
         <a href="commands.html">Slash Commands</a>
-        <h3>v0.8.4</h3>
+        <h3>v0.10.0</h3>
         <a href="security.html" class="active">Command Security</a>
         <a href="memory.html">Project Memory</a>
         <a href="coordinator.html">Goal Coordinator</a>
@@ -57,11 +57,13 @@
 
     <main class="docs-content">
         <h1>Command Security</h1>
-        <p class="docs-subtitle">BujiCoder v0.8.4 introduces a 4-level threat classification system that analyses every shell command before execution, preventing destructive operations from running unchecked.</p>
+        <p class="docs-subtitle">BujiCoder's 4-level threat classification system (introduced in v0.8.4) analyses every shell command before execution, preventing destructive operations from running unchecked.</p>
 
         <h2>Overview</h2>
         <p>When an agent calls <code>run_terminal_command</code>, BujiCoder parses the command string, splits it into individual statements, and assigns each a threat level. The threat level determines whether the command runs immediately, requires user approval, or is blocked outright.</p>
         <p>This system protects against both direct destructive commands and indirect execution techniques such as <code>eval</code>, <code>$()</code>, and piped installers.</p>
+        <p>As of <strong>v0.10.0</strong>, this protection is backed by tool-layer enforcement: in plan mode, shell commands containing redirections (<code>&gt;</code>), command substitution (<code>$()</code>, backticks), or backgrounding (<code>&amp;</code>) are blocked outright — and file tools resolve symlinked paths before every write, so an agent can no longer escape the workspace through a symlinked directory. File writes are also atomic (temp file + rename), so a crash mid-write can never truncate your source files.</p>
+
 
         <h2>Threat Levels</h2>
         <table>

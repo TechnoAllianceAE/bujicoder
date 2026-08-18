@@ -106,7 +106,7 @@
     "desc": "Pick your platform. Be coding in under a minute.",
     "cards": [
       { "title": "macOS / Linux", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
-      { "title": "From Source (Go 1.24+)", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { "title": "From Source (Go 1.25+)", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
       { "title": "Windows", "desc": "Download the latest <code>.exe</code> from <a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>." }
     ]
   },

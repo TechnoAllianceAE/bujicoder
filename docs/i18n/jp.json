@@ -106,7 +106,7 @@
     "desc": "プラットフォームを選んでください。1分以内にコーディングを始められます。",
     "cards": [
       { "title": "macOS / Linux", "code": "curl -fsSL https://community.bujicoder.com/install.sh | bash" },
-      { "title": "ソースから（Go 1.24+）", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
+      { "title": "ソースから（Go 1.25+）", "code": "go install github.com/TechnoAllianceAE/bujicoder/cli/cmd/buji@latest" },
       { "title": "Windows", "desc": "最新の<code>.exe</code>を<a href='https://github.com/TechnoAllianceAE/bujicoder/releases' target='_blank' rel='noopener'>GitHub Releases</a>からダウンロードしてください。" }
     ]
   },
