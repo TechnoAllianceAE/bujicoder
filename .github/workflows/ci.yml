@@ -74,28 +74,22 @@ jobs:
 
       - name: Check for enterprise imports
         run: |
-          if grep -r 'gateway/' --include='*.go' .; then
-            echo "ERROR: Found gateway/ imports in public repo"
-            exit 1
-          fi
-          if grep -r 'shared/database/' --include='*.go' .; then
-            echo "ERROR: Found shared/database/ imports in public repo"
-            exit 1
-          fi
-          if grep -r 'shared/cache/' --include='*.go' .; then
-            echo "ERROR: Found shared/cache/ imports in public repo"
-            exit 1
-          fi
-          if grep -r 'shared/events/' --include='*.go' .; then
-            echo "ERROR: Found shared/events/ imports in public repo"
-            exit 1
-          fi
-          if grep -r 'shared/auth/' --include='*.go' .; then
-            echo "ERROR: Found shared/auth/ imports in public repo"
-            exit 1
-          fi
-          if grep -r 'cli/sdk/' --include='*.go' .; then
-            echo "ERROR: Found cli/sdk/ imports in public repo"
-            exit 1
-          fi
+          # Match actual import declarations of internal enterprise packages,
+          # not arbitrary occurrences of the substring (API URLs like
+          # api.kilo.ai/api/gateway/ and doc comments must not trip this).
+          set -eu
+          FOUND=0
+          for pkg in \
+            "github.com/TechnoAllianceAE/bujicoder/gateway/" \
+            "github.com/TechnoAllianceAE/bujicoder/shared/database/" \
+            "github.com/TechnoAllianceAE/bujicoder/shared/cache/" \
+            "github.com/TechnoAllianceAE/bujicoder/shared/events/" \
+            "github.com/TechnoAllianceAE/bujicoder/shared/auth/" \
+            "github.com/TechnoAllianceAE/bujicoder/cli/sdk/"; do
+            if grep -r --include='*.go' -F "\"${pkg}" .; then
+              echo "ERROR: Found enterprise import ${pkg} in public repo"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -ne 0 ]; then exit 1; fi
           echo "No enterprise imports found"
