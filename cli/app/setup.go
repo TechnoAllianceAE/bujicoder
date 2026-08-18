@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -89,7 +90,7 @@ func (m Model) handleSetupKeys(msg tea.KeyMsg) (Model, tea.Cmd) {
 		return m, nil
 
 	case setupStepQuickKey:
-		return m.handleKeyEntry(key, setupStepModeSelect, func(apiKey string) (Model, tea.Cmd) {
+		return m.handleKeyEntry(msg, setupStepModeSelect, func(apiKey string) (Model, tea.Cmd) {
 			return m.completeSetup("openrouter", apiKey, nil)
 		})
 
@@ -131,7 +132,7 @@ func (m Model) handleSetupKeys(msg tea.KeyMsg) (Model, tea.Cmd) {
 				tickCmd(),
 			)
 		}
-		return m.handleKeyEntry(key, setupStepAdvProvider, func(apiKey string) (Model, tea.Cmd) {
+		return m.handleKeyEntry(msg, setupStepAdvProvider, func(apiKey string) (Model, tea.Cmd) {
 			m.setupAPIKey = apiKey
 			m.setupStep = setupStepAdvFetching
 			m.setupFetching = true
@@ -170,23 +171,34 @@ func (m Model) handleSetupKeys(msg tea.KeyMsg) (Model, tea.Cmd) {
 }
 
 // handleKeyEntry handles character input for API key entry steps.
-func (m Model) handleKeyEntry(key string, backStep int, onSubmit func(string) (Model, tea.Cmd)) (Model, tea.Cmd) {
-	switch key {
+func (m Model) handleKeyEntry(msg tea.KeyMsg, backStep int, onSubmit func(string) (Model, tea.Cmd)) (Model, tea.Cmd) {
+	switch msg.String() {
 	case "backspace":
-		if len(m.setupAPIKey) > 0 {
-			m.setupAPIKey = m.setupAPIKey[:len(m.setupAPIKey)-1]
+		if runes := []rune(m.setupAPIKey); len(runes) > 0 {
+			m.setupAPIKey = string(runes[:len(runes)-1])
 		} else {
 			m.setupStep = backStep
 		}
+		return m, nil
 	case "enter":
 		apiKey := strings.TrimSpace(m.setupAPIKey)
 		if apiKey == "" {
 			return m, nil
 		}
 		return onSubmit(apiKey)
-	default:
-		if len(key) == 1 {
-			m.setupAPIKey += key
+	}
+	// Accept typed runes AND pasted text. Bracketed paste arrives as a single
+	// KeyRunes/paste message carrying the whole key, so a length-1 check here
+	// silently dropped every pasted API key.
+	key := tea.Key(msg)
+	if key.Type == tea.KeyRunes || key.Paste {
+		text := string(key.Runes)
+		if key.Paste {
+			// Keys never span lines; keep the paste on one line.
+			text = strings.TrimSpace(strings.NewReplacer("\r\n", "", "\r", "", "\n", "").Replace(text))
+		}
+		if text != "" {
+			m.setupAPIKey += text
 		}
 	}
 	return m, nil
@@ -425,12 +437,14 @@ func (m Model) renderSetupView() string {
 
 func fetchProviderModelsCmd(provider, apiKey string) tea.Cmd {
 	return func() tea.Msg {
-		models, err := fetchProviderModels(provider, apiKey)
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		models, err := fetchProviderModels(ctx, provider, apiKey)
 		return modelsFetchedMsg{models: models, err: err}
 	}
 }
 
-func fetchProviderModels(provider, apiKey string) ([]string, error) {
+func fetchProviderModels(ctx context.Context, provider, apiKey string) ([]string, error) {
 	type providerEndpoint struct {
 		url     string
 		authKey string // header name
@@ -470,7 +484,7 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest(http.MethodGet, ep.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ep.url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -527,7 +541,7 @@ func fetchProviderModels(provider, apiKey string) ([]string, error) {
 			}
 		}
 	}
-	
+
 	if len(models) == 0 {
 		return nil, fmt.Errorf("no models returned by %s", provider)
 	}
@@ -598,7 +612,7 @@ func (m Model) completeSetup(providerKey, apiKey string, selections *[3][3]strin
 	}
 
 	// Set the API key
-	setProviderAPIKey(ucfg, providerKey, apiKey)
+	ucfg.SetAPIKey(providerKey, apiKey)
 	ucfg.AgentsDir = agentsDir
 
 	configPath, err := cliconfig.SaveUnifiedConfig(ucfg)
@@ -625,34 +639,6 @@ func (m Model) completeSetup(providerKey, apiKey string, selections *[3][3]strin
 	})
 
 	return m, tea.Batch(initLocalRuntimeFromConfig(ucfg), checkForUpdateCmd(), tickCmd())
-}
-
-// setProviderAPIKey sets the correct API key field on a UnifiedConfig.
-func setProviderAPIKey(cfg *cliconfig.UnifiedConfig, provider, key string) {
-	switch provider {
-	case "openrouter":
-		cfg.APIKeys.OpenRouter = key
-	case "groq":
-		cfg.APIKeys.Groq = key
-	case "cerebras":
-		cfg.APIKeys.Cerebras = key
-	case "together":
-		cfg.APIKeys.Together = key
-	case "openai":
-		cfg.APIKeys.OpenAI = key
-	case "anthropic":
-		cfg.APIKeys.Anthropic = key
-	case "ollama":
-		if key == "" {
-			key = "http://localhost:11434"
-		}
-		cfg.APIKeys.OllamaURL = key
-	case "llamacpp":
-		if key == "" {
-			key = "http://localhost:8080"
-		}
-		cfg.APIKeys.LlamacppURL = key
-	}
 }
 
 // extractDefaultAgents extracts embedded agent YAMLs to a target directory.

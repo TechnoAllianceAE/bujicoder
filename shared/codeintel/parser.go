@@ -12,10 +12,13 @@ import (
 	"strings"
 )
 
+// MaxSourceFileSize is the largest file symbol extraction will read (2 MB).
+const MaxSourceFileSize = 2 << 20
+
 // Symbol represents a code symbol (function, class, method, type, variable).
 type Symbol struct {
 	Name      string `json:"name"`
-	Kind      string `json:"kind"`       // "function", "class", "method", "variable", "type", "interface"
+	Kind      string `json:"kind"` // "function", "class", "method", "variable", "type", "interface"
 	StartLine int    `json:"start_line"`
 	EndLine   int    `json:"end_line"`
 	Signature string `json:"signature"` // first line of the symbol definition
@@ -75,8 +78,21 @@ func (p *Parser) ExtractSymbols(filePath string, content []byte) []Symbol {
 	return extractor(string(content))
 }
 
-// ExtractSymbolsFromFile reads a file and extracts symbols.
+// ExtractSymbolsFromFile reads a file and extracts symbols. Files larger than
+// MaxSourceFileSize are rejected rather than read into memory: a repository can
+// contain generated or vendored sources hundreds of megabytes in size.
 func (p *Parser) ExtractSymbolsFromFile(filePath string) ([]Symbol, error) {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("%s is a directory", filePath)
+	}
+	if info.Size() > MaxSourceFileSize {
+		return nil, fmt.Errorf("%s is %d bytes, above the %d byte limit for symbol extraction", filePath, info.Size(), MaxSourceFileSize)
+	}
+
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
@@ -91,8 +107,8 @@ func FormatSymbols(symbols []Symbol) string {
 	}
 	var sb strings.Builder
 	for _, sym := range symbols {
-		sb.WriteString(fmt.Sprintf("%s %s (L%d-%d): %s\n",
-			sym.Kind, sym.Name, sym.StartLine, sym.EndLine, sym.Signature))
+		fmt.Fprintf(&sb, "%s %s (L%d-%d): %s\n",
+			sym.Kind, sym.Name, sym.StartLine, sym.EndLine, sym.Signature)
 	}
 	return sb.String()
 }

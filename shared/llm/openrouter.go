@@ -65,16 +65,15 @@ func (o *OpenRouterProvider) StreamCompletion(ctx context.Context, req *Completi
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go o.processStream(resp.Body, ch)
+	go o.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -182,7 +181,7 @@ func (o *OpenRouterProvider) buildRequest(req *CompletionRequest) map[string]any
 	return body
 }
 
-func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (o *OpenRouterProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -210,7 +209,7 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 		if data == "[DONE]" {
 			// If we got usage from a trailing chunk after finish_reason, emit Complete now.
 			if !completeEmitted && lastFinishReason != "" {
-				ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}}
+				sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}})
 			}
 			return
 		}
@@ -243,7 +242,9 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 		finishReason, _ := choice["finish_reason"].(string)
 
 		if content, ok := delta["content"].(string); ok && content != "" {
-			ch <- StreamEvent{Delta: &DeltaEvent{Text: content}}
+			if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: content}}) {
+				return
+			}
 		}
 
 		if toolCalls, ok := delta["tool_calls"].([]any); ok {
@@ -274,7 +275,7 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 		}
 
 		if finishReason != "" {
-			for idx := 0; idx < len(pendingTools); idx++ {
+			for idx := range len(pendingTools) {
 				pt := pendingTools[idx]
 				if pt == nil || pt.id == "" {
 					continue
@@ -283,25 +284,30 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 				if args == "" {
 					args = "{}"
 				}
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+				if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            pt.id,
 					Name:          pt.name,
 					ArgumentsJSON: args,
-				}}
+				}}) {
+					return
+				}
 			}
 			pendingTools = make(map[int]*pendingToolCall)
 
 			fr := "stop"
-			if finishReason == "tool_calls" {
+			switch finishReason {
+			case "tool_calls":
 				fr = "tool_calls"
-			} else if finishReason == "length" {
+			case "length":
 				fr = "max_tokens"
 			}
 
 			// If we already have usage (same chunk), emit Complete now.
 			// Otherwise defer until we get the trailing usage chunk or [DONE].
 			if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-				ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+				if !sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}) {
+					return
+				}
 				completeEmitted = true
 			} else {
 				lastFinishReason = fr
@@ -313,14 +319,14 @@ func (o *OpenRouterProvider) processStream(body io.ReadCloser, ch chan<- StreamE
 	// gateway can log truncations as errors instead of "successful" empty
 	// streams.
 	if err := scanner.Err(); err != nil {
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "stream_truncated",
 			Message: fmt.Sprintf("openrouter stream read error: %v", err),
-		}}
+		}})
 	}
 
 	// If stream ended without [DONE] and we haven't emitted Complete, do it now.
 	if !completeEmitted && lastFinishReason != "" {
-		ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}}
+		sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: lastFinishReason, Usage: usage}})
 	}
 }

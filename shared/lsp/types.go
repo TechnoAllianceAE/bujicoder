@@ -59,7 +59,7 @@ type textDocumentItem struct {
 }
 
 type didChangeParams struct {
-	TextDocument   versionedTextDocID    `json:"textDocument"`
+	TextDocument   versionedTextDocID     `json:"textDocument"`
 	ContentChanges []textDocContentChange `json:"contentChanges"`
 }
 

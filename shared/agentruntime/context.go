@@ -96,14 +96,14 @@ func buildFileTree(root string) string {
 	count := 0
 	truncated := false
 
-	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-
-		rel, err := filepath.Rel(root, path)
-		if err != nil || rel == "." {
-			return nil
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		// The file tree is a best-effort prompt section: an entry we cannot
+		// read (permissions, or a file deleted mid-walk) or cannot place
+		// relative to the root is skipped, and the walk keeps going. Returning
+		// the error here would abandon the rest of the tree.
+		rel, relErr := filepath.Rel(root, path)
+		if walkErr != nil || relErr != nil || rel == "." {
+			return nil //nolint:nilerr // best-effort tree: skip this entry, keep walking
 		}
 
 		name := d.Name()

@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"io"
 	"strings"
 	"testing"
@@ -115,7 +116,7 @@ func TestAnthropicProcessStream_CacheTokens(t *testing.T) {
 
 	a := NewAnthropicProvider("test-key")
 	ch := make(chan StreamEvent, 16)
-	a.processStream(io.NopCloser(strings.NewReader(sse)), ch)
+	a.processStream(context.Background(), io.NopCloser(strings.NewReader(sse)), ch)
 
 	var got *CompleteEvent
 	for ev := range ch {

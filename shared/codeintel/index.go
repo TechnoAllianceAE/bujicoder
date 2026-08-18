@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 )
 
 // FileSymbols holds the symbols extracted from a single file.
@@ -45,11 +47,15 @@ func (p *Parser) indexFiles(projectRoot string, files []string) []FileSymbols {
 			continue
 		}
 		symbols, err := p.ExtractSymbolsFromFile(absPath)
-		if err != nil || len(symbols) == 0 {
+		if err != nil {
+			log.Debug().Err(err).Str("path", absPath).Msg("codeintel: skipping file")
 			continue
 		}
-		rel, _ := filepath.Rel(projectRoot, absPath)
-		if rel == "" {
+		if len(symbols) == 0 {
+			continue
+		}
+		rel, err := filepath.Rel(projectRoot, absPath)
+		if err != nil || rel == "" {
 			rel = relPath
 		}
 		result = append(result, FileSymbols{Path: rel, Symbols: symbols})
@@ -64,6 +70,9 @@ func (p *Parser) indexAll(projectRoot string, maxFiles int) []FileSymbols {
 
 	_ = filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			// An unreadable entry must not abort the scan of the rest of the
+			// tree, but it must not vanish silently either.
+			log.Debug().Err(err).Str("path", path).Msg("codeintel: skipping unreadable path")
 			return nil
 		}
 		if d.IsDir() {
@@ -80,11 +89,19 @@ func (p *Parser) indexAll(projectRoot string, maxFiles int) []FileSymbols {
 		}
 
 		symbols, err := p.ExtractSymbolsFromFile(path)
-		if err != nil || len(symbols) == 0 {
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("codeintel: skipping file")
+			return nil
+		}
+		if len(symbols) == 0 {
 			return nil
 		}
 
-		rel, _ := filepath.Rel(projectRoot, path)
+		rel, relErr := filepath.Rel(projectRoot, path)
+		if relErr != nil {
+			log.Debug().Err(relErr).Str("path", path).Msg("codeintel: path outside project root")
+			return nil
+		}
 		result = append(result, FileSymbols{Path: rel, Symbols: symbols})
 		count++
 		return nil
@@ -108,7 +125,7 @@ func FormatIndex(index []FileSymbols) string {
 		if names == "" {
 			continue
 		}
-		sb.WriteString(fmt.Sprintf("%s: %s\n", fs.Path, names))
+		fmt.Fprintf(&sb, "%s: %s\n", fs.Path, names)
 	}
 
 	return sb.String()

@@ -1,0 +1,51 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    # Correctness / resource-safety linters that catch real production bugs.
+    - bodyclose      # unclosed http.Response.Body (socket + connection leaks)
+    - errorlint      # broken error comparisons that defeat errors.Is/As
+    - nilerr         # returning nil after a non-nil error check
+    - noctx          # HTTP requests built without a context
+    - rowserrcheck
+    - sqlclosecheck
+    - durationcheck  # nonsensical time.Duration arithmetic
+    - makezero       # append to a non-zero-length make() slice
+    - copyloopvar
+    - asasalint      # passing []any to a variadic any
+    - bidichk        # dangerous bidirectional unicode
+    - misspell
+
+  settings:
+    errcheck:
+      # Close/Flush on a write path can lose user data, so keep them checked.
+      exclude-functions:
+        - (*github.com/rs/zerolog.Event).Msg
+        - (*github.com/rs/zerolog.Event).Msgf
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Test files may ignore cleanup errors and use long literal fixtures.
+      - path: _test\.go$
+        linters:
+          - errcheck
+          - bodyclose
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/TechnoAllianceAE/bujicoder

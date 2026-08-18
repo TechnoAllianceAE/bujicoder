@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -185,8 +186,14 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 	}
 	req.Model = routedModel
 
-	// Start streaming
-	eventCh, err := provider.StreamCompletion(ctx, req)
+	// Start streaming. The stream gets its own cancellable context so an early
+	// exit (provider error) can unblock the provider's producer goroutine
+	// instead of leaking it — and its HTTP response body — for the process
+	// lifetime.
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
+	eventCh, err := provider.StreamCompletion(streamCtx, req)
 	if err != nil {
 		rt.log.Error().Str("model", req.Model).Str("provider", provider.Name()).Str("agent", cfg.AgentDef.ID).Err(err).Msg("LLM completion failed to start")
 		return nil, fmt.Errorf("start completion: %w", err)
@@ -230,7 +237,8 @@ func executeStep(ctx context.Context, rt *Runtime, st *state, cfg RunConfig) (*s
 				Str("error_code", ev.Error.Code).
 				Str("error_type", "provider_error").
 				Msg(ev.Error.Message)
-			return nil, fmt.Errorf("provider error [%s]: %s", ev.Error.Code, ev.Error.Message)
+			return nil, drainStream(cancelStream, eventCh,
+				fmt.Errorf("provider error [%s]: %s", ev.Error.Code, ev.Error.Message))
 		}
 	}
 
@@ -477,8 +485,38 @@ func toolInputSchema(toolName string) map[string]any {
 
 // hashArgs creates a hash of tool arguments for loop detection.
 // Uses FNV-1a for better collision resistance than simple polynomial hashing.
+//
+// The arguments are canonicalised (re-marshalled through encoding/json, which
+// sorts object keys) before hashing so that semantically identical calls that
+// differ only in whitespace or key order still collide. Otherwise a looping
+// model can defeat the loop guard by re-emitting the same call with different
+// formatting. Non-JSON arguments are hashed verbatim.
 func hashArgs(argsJSON string) string {
 	h := fnv.New64a()
-	h.Write([]byte(argsJSON))
+	h.Write([]byte(canonicalJSON(argsJSON)))
 	return fmt.Sprintf("%016x", h.Sum64())
+}
+
+// canonicalJSON returns a stable rendering of a JSON document, or the input
+// unchanged when it is not valid JSON.
+func canonicalJSON(s string) string {
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return s
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return s
+	}
+	return string(out)
+}
+
+// drainStream cancels a provider stream and consumes any events still in
+// flight so the provider's producer goroutine can finish and release its
+// HTTP response body. It returns cause unchanged for call-site convenience.
+func drainStream(cancel context.CancelFunc, ch <-chan llm.StreamEvent, cause error) error {
+	cancel()
+	for range ch {
+	}
+	return cause
 }

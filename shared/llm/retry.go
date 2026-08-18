@@ -2,9 +2,10 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"strings"
 	"time"
 )
@@ -44,9 +45,10 @@ func (r *retryProvider) Name() string { return r.inner.Name() }
 
 func (r *retryProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
 	var lastErr error
+	attemptReq := req
 
 	for attempt := 0; attempt <= r.cfg.MaxRetries; attempt++ {
-		ch, err := r.inner.StreamCompletion(ctx, req)
+		ch, err := r.inner.StreamCompletion(ctx, attemptReq)
 		if err == nil {
 			return ch, nil
 		}
@@ -61,20 +63,43 @@ func (r *retryProvider) StreamCompletion(ctx context.Context, req *CompletionReq
 			break
 		}
 
-		// Handle 529 (overloaded) with model fallback
-		if r.cfg.FallbackModel != "" && isOverloadedError(err) {
-			req.Model = r.cfg.FallbackModel
+		// Handle 529 (overloaded) with model fallback. The switch is applied to
+		// a copy: mutating the caller's CompletionRequest would pin every later
+		// turn of the conversation to the fallback model even after the primary
+		// model recovered.
+		if r.cfg.FallbackModel != "" && isOverloadedError(err) && attemptReq.Model != r.cfg.FallbackModel {
+			fallback := *attemptReq
+			fallback.Model = r.cfg.FallbackModel
+			attemptReq = &fallback
 		}
 
-		delay := calculateRetryDelay(attempt, r.cfg)
+		// time.NewTimer + Stop rather than time.After: on cancellation the
+		// latter keeps a live timer (and its channel) until the full delay has
+		// elapsed, which for MaxDelay-sized backoffs pins memory long after the
+		// request is gone.
+		timer := time.NewTimer(retryDelay(attempt, err, r.cfg))
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return nil, ctx.Err()
-		case <-time.After(delay):
+		case <-timer.C:
 		}
 	}
 
 	return nil, fmt.Errorf("max retries (%d) exceeded: %w", r.cfg.MaxRetries, lastErr)
+}
+
+// retryDelay returns how long to wait before the next attempt. A server-supplied
+// Retry-After takes precedence over computed backoff, but is still clamped to
+// MaxDelay so a mistaken or hostile header cannot stall a request for hours.
+func retryDelay(attempt int, err error, cfg RetryConfig) time.Duration {
+	if after := RetryAfterDuration(err); after > 0 {
+		if cfg.MaxDelay > 0 && after > cfg.MaxDelay {
+			return cfg.MaxDelay
+		}
+		return after
+	}
+	return calculateRetryDelay(attempt, cfg)
 }
 
 // calculateRetryDelay computes the delay for a retry attempt with exponential
@@ -99,6 +124,14 @@ func calculateRetryDelay(attempt int, cfg RetryConfig) time.Duration {
 func isRetryableError(err error) bool {
 	if err == nil {
 		return false
+	}
+	// A structured provider error carries the real HTTP status, so trust it and
+	// do not fall through to substring matching: a fatal 400/401/404 whose body
+	// happens to quote "rate limit" or a token count of "500" must not be
+	// retried, and a retryable status must not depend on message wording.
+	var pe *ProviderError
+	if errors.As(err, &pe) {
+		return pe.Retryable
 	}
 	msg := strings.ToLower(err.Error())
 	retryablePatterns := []string{

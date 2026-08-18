@@ -30,8 +30,9 @@ type VertexProvider struct {
 	region           string
 	publisherRegions map[string]string
 	client           *http.Client
-	catalogMu sync.RWMutex
-	catalogCache []ModelInfo
+
+	catalogMu            sync.RWMutex
+	catalogCache         []ModelInfo
 	catalogLastRefreshed time.Time
 }
 
@@ -84,7 +85,18 @@ func NewVertexProvider(ctx context.Context, projectID, region string) (*VertexPr
 // and at load time we decrypt and pass the bytes in here — no reliance on the
 // GOOGLE_APPLICATION_CREDENTIALS env var.
 func NewVertexProviderFromJSON(ctx context.Context, projectID, region string, credsJSON []byte) (*VertexProvider, error) {
-	creds, err := google.CredentialsFromJSON(ctx, credsJSON, "https://www.googleapis.com/auth/cloud-platform")
+	credType, err := vertexCredentialType(credsJSON)
+	if err != nil {
+		return nil, err
+	}
+	// CredentialsFromJSONWithType validates that the payload declares the
+	// credential type we expect. The untyped google.CredentialsFromJSON is
+	// deprecated precisely because it does not: a stored "external_account" or
+	// "impersonated_service_account" document carries arbitrary token_url /
+	// service_account_impersonation_url values, so a tampered credential blob
+	// would silently redirect authentication traffic to a host chosen by
+	// whoever supplied it.
+	creds, err := google.CredentialsFromJSONWithType(ctx, credsJSON, credType, "https://www.googleapis.com/auth/cloud-platform")
 	if err != nil {
 		return nil, fmt.Errorf("vertex: parse credentials json: %w", err)
 	}
@@ -97,6 +109,27 @@ func NewVertexProviderFromJSON(ctx context.Context, projectID, region string, cr
 		region:    region,
 		client:    client,
 	}, nil
+}
+
+// vertexCredentialType reports the credential type declared by a Google
+// credentials JSON document, rejecting the federated types whose
+// configuration embeds attacker-controllable endpoint URLs.
+func vertexCredentialType(credsJSON []byte) (google.CredentialsType, error) {
+	var declared struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(credsJSON, &declared); err != nil {
+		return "", fmt.Errorf("vertex: parse credentials json: %w", err)
+	}
+	switch google.CredentialsType(declared.Type) {
+	case google.ServiceAccount:
+		return google.ServiceAccount, nil
+	case google.AuthorizedUser:
+		return google.AuthorizedUser, nil
+	default:
+		return "", fmt.Errorf("vertex: unsupported credential type %q: expected %q or %q",
+			declared.Type, google.ServiceAccount, google.AuthorizedUser)
+	}
 }
 
 // Name returns "vertex".
@@ -140,16 +173,15 @@ func (v *VertexProvider) streamGoogleCompletion(ctx context.Context, req *Comple
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go v.processStream(resp.Body, ch)
+	go v.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -245,7 +277,7 @@ func (v *VertexProvider) buildRequest(req *CompletionRequest) map[string]any {
 	return body
 }
 
-func (v *VertexProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (v *VertexProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -291,7 +323,9 @@ func (v *VertexProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 
 			// Text content
 			if text, ok := part["text"].(string); ok && text != "" {
-				ch <- StreamEvent{Delta: &DeltaEvent{Text: text}}
+				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: text}}) {
+					return
+				}
 			}
 
 			// Function call
@@ -299,11 +333,13 @@ func (v *VertexProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 				name, _ := fc["name"].(string)
 				args, _ := fc["args"].(map[string]any)
 				argsJSON, _ := json.Marshal(args)
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+				if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            fmt.Sprintf("call_%s", name),
 					Name:          name,
 					ArgumentsJSON: string(argsJSON),
-				}}
+				}}) {
+					return
+				}
 			}
 		}
 
@@ -323,23 +359,24 @@ func (v *VertexProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 
 		if finishReason != "" {
 			fr := "stop"
-			if finishReason == "STOP" {
-				fr = "stop"
-			} else if finishReason == "MAX_TOKENS" {
+			switch finishReason {
+			case "MAX_TOKENS":
 				fr = "max_tokens"
-			} else if finishReason == "TOOL_CALLS" || finishReason == "FUNCTION_CALL" {
+			case "TOOL_CALLS", "FUNCTION_CALL":
 				fr = "tool_calls"
 			}
-			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+			if !sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}) {
+				return
+			}
 		}
 	}
 
 	// Distinguish clean EOF from a network/parse error so the gateway can
 	// surface truncations instead of treating them as successful streams.
 	if err := scanner.Err(); err != nil {
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "stream_truncated",
 			Message: fmt.Sprintf("vertex stream read error: %v", err),
-		}}
+		}})
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // maxMemoryFileSize caps the BUJI.md file size to prevent unbounded growth
@@ -39,7 +40,7 @@ func memoryWrite(workDir string) func(ctx context.Context, args json.RawMessage)
 			Content string `json:"content"` // Content to write under the section
 			Replace bool   `json:"replace"` // If true, replace the section; if false, append
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("memory_write", args, &params); err != nil {
 			return "", err
 		}
 
@@ -99,12 +100,18 @@ func memoryWrite(workDir string) func(ctx context.Context, args json.RawMessage)
 		// Update the "Last updated" line.
 		existing = updateTimestamp(existing)
 
-		// Enforce size limit (#34).
+		// Enforce size limit (#34). Cut on a rune boundary: slicing mid-rune
+		// would write invalid UTF-8 into a file that goes into the prompt.
 		if len(existing) > maxMemoryFileSize {
-			existing = existing[:maxMemoryFileSize] + "\n\n> [Memory file truncated — consider cleaning up old sections]\n"
+			cut := maxMemoryFileSize
+			for cut > 0 && !utf8.RuneStart(existing[cut]) {
+				cut--
+			}
+			existing = existing[:cut] + "\n\n> [Memory file truncated — consider cleaning up old sections]\n"
 		}
 
-		if err := os.WriteFile(memFile, []byte(existing), 0o644); err != nil {
+		// Atomic replace: a partial write would destroy accumulated memory.
+		if err := writeFileAtomic(memFile, []byte(existing), 0o644); err != nil {
 			return "", fmt.Errorf("write memory file: %w", err)
 		}
 

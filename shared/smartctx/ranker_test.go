@@ -1,6 +1,7 @@
 package smartctx
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -201,26 +202,30 @@ func TestSplitCamelCase(t *testing.T) {
 
 func initGitRepo(t *testing.T, dir string) {
 	t.Helper()
-	cmds := [][]string{
-		{"git", "init"},
-		{"git", "config", "user.email", "test@test.com"},
-		{"git", "config", "user.name", "Test"},
-	}
-	for _, args := range cmds {
-		cmd := exec.Command(args[0], args[1:]...)
+	run := func(args ...string) error {
+		cmd := exec.CommandContext(context.Background(), "git", args...)
 		cmd.Dir = dir
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("git init: %v", err)
+		return cmd.Run()
+	}
+	for _, args := range [][]string{
+		{"init"},
+		{"config", "user.email", "test@test.com"},
+		{"config", "user.name", "Test"},
+	} {
+		if err := run(args...); err != nil {
+			t.Fatalf("git %v: %v", args, err)
 		}
 	}
 	// Create initial commit so HEAD exists.
-	os.WriteFile(filepath.Join(dir, ".gitkeep"), []byte(""), 0o644)
-	cmd := exec.Command("git", "add", ".")
-	cmd.Dir = dir
-	cmd.Run()
-	cmd = exec.Command("git", "commit", "-m", "init")
-	cmd.Dir = dir
-	cmd.Run()
+	if err := os.WriteFile(filepath.Join(dir, ".gitkeep"), []byte(""), 0o644); err != nil {
+		t.Fatalf("write .gitkeep: %v", err)
+	}
+	if err := run("add", "."); err != nil {
+		t.Fatalf("git add: %v", err)
+	}
+	if err := run("commit", "-m", "init"); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
 }
 
 func containsStr(slice []string, s string) bool {

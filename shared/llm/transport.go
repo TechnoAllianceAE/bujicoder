@@ -1,11 +1,52 @@
 package llm
 
 import (
+	"context"
 	"crypto/tls"
+	"io"
 	"net/http"
 	"sync"
 	"time"
 )
+
+// maxErrorBodyBytes bounds how much of a non-2xx response body is kept for the
+// error message. Provider error payloads are small JSON documents; a hostile
+// or misconfigured upstream (e.g. an HTML error page from a proxy) must not be
+// able to make us buffer an unbounded amount of memory.
+const maxErrorBodyBytes = 64 << 10
+
+// maxErrorDrainBytes bounds how much of the remaining error body is drained
+// after the message has been captured. Draining lets the pooled keep-alive
+// connection be reused instead of being torn down, but must itself be bounded.
+const maxErrorDrainBytes = 256 << 10
+
+// readErrorBody reads a bounded prefix of an error response body for use in an
+// error message, drains a bounded remainder so the connection can return to
+// the idle pool, and closes the body. Always call this instead of
+// io.ReadAll(resp.Body) on a non-2xx path.
+func readErrorBody(resp *http.Response) string {
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxErrorDrainBytes))
+	return string(data)
+}
+
+// sendEvent delivers ev on ch, aborting if ctx is done. It reports whether the
+// event was delivered; a false result means the request was canceled and the
+// producing goroutine must return.
+//
+// Every stream producer must send through this helper. The event channel is
+// buffered but finite, so a consumer that stops reading (cancellation, or an
+// early return out of its `range` loop) would otherwise block the producer
+// forever, leaking the goroutine, the response body and its socket.
+func sendEvent(ctx context.Context, ch chan<- StreamEvent, ev StreamEvent) bool {
+	select {
+	case ch <- ev:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
 
 // transportCache holds shared *http.Transport instances keyed by header
 // timeout. Multiple providers (and multiple API keys for the same provider)

@@ -8,6 +8,7 @@ package costmode
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -71,8 +72,27 @@ func NewResolver(filePath string) (*Resolver, error) {
 
 // NewResolverFromConfig creates a Resolver from an in-memory ModelConfig.
 // Useful for tests where no file is needed.
+//
+// The config is deep-copied: a Resolver is read concurrently by every running
+// agent, so it must not share maps with a caller that may still mutate them.
 func NewResolverFromConfig(cfg ModelConfig) *Resolver {
-	return &Resolver{config: cfg}
+	return &Resolver{config: cloneModelConfig(cfg)}
+}
+
+// cloneModelConfig returns a deep copy of cfg, including agent override maps.
+func cloneModelConfig(cfg ModelConfig) ModelConfig {
+	out := ModelConfig{Modes: make(map[Mode]ModelMapping, len(cfg.Modes))}
+	for k, v := range cfg.Modes {
+		if v.AgentOverrides != nil {
+			overrides := make(map[string]string, len(v.AgentOverrides))
+			for ak, av := range v.AgentOverrides {
+				overrides[ak] = av
+			}
+			v.AgentOverrides = overrides
+		}
+		out.Modes[k] = v
+	}
+	return out
 }
 
 // ResolveModel returns the model string for a given cost mode and agent role.
@@ -144,45 +164,37 @@ func (r *Resolver) resolveRoleLocked(mapping ModelMapping, role AgentRole) strin
 	}
 }
 
-// GetConfig returns a copy of the current model configuration.
+// GetConfig returns a deep copy of the current model configuration.
 func (r *Resolver) GetConfig() ModelConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	// Deep-copy the modes map including agent overrides.
-	copy := ModelConfig{Modes: make(map[Mode]ModelMapping, len(r.config.Modes))}
-	for k, v := range r.config.Modes {
-		m := v
-		if v.AgentOverrides != nil {
-			m.AgentOverrides = make(map[string]string, len(v.AgentOverrides))
-			for ak, av := range v.AgentOverrides {
-				m.AgentOverrides[ak] = av
-			}
-		}
-		copy.Modes[k] = m
-	}
-	return copy
+	return cloneModelConfig(r.config)
 }
 
 // UpdateConfig replaces the in-memory config and persists it to disk.
+// The caller's config is deep-copied first, so later mutations by the caller
+// can never race with agents resolving models through this Resolver.
 func (r *Resolver) UpdateConfig(cfg ModelConfig) error {
+	stored := cloneModelConfig(cfg)
+
+	// Normalize empty agent override maps to nil so they are omitted from YAML.
+	for k, v := range stored.Modes {
+		if len(v.AgentOverrides) == 0 {
+			v.AgentOverrides = nil
+			stored.Modes[k] = v
+		}
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Normalize empty agent override maps to nil so they are omitted from YAML.
-	for k, v := range cfg.Modes {
-		if len(v.AgentOverrides) == 0 {
-			v.AgentOverrides = nil
-			cfg.Modes[k] = v
-		}
-	}
-
 	if r.filePath != "" {
-		if err := saveModelConfig(r.filePath, &cfg); err != nil {
+		if err := saveModelConfig(r.filePath, &stored); err != nil {
 			return err
 		}
 	}
-	r.config = cfg
+	r.config = stored
 	return nil
 }
 
@@ -204,13 +216,37 @@ func LoadModelConfig(path string) (*ModelConfig, error) {
 	return &cfg, nil
 }
 
-// saveModelConfig writes a ModelConfig to a YAML file.
+// saveModelConfig writes a ModelConfig to a YAML file atomically: the payload
+// goes to a temp file in the destination directory and is then renamed over the
+// target. Writing in place truncates the live config first, so a crash — or a
+// concurrent reader, e.g. another buji process — would see a half-written or
+// empty model_config.yaml and lose every model mapping.
 func saveModelConfig(path string, cfg *ModelConfig) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("marshal model config: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".model_config-*.yaml")
+	if err != nil {
+		return fmt.Errorf("create temp model config in %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op once the rename succeeded
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write model config %s: %w", tmpName, err)
+	}
+	if err := tmp.Chmod(0o644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("chmod model config %s: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close model config %s: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
 		return fmt.Errorf("write model config %s: %w", path, err)
 	}
 	return nil

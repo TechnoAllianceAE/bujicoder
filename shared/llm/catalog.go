@@ -165,9 +165,10 @@ func parseModelEntries(entries []modelEntry, source string) map[string]ModelInfo
 		// providers (together/, z-ai/, bedrock/) and the gateway router
 		// can look up models by their qualified name.
 		id := entry.ID
-		if source == "openrouter" {
+		switch source {
+		case "openrouter":
 			id = "openrouter/" + entry.ID
-		} else if source == "kilocode" {
+		case "kilocode":
 			id = "kilocode/" + entry.ID
 		}
 		info := ModelInfo{

@@ -67,7 +67,7 @@ func TestNewManager_NoFiles(t *testing.T) {
 
 func TestRunHooks_Empty(t *testing.T) {
 	m := &Manager{}
-	results := m.RunHooks("PreToolUse", "write_file", nil)
+	results := m.RunHooks(t.Context(), "PreToolUse", "write_file", nil)
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
 	}

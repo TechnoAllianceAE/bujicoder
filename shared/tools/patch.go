@@ -23,12 +23,20 @@ func multiEdit(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 				NewStr string `json:"new_str"`
 			} `json:"edits"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
-			return "", fmt.Errorf("parse multi_edit args: %w", err)
+		if err := unmarshalArgs("multi_edit", args, &params); err != nil {
+			return "", err
 		}
 
 		if len(params.Edits) == 0 {
-			return "No edits provided.", nil
+			return "", fmt.Errorf("multi_edit: 'edits' is required and must be a non-empty array")
+		}
+		for i, e := range params.Edits {
+			if e.Path == "" {
+				return "", fmt.Errorf("multi_edit: edits[%d].path is required", i)
+			}
+			if e.OldStr == "" {
+				return "", fmt.Errorf("multi_edit: edits[%d].old_str must not be empty", i)
+			}
 		}
 
 		if IsPlanMode(ctx) {
@@ -58,15 +66,15 @@ func multiEdit(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		for _, path := range fileOrder {
 			edits := fileEdits[path]
 
-			if perms.IsPathRestricted(path) {
-				results = append(results, fmt.Sprintf("SKIP %s: restricted by permissions", path))
+			absPath, err := safePath(dir, path)
+			if err != nil {
+				results = append(results, fmt.Sprintf("SKIP %s: %v", path, err))
 				totalFailed += len(edits)
 				continue
 			}
 
-			absPath, err := safePath(dir, path)
-			if err != nil {
-				results = append(results, fmt.Sprintf("SKIP %s: %v", path, err))
+			if pathRestricted(perms, dir, path, absPath) {
+				results = append(results, fmt.Sprintf("SKIP %s: restricted by permissions", path))
 				totalFailed += len(edits)
 				continue
 			}
@@ -93,7 +101,7 @@ func multiEdit(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 			}
 
 			if applied > 0 {
-				if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
+				if err := writeFileAtomic(absPath, []byte(content), 0o644); err != nil {
 					results = append(results, fmt.Sprintf("FAIL %s: write error: %v", path, err))
 					totalFailed += applied
 					continue
@@ -223,8 +231,11 @@ func applyPatch(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		var params struct {
 			Patch string `json:"patch"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
-			return "", fmt.Errorf("parse apply_patch args: %w", err)
+		if err := unmarshalArgs("apply_patch", args, &params); err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(params.Patch) == "" {
+			return "", fmt.Errorf("apply_patch: 'patch' is required")
 		}
 
 		if IsPlanMode(ctx) {
@@ -240,7 +251,13 @@ func applyPatch(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 
 		var results []string
 		for _, op := range ops {
-			if perms.IsPathRestricted(op.Path) {
+			// Both the requested spelling and the resolved target are checked so a
+			// symlinked path cannot patch a restricted file.
+			if abs, err := safePath(dir, op.Path); err != nil || pathRestricted(perms, dir, op.Path, abs) {
+				if err != nil {
+					results = append(results, fmt.Sprintf("FAIL %s %s: %v", strings.ToUpper(op.Action), op.Path, err))
+					continue
+				}
 				results = append(results, fmt.Sprintf("SKIP %s %s: restricted", strings.ToUpper(op.Action), op.Path))
 				continue
 			}
@@ -252,8 +269,11 @@ func applyPatch(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 					results = append(results, fmt.Sprintf("FAIL ADD %s: %v", op.Path, err))
 					continue
 				}
-				os.MkdirAll(filepath.Dir(absPath), 0o755)
-				if err := os.WriteFile(absPath, []byte(op.Content), 0o644); err != nil {
+				if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+					results = append(results, fmt.Sprintf("FAIL ADD %s: create parent directory: %v", op.Path, err))
+					continue
+				}
+				if err := writeFileAtomic(absPath, []byte(op.Content), 0o644); err != nil {
 					results = append(results, fmt.Sprintf("FAIL ADD %s: %v", op.Path, err))
 					continue
 				}
@@ -263,20 +283,19 @@ func applyPatch(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 				results = append(results, fmt.Sprintf("ADD %s", op.Path))
 
 			case "update":
-				absPath, err := safePath(dir, op.Path)
-				if err != nil {
+				if _, err := safePath(dir, op.Path); err != nil {
 					results = append(results, fmt.Sprintf("FAIL UPDATE %s: %v", op.Path, err))
 					continue
 				}
-				_ = absPath
 
-				// Try using the `patch` command.
-				cmd := exec.Command("patch", "-p1", "--no-backup-if-mismatch")
+				// Try using the `patch` command. It runs with a bounded lifetime
+				// so a patch that waits for input cannot hang the agent.
+				cmd := exec.CommandContext(ctx, "patch", "-p1", "--no-backup-if-mismatch")
 				cmd.Dir = dir
 				cmd.Stdin = strings.NewReader(op.Content)
-				output, err := cmd.CombinedOutput()
+				output, err := runCommandBounded(ctx, cmd, searchCommandTimeout)
 				if err != nil {
-					results = append(results, fmt.Sprintf("FAIL UPDATE %s: %s", op.Path, strings.TrimSpace(string(output))))
+					results = append(results, fmt.Sprintf("FAIL UPDATE %s: %s", op.Path, strings.TrimSpace(output)))
 					continue
 				}
 				if cache := getContextCache(ctx); cache != nil {
@@ -295,7 +314,14 @@ func applyPatch(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 					results = append(results, fmt.Sprintf("FAIL MOVE %s: %v", op.NewPath, err))
 					continue
 				}
-				os.MkdirAll(filepath.Dir(dstAbs), 0o755)
+				if pathRestricted(perms, dir, op.NewPath, dstAbs) {
+					results = append(results, fmt.Sprintf("SKIP MOVE %s→%s: destination restricted", op.Path, op.NewPath))
+					continue
+				}
+				if err := os.MkdirAll(filepath.Dir(dstAbs), 0o755); err != nil {
+					results = append(results, fmt.Sprintf("FAIL MOVE %s→%s: create parent directory: %v", op.Path, op.NewPath, err))
+					continue
+				}
 				if err := os.Rename(srcAbs, dstAbs); err != nil {
 					results = append(results, fmt.Sprintf("FAIL MOVE %s→%s: %v", op.Path, op.NewPath, err))
 					continue

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -21,6 +22,13 @@ const (
 	githubOwner  = "TechnoAllianceAE"
 	githubRepo   = "bujicoder"
 	checkTimeout = 5 * time.Second
+	// tokenTimeout bounds the `gh auth token` helper so a hung/interactive gh
+	// process cannot block an update check (and therefore CLI startup) forever.
+	tokenTimeout = 3 * time.Second
+	// checksumAsset is the release asset holding `sha256sum` output for every
+	// published binary. Every downloaded artifact is verified against it before
+	// the running executable is replaced.
+	checksumAsset = "checksums.txt"
 )
 
 // UpdateInfo holds information about an available update.
@@ -46,6 +54,14 @@ func CheckForUpdateFrom(ctx context.Context, owner, repo, filter string) (*Updat
 		return nil, nil
 	}
 
+	// go-selfupdate compares via semver.MustParse, which panics on a version
+	// string that is not valid semver. Refuse to compare instead of crashing
+	// the whole CLI from a background update check.
+	current, err := comparableVersion()
+	if err != nil {
+		return nil, err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 
@@ -58,7 +74,7 @@ func CheckForUpdateFrom(ctx context.Context, owner, repo, filter string) (*Updat
 	if err != nil {
 		return nil, err
 	}
-	if !found || latest.LessOrEqual(semverVersion()) {
+	if !found || latest.LessOrEqual(current) {
 		return nil, nil
 	}
 
@@ -81,6 +97,12 @@ func ApplyUpdateFrom(ctx context.Context, owner, repo, filter string) error {
 	if buildinfo.Version == "dev" || buildinfo.Version == "" {
 		return fmt.Errorf("cannot update dev builds — install a release version first")
 	}
+	// Validate the running version before any comparison: go-selfupdate's
+	// LessOrEqual panics on non-semver input.
+	current, err := comparableVersion()
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("Checking for updates (current: v%s)...\n", buildinfo.Version)
 
@@ -98,7 +120,7 @@ func ApplyUpdateFrom(ctx context.Context, owner, repo, filter string) error {
 		return fmt.Errorf("no releases found for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 
-	if latest.LessOrEqual(semverVersion()) {
+	if latest.LessOrEqual(current) {
 		fmt.Printf("✓ Already up to date (v%s)\n", buildinfo.Version)
 		return nil
 	}
@@ -116,23 +138,38 @@ func ApplyUpdateFrom(ctx context.Context, owner, repo, filter string) error {
 
 	fmt.Printf("\n✓ Updated bujicoder v%s → v%s\n", buildinfo.Version, latest.Version())
 	if latest.ReleaseNotes != "" {
-		notes := latest.ReleaseNotes
-		if len(notes) > 500 {
-			notes = notes[:500] + "...\n"
-		}
-		fmt.Printf("\nRelease notes:\n%s\n", notes)
+		fmt.Printf("\nRelease notes:\n%s\n", truncateRunes(latest.ReleaseNotes, 500))
 	}
 	return nil
 }
 
-// semverVersion returns the build version truncated to 3-part semver (major.minor.patch).
-// go-selfupdate's LessOrEqual panics on 4-part versions like "0.28.2.282".
-func semverVersion() string {
-	parts := strings.SplitN(buildinfo.Version, ".", 4)
-	if len(parts) > 3 {
-		return strings.Join(parts[:3], ".")
+// comparableVersion returns the build version reduced to a 3-part semver
+// (major.minor.patch) suitable for go-selfupdate's comparison helpers, which
+// call semver.MustParse and panic on anything else. An error is returned when
+// the build version cannot be reduced to a valid semver string.
+func comparableVersion() (string, error) {
+	v := strings.TrimPrefix(buildinfo.Version, "v")
+	// Build metadata like "0.28.2.282" carries a 4th numeric component.
+	if parts := strings.SplitN(v, ".", 4); len(parts) > 3 {
+		v = strings.Join(parts[:3], ".")
 	}
-	return buildinfo.Version
+	if !semverRe.MatchString(v) {
+		return "", fmt.Errorf("build version %q is not a comparable semver version", buildinfo.Version)
+	}
+	return v, nil
+}
+
+// semverRe matches major.minor.patch with optional pre-release / build metadata.
+var semverRe = regexp.MustCompile(`^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+
+// truncateRunes shortens s to at most max runes without splitting a rune,
+// which byte slicing would do for multi-byte release notes.
+func truncateRunes(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max]) + "..."
 }
 
 func newUpdaterWithFilter(filter string) (*goselfupdate.Updater, error) {
@@ -145,9 +182,14 @@ func newUpdaterWithFilter(filter string) (*goselfupdate.Updater, error) {
 		return nil, fmt.Errorf("create github source: %w", err)
 	}
 
+	// Validator is mandatory: without it go-selfupdate replaces the running
+	// binary with whatever bytes the network returned. With it, a missing
+	// checksums.txt asset fails DetectLatest (ErrValidationAssetNotFound) and a
+	// hash mismatch fails UpdateTo before the executable is touched.
 	return goselfupdate.NewUpdater(goselfupdate.Config{
-		Source:  source,
-		Filters: []string{filter},
+		Source:    source,
+		Filters:   []string{filter},
+		Validator: &goselfupdate.ChecksumValidator{UniqueFilename: checksumAsset},
 	})
 }
 
@@ -160,7 +202,9 @@ func resolveGitHubToken() string {
 	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
 		return t
 	}
-	out, err := exec.Command("gh", "auth", "token").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), tokenTimeout)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	if err == nil {
 		if t := strings.TrimSpace(string(out)); t != "" {
 			return t

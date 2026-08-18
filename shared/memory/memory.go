@@ -55,9 +55,9 @@ func (s *Store) GetPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("# Persistent Memories (cross-session)\n\n")
 	for _, e := range entries {
-		sb.WriteString(fmt.Sprintf("## %s\n", e.Name))
+		fmt.Fprintf(&sb, "## %s\n", e.Name)
 		if e.Description != "" {
-			sb.WriteString(fmt.Sprintf("*%s*\n\n", e.Description))
+			fmt.Fprintf(&sb, "*%s*\n\n", e.Description)
 		}
 		sb.WriteString(e.Content)
 		sb.WriteString("\n\n")
@@ -90,25 +90,72 @@ func (s *Store) List() []Entry {
 	return result
 }
 
-// Write saves a memory entry to disk.
+// Write saves a memory entry to disk. The file is written to a temporary file
+// in the same directory and renamed into place, so a crash or a concurrent
+// reader can never observe a half-written memory.
 func (s *Store) Write(name, description string, memType EntryType, content string) error {
+	fileName := sanitizeFileName(name)
+	if fileName == "" {
+		return fmt.Errorf("memory name %q is empty after sanitizing", name)
+	}
 	if err := os.MkdirAll(s.baseDir, 0755); err != nil {
 		return err
 	}
-
-	fileName := sanitizeFileName(name) + ".md"
-	fp := filepath.Join(s.baseDir, fileName)
+	fp := filepath.Join(s.baseDir, fileName+".md")
 
 	var sb strings.Builder
 	sb.WriteString("---\n")
-	sb.WriteString(fmt.Sprintf("name: %s\n", name))
-	sb.WriteString(fmt.Sprintf("description: %s\n", description))
-	sb.WriteString(fmt.Sprintf("type: %s\n", memType))
+	// Newlines in the metadata would inject or terminate the frontmatter block
+	// and corrupt the record on the next read.
+	fmt.Fprintf(&sb, "name: %s\n", singleLine(name))
+	fmt.Fprintf(&sb, "description: %s\n", singleLine(description))
+	fmt.Fprintf(&sb, "type: %s\n", singleLine(string(memType)))
 	sb.WriteString("---\n\n")
 	sb.WriteString(content)
 	sb.WriteString("\n")
 
-	return os.WriteFile(fp, []byte(sb.String()), 0644)
+	return writeFileAtomic(fp, []byte(sb.String()))
+}
+
+// writeFileAtomic writes data to path via a temp file + rename.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	tmp := f.Name()
+
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("write %s: %w", tmp, err)
+	}
+	// Flush to disk before the rename so a crash cannot leave an empty file
+	// under the destination name.
+	if err := f.Sync(); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return fmt.Errorf("sync %s: %w", tmp, err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("close %s: %w", tmp, err)
+	}
+	if err := os.Chmod(tmp, 0644); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("chmod %s: %w", tmp, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("rename %s: %w", path, err)
+	}
+	return nil
+}
+
+// singleLine collapses newlines and carriage returns into spaces.
+func singleLine(s string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(s))
 }
 
 // Delete removes a memory entry by name.

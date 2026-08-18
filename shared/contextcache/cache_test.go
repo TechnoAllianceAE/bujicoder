@@ -88,20 +88,20 @@ func TestCacheDetectsFileChange(t *testing.T) {
 
 func TestDetectLanguage(t *testing.T) {
 	tests := map[string]string{
-		"main.go":       "go",
-		"app.py":        "python",
-		"index.ts":      "typescript",
-		"index.tsx":     "typescript",
-		"script.js":     "javascript",
-		"README.md":     "markdown",
-		"config.yaml":   "yaml",
-		"data.json":     "json",
-		"Makefile":      "",
-		"query.sql":     "sql",
-		"schema.proto":  "protobuf",
-		"install.sh":    "shell",
-		"Main.java":     "java",
-		"lib.rs":        "rust",
+		"main.go":      "go",
+		"app.py":       "python",
+		"index.ts":     "typescript",
+		"index.tsx":    "typescript",
+		"script.js":    "javascript",
+		"README.md":    "markdown",
+		"config.yaml":  "yaml",
+		"data.json":    "json",
+		"Makefile":     "",
+		"query.sql":    "sql",
+		"schema.proto": "protobuf",
+		"install.sh":   "shell",
+		"Main.java":    "java",
+		"lib.rs":       "rust",
 	}
 
 	for path, want := range tests {

@@ -31,15 +31,15 @@ type bedrockCatalogFile struct {
 // are authored in the JSON for human readability; they are converted to
 // per-token when materialized into ModelInfo / ModelPricing structs.
 type bedrockCatalogEntry struct {
-	ID                     string  `json:"id"`
-	Name                   string  `json:"name"`
-	ContextLength          int     `json:"context_length"`
-	MaxOutputTokens        int     `json:"max_output_tokens"`
-	SupportsTools          bool    `json:"supports_tools"`
-	SupportsVision         bool    `json:"supports_vision"`
-	InputUSDPerMillion     float64 `json:"input_usd_per_million"`
-	OutputUSDPerMillion    float64 `json:"output_usd_per_million"`
-	CacheReadUSDPerMillion float64 `json:"cache_read_usd_per_million,omitempty"`
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	ContextLength           int     `json:"context_length"`
+	MaxOutputTokens         int     `json:"max_output_tokens"`
+	SupportsTools           bool    `json:"supports_tools"`
+	SupportsVision          bool    `json:"supports_vision"`
+	InputUSDPerMillion      float64 `json:"input_usd_per_million"`
+	OutputUSDPerMillion     float64 `json:"output_usd_per_million"`
+	CacheReadUSDPerMillion  float64 `json:"cache_read_usd_per_million,omitempty"`
 	CacheWriteUSDPerMillion float64 `json:"cache_write_usd_per_million,omitempty"`
 }
 

@@ -12,8 +12,8 @@ import (
 //
 // Default to Coding Plan endpoint. Override with ZAI_API_URL env var.
 const (
-	zaiCodingURL  = "https://api.z.ai/api/coding/paas/v4/chat/completions"
-	zaiPayGoURL   = "https://api.z.ai/api/paas/v4/chat/completions"
+	zaiCodingURL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+	zaiPayGoURL  = "https://api.z.ai/api/paas/v4/chat/completions"
 )
 
 // ZAIProvider implements the Provider interface for Zhipu AI (GLM) models.

@@ -20,8 +20,9 @@ func (c *Cache) RelevantFiles(focusPaths []string, maxFiles int) []string {
 	seen := make(map[string]bool)
 	var result []string
 
+	// add appends p unless it is already present or the cap is reached.
 	add := func(p string) {
-		if seen[p] {
+		if seen[p] || len(result) >= maxFiles {
 			return
 		}
 		seen[p] = true

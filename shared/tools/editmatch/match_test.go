@@ -71,8 +71,8 @@ func TestIndentationFlexible(t *testing.T) {
 	}
 	// Accept either whitespace_normalized (strategy 3) or indentation_flexible (strategy 4).
 	validStrategies := map[string]bool{
-		"whitespace_normalized":  true,
-		"indentation_flexible":   true,
+		"whitespace_normalized": true,
+		"indentation_flexible":  true,
 	}
 	if !validStrategies[r.Strategy] {
 		t.Fatalf("expected whitespace_normalized or indentation_flexible, got %s", r.Strategy)

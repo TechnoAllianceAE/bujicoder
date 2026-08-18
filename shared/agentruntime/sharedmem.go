@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -45,9 +46,10 @@ func (sm *SharedMemory) Write(agentID, key, value string) {
 	if key == "" {
 		return
 	}
-	// Truncate oversized values.
+	// Truncate oversized values on a rune boundary so the stored value stays
+	// valid UTF-8 (it is later marshalled into a JSON request body).
 	if len(value) > MaxSharedMemoryValueLen {
-		value = value[:MaxSharedMemoryValueLen] + "... [truncated]"
+		value = safeRuneTruncateRaw(value, MaxSharedMemoryValueLen) + "... [truncated]"
 	}
 
 	sm.mu.Lock()
@@ -136,30 +138,41 @@ func (sm *SharedMemory) Summary() string {
 		return ""
 	}
 
-	// Group by agent.
+	// Group by agent. Map iteration order is random, so both the agent
+	// sections and the entries inside them are sorted: an unchanged memory
+	// must render an identical prompt every time it is rebuilt, otherwise the
+	// system prompt churns between steps and defeats provider prompt caching
+	// (and the MaxSummaryLen cut-off would drop a different arbitrary subset
+	// on each rebuild).
 	byAgent := make(map[string][]*MemoryEntry)
 	for _, entry := range sm.entries {
 		byAgent[entry.AgentID] = append(byAgent[entry.AgentID], entry)
 	}
+	agentIDs := make([]string, 0, len(byAgent))
+	for agentID, entries := range byAgent {
+		agentIDs = append(agentIDs, agentID)
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })
+	}
+	sort.Strings(agentIDs)
 
 	var sb strings.Builder
 	sb.WriteString("# Shared Agent Memory\n\nThe following knowledge was discovered by other agents during this session:\n\n")
 
-	for agentID, entries := range byAgent {
+	for _, agentID := range agentIDs {
 		if sb.Len() >= MaxSummaryLen {
 			sb.WriteString("\n... [additional entries omitted]\n")
 			break
 		}
-		sb.WriteString(fmt.Sprintf("## From %s\n\n", agentID))
-		for _, entry := range entries {
+		fmt.Fprintf(&sb, "## From %s\n\n", agentID)
+		for _, entry := range byAgent[agentID] {
 			if sb.Len() >= MaxSummaryLen {
 				break
 			}
 			value := entry.Value
 			if len(value) > 500 {
-				value = value[:500] + "... [truncated]"
+				value = safeRuneTruncateRaw(value, 500) + "... [truncated]"
 			}
-			sb.WriteString(fmt.Sprintf("**%s:** %s\n\n", entry.Key, value))
+			fmt.Fprintf(&sb, "**%s:** %s\n\n", entry.Key, value)
 		}
 	}
 

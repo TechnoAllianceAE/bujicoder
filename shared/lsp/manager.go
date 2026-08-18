@@ -49,12 +49,24 @@ func (m *Manager) Diagnose(filePath, content string) []Diagnostic {
 // CloseAll shuts down all running language servers.
 func (m *Manager) CloseAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
+	clients := make([]*Client, 0, len(m.clients))
 	for _, client := range m.clients {
-		client.Close()
+		clients = append(clients, client)
 	}
 	m.clients = make(map[string]*Client)
+	m.mu.Unlock()
+
+	// Close blocks on a child process, so it runs outside the lock; servers are
+	// closed concurrently so one unresponsive server cannot serialize the rest.
+	var wg sync.WaitGroup
+	for _, client := range clients {
+		wg.Add(1)
+		go func(c *Client) {
+			defer wg.Done()
+			c.Close()
+		}(client)
+	}
+	wg.Wait()
 }
 
 // FormatDiagnostics formats diagnostics for inclusion in tool results.

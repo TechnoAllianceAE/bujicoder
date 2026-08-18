@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,15 +73,14 @@ func (b *BedrockProvider) StreamCompletion(ctx context.Context, req *CompletionR
 		return nil, fmt.Errorf("bedrock request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go b.processStream(resp.Body, ch)
+	go b.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -199,7 +199,7 @@ func (b *BedrockProvider) buildRequest(req *CompletionRequest) map[string]any {
 }
 
 // processStream decodes the vnd.amazon.eventstream response and emits StreamEvents.
-func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (b *BedrockProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -219,8 +219,8 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 	for {
 		msg, err := dec.next()
 		if err != nil {
-			if err != io.EOF {
-				ch <- StreamEvent{Error: &ErrorEvent{Code: "stream_error", Message: err.Error()}}
+			if !errors.Is(err, io.EOF) {
+				sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{Code: "stream_error", Message: err.Error()}})
 			}
 			break
 		}
@@ -233,10 +233,10 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 
 		// Exception messages carry error payloads.
 		if messageType == "exception" || messageType == "error" {
-			ch <- StreamEvent{Error: &ErrorEvent{
+			sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 				Code:    eventType,
 				Message: string(msg.payload),
-			}}
+			}})
 			break
 		}
 
@@ -276,7 +276,9 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 				continue
 			}
 			if text, ok := delta["text"].(string); ok && text != "" {
-				ch <- StreamEvent{Delta: &DeltaEvent{Text: text}}
+				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: text}}) {
+					return
+				}
 			}
 			if tu, ok := delta["toolUse"].(map[string]any); ok {
 				if input, ok := tu["input"].(string); ok {
@@ -296,11 +298,13 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 				if args == "" {
 					args = "{}"
 				}
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+				if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            p.ID,
 					Name:          p.Name,
 					ArgumentsJSON: args,
-				}}
+				}}) {
+					return
+				}
 				delete(pending, idx)
 			}
 
@@ -330,7 +334,7 @@ func (b *BedrockProvider) processStream(body io.ReadCloser, ch chan<- StreamEven
 	case "tool_use":
 		fr = "tool_calls"
 	}
-	ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+	sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}})
 }
 
 // resolveBedrockModelID applies cross-region inference profile prefix when
@@ -402,6 +406,12 @@ type eventStreamDecoder struct {
 	r io.Reader
 }
 
+// maxEventStreamFrameBytes caps a single eventstream frame. The frame length is
+// taken verbatim from a 32-bit prelude field, so a corrupted or hostile prelude
+// would otherwise make the decoder allocate up to 4 GiB before reading a single
+// payload byte. Bedrock Converse frames are a few KiB; 16 MiB is generous.
+const maxEventStreamFrameBytes = 16 << 20
+
 func newEventStreamDecoder(r io.Reader) *eventStreamDecoder {
 	return &eventStreamDecoder{r: r}
 }
@@ -409,7 +419,7 @@ func newEventStreamDecoder(r io.Reader) *eventStreamDecoder {
 func (d *eventStreamDecoder) next() (*eventStreamMessage, error) {
 	var prelude [12]byte
 	if _, err := io.ReadFull(d.r, prelude[:]); err != nil {
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 			return nil, io.EOF
 		}
 		return nil, err
@@ -420,6 +430,9 @@ func (d *eventStreamDecoder) next() (*eventStreamMessage, error) {
 
 	if totalLen < 16 || headersLen > totalLen-16 {
 		return nil, fmt.Errorf("eventstream: invalid frame lengths total=%d headers=%d", totalLen, headersLen)
+	}
+	if totalLen > maxEventStreamFrameBytes {
+		return nil, fmt.Errorf("eventstream: frame too large: %d bytes (max %d)", totalLen, maxEventStreamFrameBytes)
 	}
 
 	remaining := totalLen - 12 // headers + payload + 4-byte message CRC

@@ -14,13 +14,43 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.6"
+          cache: true
 
       - name: Build
         run: go build ./...
 
+      - name: Vet
+        run: go vet ./...
+
       - name: Test
-        run: go test ./... -race -v
+        run: go test ./... -race
+
+  vulncheck:
+    name: Vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.6"
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest -format json ./... > /tmp/vuln.json || true
+          # GO-2026-5932 is a permanent, reviewed exception: golang.org/x/crypto/openpgp
+          # is unconditionally linked by creativeprojects/go-selfupdate (its PGPValidator
+          # lives in the same package). We use ChecksumValidator, never the openpgp code
+          # path. Unfixable until upstream removes the import.
+          jq -r '.findings[]? | select(.trace[0].module != "golang.org/x/crypto" or .osv != "GO-2026-5932") | .osv' \
+            /tmp/vuln.json | sort -u > /tmp/findings
+          if [ -s /tmp/findings ]; then
+            echo "New vulnerabilities found:"
+            cat /tmp/findings
+            exit 1
+          fi
 
   lint:
     runs-on: ubuntu-latest
@@ -29,9 +59,10 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24"
+          go-version: "1.26.6"
+          cache: true
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
           version: latest
 

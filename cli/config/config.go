@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 	"gopkg.in/yaml.v3"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 )
 
 const (
@@ -139,6 +140,47 @@ func (u *UnifiedConfig) GetAgentsDir() string {
 	return filepath.Join(Dir(), "agents")
 }
 
+// SetAPIKey stores the credential for a provider on the config. For the local
+// server providers an empty value falls back to the default localhost URL.
+func (u *UnifiedConfig) SetAPIKey(provider, key string) {
+	switch strings.ToLower(provider) {
+	case "kilocode", "kilo":
+		u.APIKeys.Kilocode = key
+	case "openrouter":
+		u.APIKeys.OpenRouter = key
+	case "anthropic":
+		u.APIKeys.Anthropic = key
+	case "openai":
+		u.APIKeys.OpenAI = key
+	case "google", "google_ai", "gemini":
+		u.APIKeys.GoogleAI = key
+	case "xai":
+		u.APIKeys.XAI = key
+	case "zai", "z-ai":
+		u.APIKeys.ZAI = key
+	case "together":
+		u.APIKeys.Together = key
+	case "groq":
+		u.APIKeys.Groq = key
+	case "cerebras":
+		u.APIKeys.Cerebras = key
+	case "opencode":
+		u.APIKeys.OpenCode = key
+	case "opencode-zen":
+		u.APIKeys.OpenCodeZen = key
+	case "ollama":
+		if key == "" {
+			key = "http://localhost:11434"
+		}
+		u.APIKeys.OllamaURL = key
+	case "llamacpp":
+		if key == "" {
+			key = "http://localhost:8080"
+		}
+		u.APIKeys.LlamacppURL = key
+	}
+}
+
 // GetAPIKey returns the API key for a provider, checking config then env var fallback.
 func (u *UnifiedConfig) GetAPIKey(provider string) string {
 	provider = strings.ToLower(provider)
@@ -244,47 +286,64 @@ func UnifiedConfigPath() string {
 }
 
 // LoadUnifiedConfig loads the unified YAML config from standard locations.
-// Returns nil if no config is found at any location (triggers first-run setup).
-func LoadUnifiedConfig() *UnifiedConfig {
+// Returns (nil, nil) if no config exists at any location (triggers first-run setup).
+// A config that exists but cannot be parsed returns an error naming the file, so
+// callers never mistake a corrupt config for a first run and overwrite it.
+func LoadUnifiedConfig() (*UnifiedConfig, error) {
 	// 1. ~/.bujicoder/bujicoder.yaml (canonical location)
-	if cfg := loadUnifiedFrom(filepath.Join(Dir(), unifiedFileName)); cfg != nil {
-		return cfg
+	cfg, err := loadUnifiedFrom(filepath.Join(Dir(), unifiedFileName))
+	if err != nil {
+		return nil, err
+	}
+	if cfg != nil {
+		return cfg, nil
 	}
 	// 2. bujicoder.yaml next to executable (portable installs)
-	if cfg := loadUnifiedFrom(filepath.Join(ExeDir(), unifiedFileName)); cfg != nil {
-		return cfg
+	cfg, err = loadUnifiedFrom(filepath.Join(ExeDir(), unifiedFileName))
+	if err != nil {
+		return nil, err
+	}
+	if cfg != nil {
+		return cfg, nil
 	}
 	// 3. Legacy: ~/.bujicoder/config.json
 	path := filepath.Join(Dir(), "config.json")
 	data, err := os.ReadFile(path)
 	if err == nil {
 		var legacy Config
-		if json.Unmarshal(data, &legacy) == nil && legacy.Mode != "" {
-			return legacyToUnified(&legacy)
+		if err := json.Unmarshal(data, &legacy); err != nil {
+			return nil, fmt.Errorf("parse legacy config %s: %w", path, err)
 		}
+		return legacyToUnified(&legacy), nil
 	}
 	// 4. No config found -> first-run
-	return nil
+	return nil, nil
 }
 
-func loadUnifiedFrom(path string) *UnifiedConfig {
+// loadUnifiedFrom reads one config file. It returns (nil, nil) when the file does
+// not exist and an error when the file exists but is unreadable or malformed.
+func loadUnifiedFrom(path string) (*UnifiedConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
 	var cfg UnifiedConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	// A config file with no explicit mode is still a real config — defaulting it
+	// here keeps a hand-edited file from being mistaken for a first run.
 	if cfg.Mode == "" {
-		return nil
+		cfg.Mode = "local"
 	}
 	// Populate default mode->model mappings if missing.
 	if len(cfg.Modes) == 0 {
-		defaults := DefaultUnifiedConfig("")
-		cfg.Modes = defaults.Modes
+		cfg.Modes = DefaultUnifiedConfig("").Modes
 	}
-	return &cfg
+	return &cfg, nil
 }
 
 func legacyToUnified(legacy *Config) *UnifiedConfig {
@@ -297,13 +356,14 @@ func legacyToUnified(legacy *Config) *UnifiedConfig {
 	}
 	// Populate default mode->model mappings if missing.
 	if len(u.Modes) == 0 {
-		defaults := DefaultUnifiedConfig("")
-		u.Modes = defaults.Modes
+		u.Modes = DefaultUnifiedConfig("").Modes
 	}
 	return u
 }
 
 // SaveUnifiedConfig writes the unified config as YAML to ~/.bujicoder/bujicoder.yaml.
+// The file holds API keys, so it is written 0600 via a temp file + rename: a crash
+// or full disk can never leave a truncated config behind.
 func SaveUnifiedConfig(cfg *UnifiedConfig) (string, error) {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -319,10 +379,41 @@ func SaveUnifiedConfig(cfg *UnifiedConfig) (string, error) {
 		return "", fmt.Errorf("create config dir: %w", err)
 	}
 	homePath := filepath.Join(dir, unifiedFileName)
-	if err := os.WriteFile(homePath, []byte(content), 0o600); err != nil {
+	if err := writeFileAtomic(homePath, []byte(content)); err != nil {
 		return "", fmt.Errorf("write config: %w", err)
 	}
 	return homePath, nil
+}
+
+// writeFileAtomic writes data to path with 0600 permissions via a temp file in the
+// same directory followed by a rename, so readers only ever see a complete file.
+func writeFileAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() {
+		// No-op once the rename succeeded.
+		_ = os.Remove(tmp)
+	}()
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // DefaultUnifiedConfig returns a default standalone config with the given API key.
@@ -460,5 +551,9 @@ func DefaultUnifiedConfigForProvider(provider, apiKey string) *UnifiedConfig {
 		}
 	}
 
+	// The provider's credential belongs on the config it is built for.
+	if apiKey != "" || provider == "ollama" || provider == "llamacpp" {
+		cfg.SetAPIKey(provider, apiKey)
+	}
 	return cfg
 }

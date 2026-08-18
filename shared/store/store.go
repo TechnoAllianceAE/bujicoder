@@ -3,23 +3,32 @@
 package store
 
 import (
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/rs/zerolog/log"
 	bolt "go.etcd.io/bbolt"
 )
+
+// schemaVersion is the on-disk layout version understood by this package.
+const schemaVersion = 1
 
 // Bucket names in bbolt.
 var (
 	bucketConversations = []byte("conversations")
 	bucketMessages      = []byte("messages")
 	bucketMetadata      = []byte("metadata")
+
+	// keySchemaVersion stores the schema version inside bucketMetadata.
+	keySchemaVersion = []byte("schema_version")
 )
 
 // Store is the primary persistence layer backed by bbolt + Bleve.
@@ -82,14 +91,15 @@ func Open(dbPath, indexPath string) (*Store, error) {
 		return nil, fmt.Errorf("open bbolt: %w", err)
 	}
 
-	// Create buckets.
+	// Create buckets and validate the on-disk schema version. A database written
+	// by a newer BujiCoder must not be silently downgraded.
 	if err := db.Update(func(tx *bolt.Tx) error {
 		for _, name := range [][]byte{bucketConversations, bucketMessages, bucketMetadata} {
 			if _, err := tx.CreateBucketIfNotExists(name); err != nil {
 				return err
 			}
 		}
-		return nil
+		return checkSchemaVersion(tx.Bucket(bucketMetadata))
 	}); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create buckets: %w", err)
@@ -132,6 +142,9 @@ func (s *Store) Close() error {
 
 // SaveConversation writes a full conversation (creates or overwrites).
 func (s *Store) SaveConversation(id, title string, msgs []StoredMessage) error {
+	if id == "" {
+		return fmt.Errorf("save conversation: empty id")
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	conv := Conversation{
 		ID:        id,
@@ -144,12 +157,18 @@ func (s *Store) SaveConversation(id, title string, msgs []StoredMessage) error {
 		return err
 	}
 
-	return s.db.Update(func(tx *bolt.Tx) error {
+	var ops []indexOp
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		// The transaction may be retried/rolled back, so index mutations are
+		// staged here and only applied to Bleve after a successful commit.
+		ops = ops[:0]
 		cb := tx.Bucket(bucketConversations)
 		mb := tx.Bucket(bucketMessages)
 
 		// Delete existing messages for this conversation.
-		s.deleteConvMessages(mb, id)
+		if err := deleteConvMessages(mb, id, &ops); err != nil {
+			return err
+		}
 
 		// Write conversation metadata.
 		if err := cb.Put([]byte(id), convData); err != nil {
@@ -166,18 +185,27 @@ func (s *Store) SaveConversation(id, title string, msgs []StoredMessage) error {
 			if err := mb.Put(key, data); err != nil {
 				return err
 			}
-			// Index in Bleve.
-			s.indexMessage(id, i, msg)
+			ops = append(ops, putIndexOp(id, i, msg))
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.applyIndexOps(ops)
+	return nil
 }
 
 // AppendMessages appends messages to a conversation, creating it if needed.
 func (s *Store) AppendMessages(id, title string, msgs ...StoredMessage) error {
+	if id == "" {
+		return fmt.Errorf("append messages: empty id")
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	return s.db.Update(func(tx *bolt.Tx) error {
+	var ops []indexOp
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		ops = ops[:0]
 		cb := tx.Bucket(bucketConversations)
 		mb := tx.Bucket(bucketMessages)
 
@@ -210,7 +238,7 @@ func (s *Store) AppendMessages(id, title string, msgs ...StoredMessage) error {
 		}
 
 		// Count existing messages via prefix scan.
-		count := s.countMessages(mb, id)
+		count := countMessages(mb, id)
 
 		// Append new messages.
 		for i, msg := range msgs {
@@ -223,10 +251,15 @@ func (s *Store) AppendMessages(id, title string, msgs ...StoredMessage) error {
 			if err := mb.Put(key, data); err != nil {
 				return err
 			}
-			s.indexMessage(id, seq, msg)
+			ops = append(ops, putIndexOp(id, seq, msg))
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+
+	s.applyIndexOps(ops)
+	return nil
 }
 
 // ListConversations returns summaries sorted by UpdatedAt DESC.
@@ -238,7 +271,10 @@ func (s *Store) ListConversations(limit, offset int) ([]ConversationSummary, err
 		return cb.ForEach(func(k, v []byte) error {
 			var conv Conversation
 			if err := json.Unmarshal(v, &conv); err != nil {
-				return nil // skip corrupt entries
+				// A corrupt record is skipped so the rest of the history stays
+				// listable, but it must be visible rather than disappear.
+				log.Warn().Err(err).Str("id", string(k)).Msg("store: skipping corrupt conversation record")
+				return nil
 			}
 			summaries = append(summaries, ConversationSummary{
 				ID:        conv.ID,
@@ -295,16 +331,22 @@ func (s *Store) GetMessages(id string) ([]StoredMessage, error) {
 
 // DeleteConversation removes a conversation and all its messages.
 func (s *Store) DeleteConversation(id string) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
+	var ops []indexOp
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		ops = ops[:0]
 		cb := tx.Bucket(bucketConversations)
 		mb := tx.Bucket(bucketMessages)
 
 		if err := cb.Delete([]byte(id)); err != nil {
 			return err
 		}
-		s.deleteConvMessages(mb, id)
-		return nil
-	})
+		return deleteConvMessages(mb, id, &ops)
+	}); err != nil {
+		return err
+	}
+
+	s.applyIndexOps(ops)
+	return nil
 }
 
 // SearchMessages performs full-text search across all conversations.
@@ -343,14 +385,10 @@ func (s *Store) SearchMessages(query string, limit int) ([]SearchResult, error) 
 			return nil
 		})
 
-		// Build snippet from content field.
+		// Build snippet from content field (rune-safe truncation).
 		snippet := ""
 		if content, ok := hit.Fields["content"].(string); ok {
-			if len(content) > 200 {
-				snippet = content[:200] + "..."
-			} else {
-				snippet = content
-			}
+			snippet = truncateRunes(content, 200)
 		}
 
 		results = append(results, SearchResult{
@@ -366,10 +404,15 @@ func (s *Store) SearchMessages(query string, limit int) ([]SearchResult, error) 
 
 // ForkConversation creates a new conversation from an existing one up to atMessageSeq.
 func (s *Store) ForkConversation(fromID string, atMessageSeq int) (string, error) {
-	newID := generateID()
+	newID, err := generateID()
+	if err != nil {
+		return "", err
+	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	return newID, s.db.Update(func(tx *bolt.Tx) error {
+	var ops []indexOp
+	if err := s.db.Update(func(tx *bolt.Tx) error {
+		ops = ops[:0]
 		cb := tx.Bucket(bucketConversations)
 		mb := tx.Bucket(bucketMessages)
 
@@ -399,27 +442,35 @@ func (s *Store) ForkConversation(fromID string, atMessageSeq int) (string, error
 			return err
 		}
 
-		// Copy messages up to atMessageSeq.
+		// Collect messages up to atMessageSeq. Values must be copied and the
+		// bucket must not be mutated while its cursor is live.
 		prefix := []byte(fromID + "/")
 		c := mb.Cursor()
-		seq := 0
+		var values [][]byte
 		for k, v := c.Seek(prefix); k != nil && hasPrefix(k, prefix); k, v = c.Next() {
-			if seq > atMessageSeq {
+			if len(values) > atMessageSeq {
 				break
 			}
-			newKey := msgKey(newID, seq)
-			if err := mb.Put(newKey, v); err != nil {
+			values = append(values, append([]byte(nil), v...))
+		}
+
+		for seq, v := range values {
+			if err := mb.Put(msgKey(newID, seq), v); err != nil {
 				return err
 			}
 			// Index the copied message.
 			var msg StoredMessage
 			if err := json.Unmarshal(v, &msg); err == nil {
-				s.indexMessage(newID, seq, msg)
+				ops = append(ops, putIndexOp(newID, seq, msg))
 			}
-			seq++
 		}
 		return nil
-	})
+	}); err != nil {
+		return "", err
+	}
+
+	s.applyIndexOps(ops)
+	return newID, nil
 }
 
 // UpdateCost updates the cost in cents for a conversation.
@@ -451,14 +502,18 @@ func msgKey(convID string, seq int) []byte {
 	return []byte(fmt.Sprintf("%s/%08d", convID, seq))
 }
 
-// parseMsgKey extracts convID and seq from a message key.
+// parseMsgKey extracts convID and seq from a message key. A key whose sequence
+// suffix is not a number is not a message key, and reporting it as seq 0 would
+// point a search hit at the wrong message.
 func parseMsgKey(key string) (string, int) {
 	idx := strings.LastIndex(key, "/")
 	if idx < 0 {
 		return "", 0
 	}
-	var seq int
-	fmt.Sscanf(key[idx+1:], "%d", &seq)
+	seq, err := strconv.Atoi(key[idx+1:])
+	if err != nil {
+		return "", 0
+	}
 	return key[:idx], seq
 }
 
@@ -476,7 +531,7 @@ func hasPrefix(b, prefix []byte) bool {
 }
 
 // countMessages counts messages for a conversation via prefix scan.
-func (s *Store) countMessages(mb *bolt.Bucket, convID string) int {
+func countMessages(mb *bolt.Bucket, convID string) int {
 	prefix := []byte(convID + "/")
 	count := 0
 	c := mb.Cursor()
@@ -486,8 +541,9 @@ func (s *Store) countMessages(mb *bolt.Bucket, convID string) int {
 	return count
 }
 
-// deleteConvMessages deletes all messages for a conversation.
-func (s *Store) deleteConvMessages(mb *bolt.Bucket, convID string) {
+// deleteConvMessages deletes all messages for a conversation and stages the
+// matching Bleve deletions in ops.
+func deleteConvMessages(mb *bolt.Bucket, convID string, ops *[]indexOp) error {
 	prefix := []byte(convID + "/")
 	c := mb.Cursor()
 	var toDelete [][]byte
@@ -497,24 +553,87 @@ func (s *Store) deleteConvMessages(mb *bolt.Bucket, convID string) {
 		toDelete = append(toDelete, key)
 	}
 	for _, key := range toDelete {
-		mb.Delete(key)
-		s.index.Delete(string(key))
+		if err := mb.Delete(key); err != nil {
+			return fmt.Errorf("delete message %s: %w", key, err)
+		}
+		*ops = append(*ops, indexOp{key: string(key)})
+	}
+	return nil
+}
+
+// indexOp is a staged Bleve mutation. A nil doc means "delete".
+type indexOp struct {
+	key string
+	doc *bleveDoc
+}
+
+// putIndexOp stages the indexing of a message.
+func putIndexOp(convID string, seq int, msg StoredMessage) indexOp {
+	return indexOp{
+		key: string(msgKey(convID, seq)),
+		doc: &bleveDoc{
+			ConversationID: convID,
+			Role:           msg.Role,
+			Content:        msg.Content,
+		},
 	}
 }
 
-// indexMessage indexes a message in Bleve (best-effort, errors silently).
-func (s *Store) indexMessage(convID string, seq int, msg StoredMessage) {
-	doc := bleveDoc{
-		ConversationID: convID,
-		Role:           msg.Role,
-		Content:        msg.Content,
+// applyIndexOps applies staged Bleve mutations after the bbolt transaction has
+// committed. Indexing is best-effort: a failure degrades search but never
+// invalidates the committed data. Applying before commit would leave the index
+// referencing messages that a rolled-back transaction never wrote.
+func (s *Store) applyIndexOps(ops []indexOp) {
+	for _, op := range ops {
+		if op.doc == nil {
+			_ = s.index.Delete(op.key)
+			continue
+		}
+		_ = s.index.Index(op.key, *op.doc)
 	}
-	key := string(msgKey(convID, seq))
-	_ = s.index.Index(key, doc)
 }
 
-// generateID creates a simple UUID-like identifier.
-func generateID() string {
-	now := time.Now().UnixNano()
-	return fmt.Sprintf("%x-%x", now, now%1000000)
+// truncateRunes truncates s to at most maxRunes runes, appending an ellipsis
+// when it had to cut. Truncating by bytes would split a multi-byte rune and
+// produce invalid UTF-8.
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	count := 0
+	for i := range s {
+		if count == maxRunes {
+			return s[:i] + "..."
+		}
+		count++
+	}
+	return s
+}
+
+// checkSchemaVersion records the current schema version, refusing to operate on
+// a database written by a newer version of the store.
+func checkSchemaVersion(mb *bolt.Bucket) error {
+	raw := mb.Get(keySchemaVersion)
+	if raw == nil {
+		return mb.Put(keySchemaVersion, []byte(strconv.Itoa(schemaVersion)))
+	}
+	onDisk, err := strconv.Atoi(string(raw))
+	if err != nil {
+		return fmt.Errorf("unreadable schema version %q", raw)
+	}
+	if onDisk > schemaVersion {
+		return fmt.Errorf("database schema version %d is newer than supported version %d: upgrade BujiCoder", onDisk, schemaVersion)
+	}
+	return nil
+}
+
+// generateID creates a collision-resistant identifier. A purely time-based ID
+// collides when two conversations are created inside the same clock tick, which
+// would silently overwrite the earlier one.
+func generateID() (string, error) {
+	var b [10]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("generate id: %w", err)
+	}
+	return fmt.Sprintf("%x-%x", time.Now().UTC().Unix(), b), nil
 }

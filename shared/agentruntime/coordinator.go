@@ -125,7 +125,7 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 			if len(t.DependsOn) > 0 {
 				deps = fmt.Sprintf(" (depends on: %s)", strings.Join(t.DependsOn, ", "))
 			}
-			taskList.WriteString(fmt.Sprintf("  [%s] %s → %s%s\n", t.ID, t.Title, t.AgentID, deps))
+			fmt.Fprintf(&taskList, "  [%s] %s → %s%s\n", t.ID, t.Title, t.AgentID, deps)
 		}
 		cfg.OnEvent(Event{
 			Type:    EventStatus,
@@ -145,6 +145,10 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 
 	// Concurrency limiter (#24).
 	sem := make(chan struct{}, maxConcurrentTasks)
+
+	// Task goroutines emit events concurrently; serialise the forwarding so the
+	// caller's OnEvent callback is never invoked from two goroutines at once.
+	emit := serializedEmitter(cfg.OnEvent)
 
 	// Atomic counter for TotalSteps to avoid data race (#8).
 	var totalSteps int64
@@ -189,8 +193,8 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 				sem <- struct{}{}        // acquire
 				defer func() { <-sem }() // release
 
-				if cfg.OnEvent != nil {
-					cfg.OnEvent(Event{
+				if emit != nil {
+					emit(Event{
 						Type:    EventStatus,
 						AgentID: ts.Task.AgentID,
 						Text:    fmt.Sprintf("Starting task [%s]: %s", ts.Task.ID, ts.Task.Title),
@@ -206,11 +210,8 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 					depContext.WriteString("\n\n## Context from prerequisite tasks:\n\n")
 					for _, depID := range ts.Task.DependsOn {
 						if dep, ok := stateMap[depID]; ok && dep.Status == TaskCompleted {
-							depResult := dep.Result
-							if len(depResult) > 2000 {
-								depResult = depResult[:2000] + "... [truncated]"
-							}
-							depContext.WriteString(fmt.Sprintf("### %s (task %s):\n%s\n\n", dep.Task.Title, dep.Task.ID, depResult))
+							depResult := safeRuneTruncate(dep.Result, 2000)
+							fmt.Fprintf(&depContext, "### %s (task %s):\n%s\n\n", dep.Task.Title, dep.Task.ID, depResult)
 						}
 					}
 					taskPrompt += depContext.String()
@@ -233,14 +234,15 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 					UserMessage:   taskPrompt,
 					ProjectRoot:   cfg.ProjectRoot,
 					CostMode:      cfg.CostMode,
+					PlanMode:      cfg.PlanMode,
 					ModelResolver: cfg.ModelResolver,
 					SharedMemory:  cfg.SharedMemory,
 					ContextCache:  cfg.ContextCache,
 					LSPManager:    cfg.LSPManager,
 					OnEvent: func(ev Event) {
-						if cfg.OnEvent != nil {
+						if emit != nil {
 							ev.AgentID = ts.Task.AgentID
-							cfg.OnEvent(ev)
+							emit(ev)
 						}
 					},
 				}
@@ -259,8 +261,8 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 				// Store result in shared memory for other tasks.
 				cfg.SharedMemory.Write(ts.Task.AgentID, "task_"+ts.Task.ID, runResult.FinalText)
 
-				if cfg.OnEvent != nil {
-					cfg.OnEvent(Event{
+				if emit != nil {
+					emit(Event{
 						Type:    EventStatus,
 						AgentID: ts.Task.AgentID,
 						Text:    fmt.Sprintf("Completed task [%s]: %s (%d steps)", ts.Task.ID, ts.Task.Title, runResult.TotalSteps),
@@ -316,12 +318,12 @@ func (r *Runtime) RunCoordinatedGoal(ctx context.Context, goal string, cfg RunCo
 		// Fall back to simple concatenation.
 		var sb strings.Builder
 		for _, ts := range states {
-			sb.WriteString(fmt.Sprintf("## Task: %s [%s]\n\n", ts.Task.Title, ts.Status))
+			fmt.Fprintf(&sb, "## Task: %s [%s]\n\n", ts.Task.Title, ts.Status)
 			if ts.Result != "" {
 				sb.WriteString(ts.Result)
 			}
 			if ts.Error != "" {
-				sb.WriteString(fmt.Sprintf("Error: %s", ts.Error))
+				fmt.Fprintf(&sb, "Error: %s", ts.Error)
 			}
 			sb.WriteString("\n\n")
 		}
@@ -412,34 +414,60 @@ Return ONLY the JSON array, no markdown, no explanation.`, goal)
 	}
 
 	for i, task := range tasks {
-		if task.ID == "" {
-			tasks[i].ID = fmt.Sprintf("t%d", i+1)
-		}
 		if !validAgents[task.AgentID] {
 			// Default to researcher for unknown agents.
 			tasks[i].AgentID = "researcher"
 		}
 	}
+	normalizeTaskIDs(tasks)
 
 	return tasks, nil
+}
+
+// normalizeTaskIDs gives every task a unique, non-empty ID in place.
+//
+// The planner is an LLM and regularly emits blank or duplicated IDs. Duplicate
+// IDs collapse in the coordinator's id -> *TaskState map, so dependents wait on
+// (or are unblocked by) the wrong task, and they also make Kahn's cycle check
+// count fewer visited nodes than tasks, which aborts the whole goal with a
+// bogus "circular dependencies detected" error. References to a duplicated ID
+// keep resolving to its first occurrence.
+func normalizeTaskIDs(tasks []CoordinatorTask) {
+	seen := make(map[string]bool, len(tasks))
+	for i := range tasks {
+		id := tasks[i].ID
+		if id == "" || seen[id] {
+			base := id
+			if base == "" {
+				base = "t"
+			}
+			n := 1
+			for {
+				candidate := fmt.Sprintf("%s_%d", base, n)
+				if !seen[candidate] {
+					id = candidate
+					break
+				}
+				n++
+			}
+			tasks[i].ID = id
+		}
+		seen[id] = true
+	}
 }
 
 // synthesizeResult uses a lightweight LLM call to combine task outputs into a coherent response.
 func (r *Runtime) synthesizeResult(ctx context.Context, goal string, states []TaskState, cfg RunConfig) (string, error) {
 	var taskOutputs strings.Builder
-	taskOutputs.WriteString(fmt.Sprintf("# Goal\n%s\n\n# Task Results\n\n", goal))
+	fmt.Fprintf(&taskOutputs, "# Goal\n%s\n\n# Task Results\n\n", goal)
 
 	for _, ts := range states {
-		taskOutputs.WriteString(fmt.Sprintf("## [%s] %s (agent: %s, status: %s)\n\n", ts.Task.ID, ts.Task.Title, ts.Task.AgentID, ts.Status))
+		fmt.Fprintf(&taskOutputs, "## [%s] %s (agent: %s, status: %s)\n\n", ts.Task.ID, ts.Task.Title, ts.Task.AgentID, ts.Status)
 		if ts.Result != "" {
-			result := ts.Result
-			if len(result) > 3000 {
-				result = result[:3000] + "... [truncated]"
-			}
-			taskOutputs.WriteString(result + "\n\n")
+			taskOutputs.WriteString(safeRuneTruncate(ts.Result, 3000) + "\n\n")
 		}
 		if ts.Error != "" {
-			taskOutputs.WriteString(fmt.Sprintf("Error: %s\n\n", ts.Error))
+			fmt.Fprintf(&taskOutputs, "Error: %s\n\n", ts.Error)
 		}
 	}
 
@@ -478,7 +506,10 @@ Be concise and actionable.`
 		MaxTokens:    &maxTokens,
 	}
 
-	ch, err := provider.StreamCompletion(ctx, req)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
+	ch, err := provider.StreamCompletion(streamCtx, req)
 	if err != nil {
 		return "", err
 	}
@@ -492,7 +523,7 @@ Be concise and actionable.`
 			}
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
-			return "", fmt.Errorf("synthesis error: %s", ev.Error.Message)
+			return "", drainStream(cancelStream, ch, fmt.Errorf("synthesis error: %s", ev.Error.Message))
 		}
 	}
 
@@ -595,9 +626,10 @@ func extractJSON(text string) string {
 				continue
 			}
 			if !inString {
-				if c == '[' {
+				switch c {
+				case '[':
 					depth++
-				} else if c == ']' {
+				case ']':
 					depth--
 					if depth == 0 {
 						return text[idx : i+1]

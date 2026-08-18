@@ -14,7 +14,7 @@ const (
 	ModePlan       = "plan"              // Ask for everything (dry-run)
 	ModeDontAsk    = "dontAsk"           // Deny all non-read-only
 	ModeAcceptEdit = "acceptEdits"       // Auto-allow file edits, ask for rest
-	ModeAuto       = "auto"             // Allow everything silently
+	ModeAuto       = "auto"              // Allow everything silently
 )
 
 // Rule represents a permission rule from settings.
@@ -67,6 +67,15 @@ func NewChecker(mode string) *Checker {
 func (pc *Checker) Check(toolName string, input map[string]any, isReadOnly bool) Result {
 	normalized := normalizeToolName(toolName)
 
+	// Explicit deny rules are evaluated first: a user-configured deny (e.g. never
+	// touch .env) must not be overridden by a permissive mode such as
+	// bypassPermissions, nor skipped because the tool happens to be read-only.
+	for _, rule := range pc.DenyRules {
+		if matchesRule(rule, normalized, input) {
+			return Result{Behavior: "deny", Reason: "denied by rule: " + rule.Pattern}
+		}
+	}
+
 	// Bypass mode: allow everything
 	if pc.Mode == ModeBypass || pc.Mode == ModeAuto {
 		return Result{Behavior: "allow"}
@@ -83,13 +92,6 @@ func (pc *Checker) Check(toolName string, input map[string]any, isReadOnly bool)
 	// Plan mode: always ask
 	if pc.Mode == ModePlan {
 		return Result{Behavior: "ask", Reason: "plan mode — confirm before executing"}
-	}
-
-	// Check deny rules first
-	for _, rule := range pc.DenyRules {
-		if matchesRule(rule, normalized, input) {
-			return Result{Behavior: "deny", Reason: "denied by rule: " + rule.Pattern}
-		}
 	}
 
 	// Check allow rules

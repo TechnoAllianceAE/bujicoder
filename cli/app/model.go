@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -237,10 +238,6 @@ type Model struct {
 	// Structured logger (writes JSON to ~/.bujicoder/logs/)
 	log zerolog.Logger
 
-	// Orchestrator wraps all runtime components for shared TUI/GUI use.
-	// Currently populated alongside the legacy fields below during migration.
-	orchestrator *AgentOrchestrator
-
 	// Local agent runtime (CLI-side tool execution)
 	agentRuntime    *agentruntime.Runtime
 	agentRegistry   *agent.Registry
@@ -272,10 +269,9 @@ type Model struct {
 	historyIdx    int      // -1 = not browsing; 0..len-1 = browsing
 	historySaved  string   // input saved when user starts browsing
 
-	// Verbose session logging (/verbose toggle)
-	verboseEnabled  bool              // whether verbose logging is active
-	verboseFile     *os.File          // open log file handle (nil when disabled)
-	verboseDeltaBuf map[string]string // per-agent buffered LLM text, flushed at boundaries
+	// Verbose session logging (/verbose toggle). nil when disabled.
+	// Shared by pointer with agent goroutines — see verboseSink.
+	verbose *verboseSink
 
 	// Viewport rendering debounce
 	viewportDirty bool // true when content changed and viewport needs rebuild
@@ -285,11 +281,29 @@ type Model struct {
 func NewModel(version, commit, buildTime string, verbose bool) Model {
 	mdRenderer, _ := newMarkdownRenderer(80)
 
-	// Try unified config first.
-	ucfg := cliconfig.LoadUnifiedConfig()
-
 	// Initialize logger early — available even during setup.
 	log := logging.New(logging.Config{Verbose: verbose})
+
+	// Try unified config first.
+	ucfg, cfgErr := cliconfig.LoadUnifiedConfig()
+
+	// A malformed config must NOT fall through to first-run setup: that would
+	// overwrite the user's existing API keys. Report it and stay in chat state.
+	if cfgErr != nil {
+		log.Error().Err(cfgErr).Msg("failed to load config")
+		return Model{
+			version:        version,
+			commit:         commit,
+			buildTime:      buildTime,
+			state:          StateChat,
+			messages:       []ChatMessage{{Role: "assistant", Content: fmt.Sprintf("Config error: %v\n\nFix the file (or delete it to re-run setup) and restart buji.", cfgErr)}},
+			costMode:       costmode.ModeNormal,
+			conversationID: uuid.NewString(),
+			mdRenderer:     mdRenderer,
+			historyIdx:     -1,
+			log:            log,
+		}
+	}
 
 	// No config found -> first-run setup.
 	if ucfg == nil {
@@ -344,24 +358,81 @@ func NewModel(version, commit, buildTime string, verbose bool) Model {
 // Verbose session logging
 // ---------------------------------------------------------------------------
 
-// verboseLog writes a formatted line to the verbose log file (if enabled).
-func (m *Model) verboseLog(format string, args ...any) {
-	if !m.verboseEnabled || m.verboseFile == nil {
+// verboseSink owns the verbose log file and the per-agent delta buffers.
+//
+// It is reached from background agent goroutines: the Model hands
+// (*verboseSink).logEvent to the runtime as its OnEvent callback, and parallel
+// sub-agents invoke that callback concurrently. All state therefore lives behind
+// a mutex in a single heap object shared by every copy of the Model, instead of
+// in Model fields that concurrent goroutines would mutate unsynchronised.
+type verboseSink struct {
+	mu       sync.Mutex
+	f        *os.File
+	deltaBuf map[string]string
+}
+
+// path returns the log file path (empty if the sink is closed).
+func (v *verboseSink) path() string {
+	if v == nil {
+		return ""
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.f == nil {
+		return ""
+	}
+	return v.f.Name()
+}
+
+// write appends a timestamped line. Caller must not hold v.mu.
+func (v *verboseSink) write(format string, args ...any) {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.writeLocked(format, args...)
+}
+
+func (v *verboseSink) writeLocked(format string, args ...any) {
+	if v.f == nil {
 		return
 	}
 	ts := time.Now().Format("15:04:05.000")
-	line := fmt.Sprintf("[%s] %s\n", ts, fmt.Sprintf(format, args...))
-	m.verboseFile.WriteString(line)
+	if _, err := fmt.Fprintf(v.f, "[%s] %s\n", ts, fmt.Sprintf(format, args...)); err != nil {
+		// The log file is unusable (disk full, closed fd) — stop writing to it
+		// rather than silently dropping every subsequent line.
+		v.f.Close()
+		v.f = nil
+	}
 }
 
-// flushVerboseDeltas writes any buffered LLM text for the given agent and clears the buffer.
-func (m *Model) flushVerboseDeltas(agent string) {
-	if m.verboseDeltaBuf == nil {
+// flushDeltasLocked writes any buffered LLM text for the given agent.
+func (v *verboseSink) flushDeltasLocked(agent string) {
+	buf := strings.TrimSpace(v.deltaBuf[agent])
+	if buf == "" {
 		return
 	}
-	if buf := m.verboseDeltaBuf[agent]; len(strings.TrimSpace(buf)) > 0 {
-		m.verboseLog("[agent:%s] LLM ▸ %s", agent, strings.TrimSpace(buf))
-		delete(m.verboseDeltaBuf, agent)
+	delete(v.deltaBuf, agent)
+	v.writeLocked("[agent:%s] LLM ▸ %s", agent, buf)
+}
+
+// close writes the session footer and closes the file. Safe to call twice.
+func (v *verboseSink) close() {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.f == nil {
+		return
+	}
+	v.writeLocked("═══════════════════════════════════════════════════════════════")
+	v.writeLocked("Session ended: %s", time.Now().Format(time.RFC3339))
+	v.writeLocked("═══════════════════════════════════════════════════════════════")
+	if v.f != nil {
+		v.f.Close()
+		v.f = nil
 	}
 }
 
@@ -373,9 +444,14 @@ func verboseAgentTag(agent, model string) string {
 	return fmt.Sprintf("[agent:%s]", agent)
 }
 
-// verboseLogEvent logs an agent runtime event with context.
-func (m *Model) verboseLogEvent(ev agentruntime.Event) {
-	if !m.verboseEnabled || m.verboseFile == nil {
+// logEvent logs an agent runtime event with context. Called from agent goroutines.
+func (v *verboseSink) logEvent(ev agentruntime.Event) {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.f == nil {
 		return
 	}
 	agent := ev.AgentID
@@ -385,19 +461,19 @@ func (m *Model) verboseLogEvent(ev agentruntime.Event) {
 	tag := verboseAgentTag(agent, ev.Model)
 	switch ev.Type {
 	case agentruntime.EventStepStart:
-		m.verboseLog("──── STEP %d %s ────", ev.StepNumber, tag)
+		v.writeLocked("──── STEP %d %s ────", ev.StepNumber, tag)
 	case agentruntime.EventStepEnd:
-		m.flushVerboseDeltas(agent)
-		m.verboseLog("──── STEP %d END %s ────", ev.StepNumber, tag)
+		v.flushDeltasLocked(agent)
+		v.writeLocked("──── STEP %d END %s ────", ev.StepNumber, tag)
 	case agentruntime.EventDelta:
 		// Accumulate text deltas — flushed at step end, tool call, or completion boundaries.
-		if m.verboseDeltaBuf == nil {
-			m.verboseDeltaBuf = make(map[string]string)
+		if v.deltaBuf == nil {
+			v.deltaBuf = make(map[string]string)
 		}
-		m.verboseDeltaBuf[agent] += ev.Text
+		v.deltaBuf[agent] += ev.Text
 	case agentruntime.EventToolCall:
-		m.flushVerboseDeltas(agent)
-		m.verboseLog("%s TOOL CALL ▸ %s (id:%s)\n         args: %s", tag, ev.ToolName, ev.ToolCallID, ev.ArgsJSON)
+		v.flushDeltasLocked(agent)
+		v.writeLocked("%s TOOL CALL ▸ %s (id:%s)\n         args: %s", tag, ev.ToolName, ev.ToolCallID, ev.ArgsJSON)
 	case agentruntime.EventToolResult:
 		result := ev.Text
 		if len(result) > 2000 {
@@ -407,62 +483,65 @@ func (m *Model) verboseLogEvent(ev agentruntime.Event) {
 		if ev.IsError {
 			errTag = " [ERROR]"
 		}
-		m.verboseLog("%s TOOL RESULT%s ▸ %s (id:%s)\n         %s", tag, errTag, ev.ToolName, ev.ToolCallID, result)
+		v.writeLocked("%s TOOL RESULT%s ▸ %s (id:%s)\n         %s", tag, errTag, ev.ToolName, ev.ToolCallID, result)
 	case agentruntime.EventStatus:
-		m.verboseLog("%s STATUS ▸ %s", tag, ev.Text)
+		v.writeLocked("%s STATUS ▸ %s", tag, ev.Text)
 	case agentruntime.EventComplete:
-		m.flushVerboseDeltas(agent)
+		v.flushDeltasLocked(agent)
 		if ev.Usage != nil {
-			m.verboseLog("%s COMPLETE ▸ input_tokens=%d output_tokens=%d cost=%.4f¢", tag, ev.Usage.InputTokens, ev.Usage.OutputTokens, float64(ev.Usage.CostCents))
+			v.writeLocked("%s COMPLETE ▸ input_tokens=%d output_tokens=%d cost=%.4f¢", tag, ev.Usage.InputTokens, ev.Usage.OutputTokens, float64(ev.Usage.CostCents))
 		} else {
-			m.verboseLog("%s COMPLETE", tag)
+			v.writeLocked("%s COMPLETE", tag)
 		}
 	case agentruntime.EventCompact:
-		m.verboseLog("%s CONTEXT COMPACTED ▸ %s", tag, ev.Text)
+		v.writeLocked("%s CONTEXT COMPACTED ▸ %s", tag, ev.Text)
 	case agentruntime.EventError:
-		m.flushVerboseDeltas(agent)
-		m.verboseLog("%s ERROR ▸ %s", tag, ev.Text)
+		v.flushDeltasLocked(agent)
+		v.writeLocked("%s ERROR ▸ %s", tag, ev.Text)
 	}
 }
 
-// startVerboseLog creates a new timestamped log file in .bujicoder/logs/.
-func (m *Model) startVerboseLog() error {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	logsDir := filepath.Join(home, ".bujicoder", "logs")
-	if err := os.MkdirAll(logsDir, 0o755); err != nil {
-		return err
+// verboseLog writes a formatted line to the verbose log file (if enabled).
+func (m *Model) verboseLog(format string, args ...any) {
+	m.verbose.write(format, args...)
+}
+
+// newVerboseSink creates a new timestamped log file in ~/.bujicoder/logs/.
+func newVerboseSink(costMode string) (*verboseSink, error) {
+	logsDir := filepath.Join(cliconfig.Dir(), "logs")
+	if err := os.MkdirAll(logsDir, 0o700); err != nil {
+		return nil, err
 	}
 	filename := fmt.Sprintf("session_%s.log", time.Now().Format("2006-01-02_15-04-05"))
 	f, err := os.Create(filepath.Join(logsDir, filename))
 	if err != nil {
+		return nil, err
+	}
+	v := &verboseSink{f: f, deltaBuf: make(map[string]string)}
+	cwd, _ := os.Getwd()
+	v.write("═══════════════════════════════════════════════════════════════")
+	v.write("BujiCoder Verbose Session Log")
+	v.write("Started: %s", time.Now().Format(time.RFC3339))
+	v.write("Cost mode: %s", costMode)
+	v.write("Working dir: %s", cwd)
+	v.write("═══════════════════════════════════════════════════════════════")
+	return v, nil
+}
+
+// startVerboseLog enables verbose logging for this session.
+func (m *Model) startVerboseLog() error {
+	v, err := newVerboseSink(string(m.costMode))
+	if err != nil {
 		return err
 	}
-	m.verboseFile = f
-	m.verboseEnabled = true
-	// Write header.
-	m.verboseLog("═══════════════════════════════════════════════════════════════")
-	m.verboseLog("BujiCoder Verbose Session Log")
-	m.verboseLog("Started: %s", time.Now().Format(time.RFC3339))
-	m.verboseLog("Cost mode: %s", string(m.costMode))
-	cwd, _ := os.Getwd()
-	m.verboseLog("Working dir: %s", cwd)
-	m.verboseLog("═══════════════════════════════════════════════════════════════")
+	m.verbose = v
 	return nil
 }
 
 // stopVerboseLog closes the current verbose log file.
 func (m *Model) stopVerboseLog() {
-	if m.verboseFile != nil {
-		m.verboseLog("═══════════════════════════════════════════════════════════════")
-		m.verboseLog("Session ended: %s", time.Now().Format(time.RFC3339))
-		m.verboseLog("═══════════════════════════════════════════════════════════════")
-		m.verboseFile.Close()
-		m.verboseFile = nil
-	}
-	m.verboseEnabled = false
+	m.verbose.close()
+	m.verbose = nil
 }
 
 // ---------------------------------------------------------------------------
@@ -516,6 +595,11 @@ type completeMsg struct {
 }
 
 type tickMsg time.Time
+
+// persistResultMsg reports the outcome of writing a conversation to the store.
+type persistResultMsg struct {
+	err error
+}
 
 type historyResultMsg struct {
 	conversations []store.ConversationSummary
@@ -871,6 +955,7 @@ func sendMessageLocal(
 			UserImages:    userImages,
 			History:       history,
 			ProjectRoot:   cwd,
+			PlanMode:      planMode,
 			CostMode:      mode,
 			ModelResolver: resolver,
 			OnEvent: func(ev agentruntime.Event) {
@@ -948,6 +1033,7 @@ func sendCoordinatedGoal(
 	goal string,
 	ch chan tea.Msg,
 	mode costmode.Mode,
+	planMode bool,
 	eventLog func(agentruntime.Event),
 	parentCtx ...context.Context,
 ) tea.Cmd {
@@ -974,6 +1060,7 @@ func sendCoordinatedGoal(
 		cfg := agentruntime.RunConfig{
 			AgentDef:      agentDef,
 			ProjectRoot:   cwd,
+			PlanMode:      planMode,
 			CostMode:      mode,
 			ModelResolver: resolver,
 			SharedMemory:  agentruntime.NewSharedMemory(),
@@ -1033,20 +1120,22 @@ func checkForUpdateCmd() tea.Cmd {
 	}
 }
 
-// copyToClipboard writes text to the system clipboard using platform-specific commands.
-func copyToClipboard(text string) error {
+// copyToClipboard writes text to the system clipboard using platform-specific
+// commands. The context bounds the helper: a clipboard tool that never exits
+// (no X display, for instance) would otherwise hang its goroutine forever.
+func copyToClipboard(ctx context.Context, text string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
-		cmd = exec.Command("pbcopy")
+		cmd = exec.CommandContext(ctx, "pbcopy")
 	case "linux":
 		if _, err := exec.LookPath("xclip"); err == nil {
-			cmd = exec.Command("xclip", "-selection", "clipboard")
+			cmd = exec.CommandContext(ctx, "xclip", "-selection", "clipboard")
 		} else {
-			cmd = exec.Command("xsel", "--clipboard", "--input")
+			cmd = exec.CommandContext(ctx, "xsel", "--clipboard", "--input")
 		}
 	case "windows":
-		cmd = exec.Command("clip")
+		cmd = exec.CommandContext(ctx, "clip")
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
@@ -1056,7 +1145,9 @@ func copyToClipboard(text string) error {
 
 func copyToClipboardCmd(text string) tea.Cmd {
 	return func() tea.Msg {
-		return clipboardResultMsg{err: copyToClipboard(text)}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return clipboardResultMsg{err: copyToClipboard(ctx, text)}
 	}
 }
 
@@ -1072,13 +1163,13 @@ func initLocalRuntimeFromConfig(ucfg *cliconfig.UnifiedConfig) tea.Cmd {
 			agentsDir = ucfg.GetAgentsDir()
 		}
 
-		// Try loading from disk first.
-		loaded := false
+		// Try loading from disk first. An agents directory that exists but is empty,
+		// partially loadable, or missing the base agent must still fall back to the
+		// embedded agents — otherwise every prompt fails with "base agent not found".
 		if agentsDir != "" {
-			if err := agentReg.LoadDir(agentsDir); err == nil {
-				loaded = true
-			}
+			_ = agentReg.LoadDir(agentsDir)
 		}
+		_, loaded := agentReg.Get("base")
 
 		// Fall back to embedded agents.
 		if !loaded {
@@ -1147,7 +1238,7 @@ func (m Model) localModelsInfo() string {
 			hasKey = os.Getenv(p.envVar) != ""
 		}
 		if hasKey {
-			b.WriteString(fmt.Sprintf("  + %s\n", p.name))
+			fmt.Fprintf(&b, "  + %s\n", p.name)
 			found = true
 		}
 	}
@@ -1160,12 +1251,12 @@ func (m Model) localModelsInfo() string {
 		cfg := m.modelResolver.GetConfig()
 		for _, mode := range costmode.AllModes() {
 			if mapping, ok := cfg.Modes[mode]; ok {
-				b.WriteString(fmt.Sprintf("\n  %s:\n", mode))
-				b.WriteString(fmt.Sprintf("    main:           %s\n", mapping.Main))
-				b.WriteString(fmt.Sprintf("    file_explorer:  %s\n", mapping.FileExplorer))
-				b.WriteString(fmt.Sprintf("    sub_agent:      %s\n", mapping.SubAgent))
+				fmt.Fprintf(&b, "\n  %s:\n", mode)
+				fmt.Fprintf(&b, "    main:           %s\n", mapping.Main)
+				fmt.Fprintf(&b, "    file_explorer:  %s\n", mapping.FileExplorer)
+				fmt.Fprintf(&b, "    sub_agent:      %s\n", mapping.SubAgent)
 				for agentID, model := range mapping.AgentOverrides {
-					b.WriteString(fmt.Sprintf("    %s: %s\n", agentID, model))
+					fmt.Fprintf(&b, "    %s: %s\n", agentID, model)
 				}
 			}
 		}
@@ -1403,7 +1494,13 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				m.cursorPos = 0
 				m.pendingApproval = ""
 				m.pendingApprovalCmd = ""
-				m.approvalRespCh <- approved
+				// Never block the Update loop: if the waiting tool is already gone
+				// (run finished or cancelled) the reply is simply dropped.
+				select {
+				case m.approvalRespCh <- approved:
+				default:
+					m.log.Warn().Msg("no tool waiting for approval response")
+				}
 				return m, listenForApproval(m.approvalCmdCh)
 			}
 
@@ -1416,7 +1513,11 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				m.input = ""
 				m.cursorPos = 0
 				m.pendingQuestion = ""
-				m.askAnswerCh <- answer
+				select {
+				case m.askAnswerCh <- answer:
+				default:
+					m.log.Warn().Msg("no tool waiting for ask_user answer")
+				}
 				return m, listenForAskUser(m.askQuestionCh)
 			}
 
@@ -1468,15 +1569,17 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 			if m.state == StateChat && !m.streaming && strings.TrimSpace(m.input) != "" {
-				// Accept autocomplete selection on enter, then execute.
-				if m.acVisible && len(m.acMatches) > 0 {
+				// Accept the autocomplete selection on enter, then execute — but
+				// never override an input that is already a complete command:
+				// "/mode" must run /mode, not the suggested "/models".
+				if m.acVisible && len(m.acMatches) > 0 && m.acCursor < len(m.acMatches) && !isSlashCommand(m.input) {
 					selected := slashCommands[m.acMatches[m.acCursor]]
 					m.input = selected.cmd
 					m.cursorPos = len([]rune(m.input))
-					m.acVisible = false
-					m.acMatches = nil
-					m.acCursor = 0
 				}
+				m.acVisible = false
+				m.acMatches = nil
+				m.acCursor = 0
 				userMsg := strings.TrimSpace(m.input)
 
 				if userMsg == "/new" {
@@ -1550,10 +1653,24 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					m.input = ""
 					m.cursorPos = 0
 					// Reload unified config from disk.
-					if newCfg := cliconfig.LoadUnifiedConfig(); newCfg != nil {
+					newCfg, err := cliconfig.LoadUnifiedConfig()
+					if err != nil {
+						m.messages = append(m.messages, ChatMessage{
+							Role:    "assistant",
+							Content: fmt.Sprintf("Config error: %v\n\nKeeping the previously loaded config.", err),
+						})
+						return m, nil
+					}
+					if newCfg != nil {
 						m.unifiedCfg = newCfg
 						m.localCfg = newCfg.ToLegacyConfig()
-						m.costMode = costmode.ParseMode(newCfg.CostMode)
+						if newCfg.CostMode == "plan" {
+							m.planMode = true
+							m.costMode = costmode.ModeNormal
+						} else {
+							m.planMode = false
+							m.costMode = costmode.ParseMode(newCfg.CostMode)
+						}
 					}
 					m.runtimeReady = false
 					return m, initLocalRuntimeFromConfig(m.unifiedCfg)
@@ -1623,23 +1740,22 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 					cwd, _ := os.Getwd()
 					var b strings.Builder
 					b.WriteString("BujiCoder -- AI Coding Assistant\n\n")
-					b.WriteString(fmt.Sprintf("  Version:    %s\n", m.version))
-					b.WriteString(fmt.Sprintf("  Commit:     %s\n", m.commit))
-					b.WriteString(fmt.Sprintf("  Built:      %s\n", m.buildTime))
+					fmt.Fprintf(&b, "  Version:    %s\n", m.version)
+					fmt.Fprintf(&b, "  Commit:     %s\n", m.commit)
+					fmt.Fprintf(&b, "  Built:      %s\n", m.buildTime)
 					modeLabel := string(m.costMode)
 					if m.planMode {
 						modeLabel = "plan"
 					}
-					b.WriteString(fmt.Sprintf("  Cost Mode:  %s\n", modeLabel))
+					fmt.Fprintf(&b, "  Cost Mode:  %s\n", modeLabel)
 					b.WriteString("  Runtime:    local (standalone)\n")
-					cfgPath := cliconfig.UnifiedConfigPath()
-					if cfgPath != "" {
-						b.WriteString(fmt.Sprintf("  Config:     %s\n", cfgPath))
+					if cfgPath := cliconfig.UnifiedConfigPath(); cfgPath != "" {
+						fmt.Fprintf(&b, "  Config:     %s\n", cfgPath)
 					}
 					if m.unifiedCfg != nil {
-						b.WriteString(fmt.Sprintf("  Agents:     %s\n", m.unifiedCfg.GetAgentsDir()))
+						fmt.Fprintf(&b, "  Agents:     %s\n", m.unifiedCfg.GetAgentsDir())
 					}
-					b.WriteString(fmt.Sprintf("  Project:    %s\n", cwd))
+					fmt.Fprintf(&b, "  Project:    %s\n", cwd)
 					m.messages = append(m.messages, ChatMessage{
 						Role:    "assistant",
 						Content: b.String(),
@@ -1669,8 +1785,8 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				if userMsg == "/verbose" {
 					m.input = ""
 					m.cursorPos = 0
-					if m.verboseEnabled {
-						logPath := m.verboseFile.Name()
+					if m.verbose != nil {
+						logPath := m.verbose.path()
 						m.stopVerboseLog()
 						m.messages = append(m.messages, ChatMessage{
 							Role:    "assistant",
@@ -1685,7 +1801,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 						} else {
 							m.messages = append(m.messages, ChatMessage{
 								Role:    "assistant",
-								Content: fmt.Sprintf("Verbose logging **enabled**.\n\nAll agent communications will be logged to:\n`%s`", m.verboseFile.Name()),
+								Content: fmt.Sprintf("Verbose logging **enabled**.\n\nAll agent communications will be logged to:\n`%s`", m.verbose.path()),
 							})
 						}
 					}
@@ -1818,12 +1934,12 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 							} else if s.Lazy {
 								status = "lazy (starts on first call)"
 							}
-							b.WriteString(fmt.Sprintf("  **%s** — `%s %s`\n", s.Name, s.Command, strings.Join(s.Args, " ")))
-							b.WriteString(fmt.Sprintf("    Status: %s\n\n", status))
+							fmt.Fprintf(&b, "  **%s** — `%s %s`\n", s.Name, s.Command, strings.Join(s.Args, " "))
+							fmt.Fprintf(&b, "    Status: %s\n\n", status)
 
 							if tools, ok := running[s.Name]; ok && len(tools) > 0 {
 								for _, t := range tools {
-									b.WriteString(fmt.Sprintf("    · %s\n", t))
+									fmt.Fprintf(&b, "    · %s\n", t)
 								}
 								b.WriteString("\n")
 							}
@@ -1924,14 +2040,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 				// Coordinator pattern: /goal <description> decomposes into task DAG.
 				var sendCmd tea.Cmd
 				var evLog func(agentruntime.Event)
-				if m.verboseEnabled {
-					evLog = m.verboseLogEvent
+				if m.verbose != nil {
+					evLog = m.verbose.logEvent
 				}
 				if strings.HasPrefix(userMsg, "/goal ") {
 					goalText := strings.TrimPrefix(userMsg, "/goal ")
 					sendCmd = sendCoordinatedGoal(
 						m.agentRuntime, m.agentRegistry, m.modelResolver,
-						goalText, m.streamCh, m.costMode, evLog,
+						goalText, m.streamCh, m.costMode, m.planMode, evLog,
 					)
 				} else {
 					sendCmd = sendMessageLocal(
@@ -2416,6 +2532,12 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 	case streamDoneMsg:
 		m.viewportDirty = true
 		m.streaming = false
+		// A finished run — successful, failed or cancelled — must always leave the
+		// "waiting on the user" states behind, otherwise the prompt stays wedged
+		// showing a question nobody is listening for any more.
+		m.pendingQuestion = ""
+		m.pendingApproval = ""
+		m.pendingApprovalCmd = ""
 		elapsed := time.Since(m.startTime)
 		if msg.err != nil {
 			m.err = msg.err
@@ -2423,6 +2545,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.verboseLog("──── SESSION COMPLETE ▸ steps=%d elapsed=%s input_tokens=%d output_tokens=%d cost=%.4f¢ ────",
 			m.totalSteps, elapsed.Round(time.Millisecond), m.inputTokens, m.outputTokens, float64(m.costCents))
+		var persistCmd tea.Cmd
 		if m.streamBuf != "" || len(m.activities) > 0 {
 			content := m.streamBuf
 			if content == "" && msg.err != nil {
@@ -2441,39 +2564,26 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			})
 			m.streamBuf = ""
 			if content != "" {
-				response := content
-				if len(response) > 3000 {
-					response = response[:3000] + "... (truncated in log)"
+				response := truncateRunes(content, 3000)
+				if len(response) < len(content) {
+					response += "... (truncated in log)"
 				}
 				m.verboseLog("ASSISTANT RESPONSE ▸\n%s", response)
 			}
 
 			// Persist to local store.
 			if m.localStore != nil {
-				var userContent, assistantContent string
-				assistantContent = content
+				var userContent string
 				for i := len(m.messages) - 2; i >= 0; i-- {
 					if m.messages[i].Role == "user" {
 						userContent = m.messages[i].Content
 						break
 					}
 				}
-				title := userContent
-				if len(title) > 100 {
-					title = title[:100]
-				}
-				go func() {
-					var msgs []store.StoredMessage
-					if userContent != "" {
-						msgs = append(msgs, store.StoredMessage{
-							Role: "user", Content: userContent, CreatedAt: time.Now().UTC(),
-						})
-					}
-					msgs = append(msgs, store.StoredMessage{
-						Role: "assistant", Content: assistantContent, CreatedAt: time.Now().UTC(),
-					})
-					_ = m.localStore.AppendMessages(m.conversationID, title, msgs...)
-				}()
+				persistCmd = persistConversationCmd(
+					m.localStore, m.conversationID, truncateRunes(userContent, 100),
+					userContent, content,
+				)
 			}
 		}
 		m.activities = nil
@@ -2482,6 +2592,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		m.inputTokens = 0
 		m.outputTokens = 0
 		m.costCents = 0
+		return m, persistCmd
+
+	case persistResultMsg:
+		if msg.err != nil {
+			// Persistence failures used to be discarded, so a conversation could
+			// vanish with no trace at all.
+			m.log.Error().Err(msg.err).Str("conversation_id", m.conversationID).Msg("failed to persist conversation")
+		}
 		return m, nil
 
 	case historyResultMsg:
@@ -2521,14 +2639,14 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 			return m, nil
 		}
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Found %d results:\n\n", len(msg.results)))
+		fmt.Fprintf(&sb, "Found %d results:\n\n", len(msg.results))
 		for i, r := range msg.results {
-			snippet := r.Snippet
-			if len(snippet) > 120 {
-				snippet = snippet[:120] + "..."
+			snippet := truncateRunes(r.Snippet, 120)
+			if len(snippet) < len(r.Snippet) {
+				snippet += "..."
 			}
-			sb.WriteString(fmt.Sprintf("%d. **%s** (`%s`)\n   %s\n\n",
-				i+1, r.ConversationTitle, r.ConversationID[:8], snippet))
+			fmt.Fprintf(&sb, "%d. **%s** (`%s`)\n   %s\n\n",
+				i+1, r.ConversationTitle, shortID(r.ConversationID), snippet)
 		}
 		sb.WriteString("Use `/resume <id>` to open a conversation.")
 		m.messages = append(m.messages, ChatMessage{
@@ -2675,7 +2793,7 @@ func (m Model) handleUpdate(msg tea.Msg) (Model, tea.Cmd) {
 		}
 		m.messages = append(m.messages, ChatMessage{
 			Role:    "assistant",
-			Content: fmt.Sprintf("Resumed conversation %s (%d messages loaded).", msg.conversationID[:8], len(msg.messages)),
+			Content: fmt.Sprintf("Resumed conversation %s (%d messages loaded).", shortID(msg.conversationID), len(msg.messages)),
 		})
 		return m, nil
 
@@ -2700,6 +2818,42 @@ func fetchLocalHistory(store *store.Store) tea.Cmd {
 	}
 }
 
+// persistConversationCmd appends the finished exchange to the local store.
+// Runs as a tea.Cmd (not a bare goroutine) so the result — including failures —
+// comes back through Update instead of being discarded.
+func persistConversationCmd(st *store.Store, convID, title, userContent, assistantContent string) tea.Cmd {
+	return func() tea.Msg {
+		var msgs []store.StoredMessage
+		now := time.Now().UTC()
+		if userContent != "" {
+			msgs = append(msgs, store.StoredMessage{Role: "user", Content: userContent, CreatedAt: now})
+		}
+		msgs = append(msgs, store.StoredMessage{Role: "assistant", Content: assistantContent, CreatedAt: now})
+		return persistResultMsg{err: st.AppendMessages(convID, title, msgs...)}
+	}
+}
+
+// shortID returns the display prefix of a conversation ID. IDs are normally
+// UUIDs, but migrated or hand-written IDs can be shorter than the prefix length.
+func shortID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
+
+// truncateRunes clips s to at most max runes, never splitting a multi-byte rune.
+func truncateRunes(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	return string(runes[:max])
+}
+
 func resumeLocalConversation(store *store.Store, conversationID string) tea.Cmd {
 	return func() tea.Msg {
 		msgs, err := store.GetMessages(conversationID)
@@ -2722,8 +2876,7 @@ func resumeLocalConversation(store *store.Store, conversationID string) tea.Cmd 
 
 // openLocalStore opens the bbolt+Bleve store, auto-migrating from JSON if needed.
 func openLocalStore(log zerolog.Logger) *store.Store {
-	home, _ := os.UserHomeDir()
-	baseDir := filepath.Join(home, ".bujicoder")
+	baseDir := cliconfig.Dir()
 	dbPath := filepath.Join(baseDir, "bujicoder.db")
 	indexPath := filepath.Join(baseDir, "search.bleve")
 	jsonDir := filepath.Join(baseDir, "conversations")
@@ -2734,11 +2887,9 @@ func openLocalStore(log zerolog.Logger) *store.Store {
 		return nil
 	}
 
-	// Auto-migrate from old JSON files if they exist.
-	if store.NeedsMigration(jsonDir, dbPath) {
-		// DB was just created by Open(), so migration check is on the JSON dir only.
-	}
-	// Always try migration — it's a no-op if jsonDir doesn't exist.
+	// Migrating from the legacy JSON files is idempotent (it records a durable
+	// completion marker) and a no-op when jsonDir does not exist, so it is safe
+	// to attempt unconditionally on every start.
 	if err := store.MigrateFromJSON(jsonDir, s); err != nil {
 		log.Warn().Err(err).Msg("JSON migration failed (non-fatal)")
 	}
@@ -2765,21 +2916,21 @@ func gatherCodebaseInfo() string {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Codebase: %s\n", filepath.Base(cwd)))
-	b.WriteString(fmt.Sprintf("Path:     %s\n\n", cwd))
+	fmt.Fprintf(&b, "Codebase: %s\n", filepath.Base(cwd))
+	fmt.Fprintf(&b, "Path:     %s\n\n", cwd)
 
 	// Git info
 	if _, err := os.Stat(filepath.Join(cwd, ".git")); err == nil {
 		b.WriteString("Git:\n")
 		if branch := runQuietCmd(cwd, "git", "branch", "--show-current"); branch != "" {
-			b.WriteString(fmt.Sprintf("  Branch:   %s\n", branch))
+			fmt.Fprintf(&b, "  Branch:   %s\n", branch)
 		}
 		if remote := runQuietCmd(cwd, "git", "remote", "get-url", "origin"); remote != "" {
-			b.WriteString(fmt.Sprintf("  Remote:   %s\n", remote))
+			fmt.Fprintf(&b, "  Remote:   %s\n", remote)
 		}
 		if status := runQuietCmd(cwd, "git", "status", "--porcelain"); status != "" {
 			changed := len(strings.Split(strings.TrimSpace(status), "\n"))
-			b.WriteString(fmt.Sprintf("  Changed:  %d files\n", changed))
+			fmt.Fprintf(&b, "  Changed:  %d files\n", changed)
 		} else {
 			b.WriteString("  Changed:  clean\n")
 		}
@@ -2815,7 +2966,7 @@ func gatherCodebaseInfo() string {
 	if len(detected) > 0 {
 		b.WriteString("Project type:\n")
 		for _, d := range detected {
-			b.WriteString(fmt.Sprintf("  %s\n", d))
+			fmt.Fprintf(&b, "  %s\n", d)
 		}
 		b.WriteString("\n")
 	}
@@ -2829,7 +2980,12 @@ func gatherCodebaseInfo() string {
 	}
 	_ = filepath.WalkDir(cwd, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			return nil
+			// Best-effort scan: an unreadable directory is skipped whole, an
+			// unreadable file is ignored, and the walk continues either way.
+			if d != nil && d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil //nolint:nilerr // deliberate: keep scanning past unreadable entries
 		}
 		if d.IsDir() && skipDirs[d.Name()] {
 			return filepath.SkipDir
@@ -2847,7 +3003,7 @@ func gatherCodebaseInfo() string {
 		return nil
 	})
 
-	b.WriteString(fmt.Sprintf("Files:    %d", totalFiles))
+	fmt.Fprintf(&b, "Files:    %d", totalFiles)
 	if totalFiles > 10000 {
 		b.WriteString("+")
 	}
@@ -2878,7 +3034,7 @@ func gatherCodebaseInfo() string {
 		for _, e := range sorted[:limit] {
 			extParts = append(extParts, fmt.Sprintf("%s(%d)", e.ext, e.count))
 		}
-		b.WriteString(fmt.Sprintf("Top:      %s\n", strings.Join(extParts, "  ")))
+		fmt.Fprintf(&b, "Top:      %s\n", strings.Join(extParts, "  "))
 	}
 
 	// AI assistant directories
@@ -2960,21 +3116,21 @@ func gatherCodebaseInfo() string {
 		for _, doc := range docs {
 			excerpt := readFileExcerpt(doc.absPath, 8000)
 			if excerpt.heading == "" && excerpt.body == "" {
-				b.WriteString(fmt.Sprintf("  %s  (empty or binary)\n\n", doc.relPath))
+				fmt.Fprintf(&b, "  %s  (empty or binary)\n\n", doc.relPath)
 				continue
 			}
 
-			b.WriteString(fmt.Sprintf("  %s\n", doc.relPath))
+			fmt.Fprintf(&b, "  %s\n", doc.relPath)
 			if excerpt.heading != "" {
-				b.WriteString(fmt.Sprintf("   # %s\n", excerpt.heading))
+				fmt.Fprintf(&b, "   # %s\n", excerpt.heading)
 			}
 			if excerpt.body != "" {
 				for _, line := range strings.Split(excerpt.body, "\n") {
-					b.WriteString(fmt.Sprintf("   %s\n", line))
+					fmt.Fprintf(&b, "   %s\n", line)
 				}
 			}
 			if len(excerpt.sections) > 0 {
-				b.WriteString(fmt.Sprintf("   Sections: %s\n", strings.Join(excerpt.sections, ", ")))
+				fmt.Fprintf(&b, "   Sections: %s\n", strings.Join(excerpt.sections, ", "))
 			}
 			b.WriteString("\n")
 
@@ -2993,13 +3149,13 @@ func gatherCodebaseInfo() string {
 		b.WriteString("--- What BujiCoder Understands ---\n\n")
 
 		if projectName != "" {
-			b.WriteString(fmt.Sprintf("Project: %s\n", projectName))
+			fmt.Fprintf(&b, "Project: %s\n", projectName)
 		} else {
-			b.WriteString(fmt.Sprintf("Project: %s\n", filepath.Base(cwd)))
+			fmt.Fprintf(&b, "Project: %s\n", filepath.Base(cwd))
 		}
 
 		if projectDesc != "" {
-			b.WriteString(fmt.Sprintf("\n%s\n", projectDesc))
+			fmt.Fprintf(&b, "\n%s\n", projectDesc)
 		}
 
 		if len(detected) > 0 {
@@ -3009,7 +3165,7 @@ func gatherCodebaseInfo() string {
 					techLabels = append(techLabels, d[:idx])
 				}
 			}
-			b.WriteString(fmt.Sprintf("\nDetected stack: %s\n", strings.Join(techLabels, ", ")))
+			fmt.Fprintf(&b, "\nDetected stack: %s\n", strings.Join(techLabels, ", "))
 		}
 
 		if len(mentionedTech) > 0 {
@@ -3025,10 +3181,10 @@ func gatherCodebaseInfo() string {
 			if len(deduped) > 12 {
 				deduped = deduped[:12]
 			}
-			b.WriteString(fmt.Sprintf("Mentioned tech: %s\n", strings.Join(deduped, ", ")))
+			fmt.Fprintf(&b, "Mentioned tech: %s\n", strings.Join(deduped, ", "))
 		}
 
-		b.WriteString(fmt.Sprintf("\nBujiCoder read %d documentation file(s) to understand this project.\n", len(docs)))
+		fmt.Fprintf(&b, "\nBujiCoder read %d documentation file(s) to understand this project.\n", len(docs))
 		b.WriteString("Use the chat to ask questions -- BujiCoder will use this context.\n")
 	}
 
@@ -3198,8 +3354,13 @@ func detectTechnologies(content string) []string {
 	return found
 }
 
+// runQuietCmd runs a short informational command (git, etc.) and returns its
+// trimmed stdout, or "" on any failure. /init calls this from inside Update, so
+// the command is bounded: a hung git process would otherwise freeze the TUI.
 func runQuietCmd(dir, name string, args ...string) string {
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
@@ -3358,21 +3519,21 @@ func renderActivities(activities []activityEntry, width int) string {
 			icon := toolStyle.Render("*")
 			verb := toolStyle.Render(toolDisplayName(a.ToolName))
 			if a.Args != "" {
-				b.WriteString(fmt.Sprintf("  %s %s%s  %s\n", icon, agentLabel, verb, dimStyle.Render(a.Args)))
+				fmt.Fprintf(&b, "  %s %s%s  %s\n", icon, agentLabel, verb, dimStyle.Render(a.Args))
 			} else {
-				b.WriteString(fmt.Sprintf("  %s %s%s\n", icon, agentLabel, verb))
+				fmt.Fprintf(&b, "  %s %s%s\n", icon, agentLabel, verb)
 			}
 
 		case actToolResult:
 			if a.IsError {
-				b.WriteString(fmt.Sprintf("  %s %s%s\n", errorStyle.Render("x"), agentLabel, errorStyle.Render(a.Result)))
+				fmt.Fprintf(&b, "  %s %s%s\n", errorStyle.Render("x"), agentLabel, errorStyle.Render(a.Result))
 			} else {
-				b.WriteString(fmt.Sprintf("  %s %s%s\n", successStyle.Render("ok"), agentLabel, resultStyle.Render(a.Result)))
+				fmt.Fprintf(&b, "  %s %s%s\n", successStyle.Render("ok"), agentLabel, resultStyle.Render(a.Result))
 			}
 
 		case actStatus:
 			icon := dimStyle.Render(">")
-			b.WriteString(fmt.Sprintf("  %s %s%s\n", icon, agentLabel, dimStyle.Render(a.Result)))
+			fmt.Fprintf(&b, "  %s %s%s\n", icon, agentLabel, dimStyle.Render(a.Result))
 		}
 	}
 	return b.String()
@@ -3408,9 +3569,9 @@ func renderWelcomeScreen(version, buildTime string, width int, collapsed bool) s
 	b.WriteString("  " + sectionStyle.Render("Commands") + "\n")
 	b.WriteString(sep + "\n")
 	for _, c := range slashCommands {
-		b.WriteString(fmt.Sprintf("  %s  %s\n",
+		fmt.Fprintf(&b, "  %s  %s\n",
 			cmdStyle.Render(fmt.Sprintf("%-16s", c.cmd)),
-			descStyle.Render(c.desc)))
+			descStyle.Render(c.desc))
 	}
 	b.WriteString("\n")
 
@@ -3429,9 +3590,9 @@ func renderWelcomeScreen(version, buildTime string, width int, collapsed bool) s
 		{"Ctrl+C", "Quit BujiCoder"},
 	}
 	for _, k := range keys {
-		b.WriteString(fmt.Sprintf("  %s  %s\n",
+		fmt.Fprintf(&b, "  %s  %s\n",
 			cmdStyle.Render(fmt.Sprintf("%-16s", k.key)),
-			descStyle.Render(k.desc)))
+			descStyle.Render(k.desc))
 	}
 	b.WriteString("\n")
 
@@ -3659,7 +3820,7 @@ func (m Model) buildScrollableContent() string {
 		spinner := dimStyle.Render(spinnerFrames[m.spinnerFrame])
 		activityText := dimStyle.Render(m.lastActivity)
 		elapsedText := timeStyle.Render(formatElapsed(elapsed))
-		b.WriteString(fmt.Sprintf("\n  %s %s %s %s\n", spinner, activityText, timeStyle.Render("."), elapsedText))
+		fmt.Fprintf(&b, "\n  %s %s %s %s\n", spinner, activityText, timeStyle.Render("."), elapsedText)
 		b.WriteString("\n")
 	}
 
@@ -3691,6 +3852,18 @@ func wrapInput(input string, width int) []string {
 		runes = runes[end:]
 	}
 	return lines
+}
+
+// isSlashCommand reports whether the input is exactly one of the known slash
+// commands (case-insensitive), i.e. there is nothing left to complete.
+func isSlashCommand(input string) bool {
+	in := strings.ToLower(strings.TrimSpace(input))
+	for _, sc := range slashCommands {
+		if sc.cmd == in {
+			return true
+		}
+	}
+	return false
 }
 
 // updateAutocomplete refreshes the autocomplete matches based on the current input.

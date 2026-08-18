@@ -23,6 +23,9 @@ func EvaluateCondition(condition string, vars map[string]string) bool {
 	// Try "X contains 'Y'"
 	if idx := strings.Index(resolved, " contains '"); idx >= 0 {
 		subject := strings.TrimSpace(resolved[:idx])
+		if isUnresolved(subject) {
+			return false // an undefined variable contains nothing
+		}
 		rest := resolved[idx+len(" contains '"):]
 		endQuote := strings.IndexByte(rest, '\'')
 		if endQuote < 0 {
@@ -47,17 +50,24 @@ func EvaluateCondition(condition string, vars map[string]string) bool {
 	// Try "X not_empty"
 	if strings.HasSuffix(resolved, " not_empty") {
 		subject := strings.TrimSuffix(resolved, " not_empty")
-		return strings.TrimSpace(subject) != ""
+		return !isUnresolved(subject) && strings.TrimSpace(subject) != ""
 	}
 
 	// Try "X empty"
 	if strings.HasSuffix(resolved, " empty") {
 		subject := strings.TrimSuffix(resolved, " empty")
-		return strings.TrimSpace(subject) == ""
+		return isUnresolved(subject) || strings.TrimSpace(subject) == ""
 	}
 
 	// Unknown condition format — default to true (run the step).
 	return true
+}
+
+// isUnresolved reports whether a subject still holds a {{placeholder}}, i.e. the
+// variable it referred to was never defined. Treating that as a value made
+// "{{missing}} not_empty" true and ran a step that depended on absent output.
+func isUnresolved(subject string) bool {
+	return strings.Contains(subject, "{{") && strings.Contains(subject, "}}")
 }
 
 // Interpolate replaces all {{key}} placeholders in a template with their

@@ -18,9 +18,9 @@ func TestPricingLookupQualifiedNames(t *testing.T) {
 	}
 
 	tests := []struct {
-		model    string
-		wantOK   bool
-		wantKey  string // expected resolved key (for sanity)
+		model   string
+		wantOK  bool
+		wantKey string // expected resolved key (for sanity)
 	}{
 		{"z-ai/glm-5.1", true, "z-ai/glm-5.1"},
 		{"openrouter/z-ai/glm-5.1", true, "z-ai/glm-5.1"},

@@ -90,24 +90,23 @@ func (p *openAICompatProvider) doStreamRequest(ctx context.Context, req *Complet
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 
 		// If the model doesn't support tools, retry without them so the
 		// model can still participate in conversation (just no tool use).
 		if !stripTools && resp.StatusCode == http.StatusBadRequest &&
-			strings.Contains(string(respBody), "does not support tools") {
+			strings.Contains(respBody, "does not support tools") {
 			return p.doStreamRequest(ctx, req, true)
 		}
 
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go p.processStream(resp.Body, ch)
+	go p.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -231,7 +230,7 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 	return body
 }
 
-func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (p *openAICompatProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -259,13 +258,13 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 			usage.CostCents = 0
 		}
 		if producedOutput {
-			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+			sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}})
 			return
 		}
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "empty_response",
 			Message: fmt.Sprintf("%s returned an empty response (no content)", p.cfg.ProviderName),
-		}}
+		}})
 	}
 
 	// Accumulate streaming tool calls — OpenAI sends them incrementally:
@@ -329,11 +328,15 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 		// Flagged IsReasoning so thinking-aware converters (Anthropic) emit a
 		// native thinking block; Text still carries it for other formats.
 		if reasoning, ok := delta["reasoning_content"].(string); ok && reasoning != "" {
-			ch <- StreamEvent{Delta: &DeltaEvent{Text: reasoning, IsReasoning: true}}
+			if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: reasoning, IsReasoning: true}}) {
+				return
+			}
 			producedOutput = true
 		}
 		if content, ok := delta["content"].(string); ok && content != "" {
-			ch <- StreamEvent{Delta: &DeltaEvent{Text: content}}
+			if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: content}}) {
+				return
+			}
 			producedOutput = true
 		}
 
@@ -368,22 +371,25 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 
 		if finishReason != "" {
 			// Emit all accumulated tool calls before the Complete event
-			for idx := 0; idx < len(pendingTools); idx++ {
+			for idx := range len(pendingTools) {
 				if pt, ok := pendingTools[idx]; ok {
-					ch <- StreamEvent{ToolCall: &ToolCallEvent{
+					if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 						ID:            pt.ID,
 						Name:          pt.Name,
 						ArgumentsJSON: pt.Args.String(),
-					}}
+					}}) {
+						return
+					}
 					producedOutput = true
 				}
 			}
 			pendingTools = make(map[int]*pendingToolCall)
 
 			fr := "stop"
-			if finishReason == "tool_calls" {
+			switch finishReason {
+			case "tool_calls":
 				fr = "tool_calls"
-			} else if finishReason == "length" {
+			case "length":
 				fr = "max_tokens"
 			}
 
@@ -402,10 +408,10 @@ func (p *openAICompatProvider) processStream(body io.ReadCloser, ch chan<- Strea
 	// nothing — the user sees the AI tool die mid-response with no error.
 	scannerErr := scanner.Err()
 	if scannerErr != nil {
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "stream_truncated",
 			Message: fmt.Sprintf("%s stream read error: %v", p.cfg.ProviderName, scannerErr),
-		}}
+		}})
 	}
 
 	// If stream ended without [DONE] and we haven't emitted a terminal event,

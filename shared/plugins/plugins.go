@@ -14,15 +14,15 @@ import (
 
 // Plugin represents a loaded plugin.
 type Plugin struct {
-	Name        string            `json:"name"`
-	Version     string            `json:"version"`
-	Description string            `json:"description"`
-	Author      string            `json:"author"`
-	Enabled     bool              `json:"enabled"`
-	Path        string            `json:"-"`
-	Commands    []Command         `json:"commands,omitempty"`
-	Hooks       []Hook            `json:"hooks,omitempty"`
-	MCPServers  map[string]any    `json:"mcpServers,omitempty"`
+	Name        string         `json:"name"`
+	Version     string         `json:"version"`
+	Description string         `json:"description"`
+	Author      string         `json:"author"`
+	Enabled     bool           `json:"enabled"`
+	Path        string         `json:"-"`
+	Commands    []Command      `json:"commands,omitempty"`
+	Hooks       []Hook         `json:"hooks,omitempty"`
+	MCPServers  map[string]any `json:"mcpServers,omitempty"`
 }
 
 // Command is a slash command provided by a plugin.
@@ -118,6 +118,10 @@ func (pm *Manager) FormatList() string {
 	return sb.String()
 }
 
+// loadFromDir loads every plugin directory under dir. Directories are visited in
+// the sorted order os.ReadDir returns, and a later call (project plugins)
+// deliberately overrides an earlier one (user plugins) with the same name, so
+// precedence is deterministic.
 func (pm *Manager) loadFromDir(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -139,23 +143,32 @@ func (pm *Manager) loadFromDir(dir string) {
 		if err := json.Unmarshal(data, &plugin); err != nil {
 			continue
 		}
+		// Plugins are enabled when discovered; the manifest's "enabled" field is
+		// runtime state toggled via EnablePlugin/DisablePlugin, not a load-time
+		// switch (nothing in the codebase writes plugin.json back).
+		plugin.Enabled = true
 		plugin.Path = pluginDir
 		if plugin.Name == "" {
 			plugin.Name = entry.Name()
 		}
-		plugin.Enabled = true
 
 		// Load commands from commands/ directory
 		cmdDir := filepath.Join(pluginDir, "commands")
 		if cmdEntries, err := os.ReadDir(cmdDir); err == nil {
 			for _, ce := range cmdEntries {
-				if strings.HasSuffix(ce.Name(), ".md") {
-					content, _ := os.ReadFile(filepath.Join(cmdDir, ce.Name()))
-					plugin.Commands = append(plugin.Commands, Command{
-						Name:    strings.TrimSuffix(ce.Name(), ".md"),
-						Content: string(content),
-					})
+				if !strings.HasSuffix(ce.Name(), ".md") {
+					continue
 				}
+				content, err := os.ReadFile(filepath.Join(cmdDir, ce.Name()))
+				if err != nil {
+					// Registering an unreadable command as empty content would
+					// silently give the model a no-op command.
+					continue
+				}
+				plugin.Commands = append(plugin.Commands, Command{
+					Name:    strings.TrimSuffix(ce.Name(), ".md"),
+					Content: string(content),
+				})
 			}
 		}
 

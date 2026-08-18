@@ -163,9 +163,9 @@ func extractGoSymbolsRegex(content string) []Symbol {
 }
 
 var goPatterns = []symbolPattern{
-	{kind: "function", pattern: `^func\s+(\w+)\s*\(`},
-	{kind: "method", pattern: `^func\s+\([^)]+\)\s+(\w+)\s*\(`},
-	{kind: "type", pattern: `^type\s+(\w+)\s+struct\b`},
-	{kind: "interface", pattern: `^type\s+(\w+)\s+interface\b`},
-	{kind: "type", pattern: `^type\s+(\w+)\s+\w`},
+	pat("method", `^func\s+\([^)]+\)\s+(\w+)\s*\(`),
+	pat("function", `^func\s+(\w+)\s*\(`),
+	pat("type", `^type\s+(\w+)\s+struct\b`),
+	pat("interface", `^type\s+(\w+)\s+interface\b`),
+	pat("type", `^type\s+(\w+)\s+\w`),
 }

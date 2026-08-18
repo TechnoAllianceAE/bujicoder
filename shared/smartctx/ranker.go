@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // FileRelevance holds a file's relevance score and the reasons it scored.
@@ -30,6 +32,12 @@ const (
 	WeightSymbolMatch  = 4.0 // File contains symbols referenced in the query
 	WeightImportProx   = 1.5 // File is imported by a changed file
 	MaxRankedFiles     = 50  // Maximum files to return
+
+	// MaxScannedFiles bounds how many project files a single ranking pass will
+	// visit.
+	MaxScannedFiles = 20000
+	// MaxImportScanBytes bounds the size of a file read for import extraction.
+	MaxImportScanBytes = 1 << 20
 )
 
 // skipDirs are directories to exclude from ranking.
@@ -59,9 +67,12 @@ func RankFiles(projectRoot, query string, symbolNames []string) []FileRelevance 
 	}
 
 	scores := make(map[string]*FileRelevance)
+	scanned := 0
 
 	_ = filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			// Keep ranking the rest of the tree, but do not hide the failure.
+			log.Debug().Err(err).Str("path", path).Msg("smartctx: skipping unreadable path")
 			return nil
 		}
 		if d.IsDir() {
@@ -70,9 +81,19 @@ func RankFiles(projectRoot, query string, symbolNames []string) []FileRelevance 
 			}
 			return nil
 		}
+		// Bound the scan: ranking runs on every turn and a monorepo can hold
+		// millions of files.
+		if scanned >= MaxScannedFiles {
+			return filepath.SkipAll
+		}
+		scanned++
 
 		rel, err := filepath.Rel(projectRoot, path)
-		if err != nil || rel == "." {
+		if err != nil {
+			log.Debug().Err(err).Str("path", path).Msg("smartctx: path outside project root")
+			return nil
+		}
+		if rel == "." {
 			return nil
 		}
 
@@ -156,7 +177,7 @@ func FormatRankedFiles(ranked []FileRelevance) string {
 
 	for _, fr := range ranked {
 		reasons := strings.Join(fr.Reasons, ", ")
-		sb.WriteString(fmt.Sprintf("[%.1f] %s (%s)\n", fr.Score, fr.Path, reasons))
+		fmt.Fprintf(&sb, "[%.1f] %s (%s)\n", fr.Score, fr.Path, reasons)
 	}
 
 	return sb.String()
@@ -221,6 +242,12 @@ func getRecentlyModifiedFiles(root string) map[string]bool {
 // Returns relative paths that might match other project files.
 func extractImportPaths(root, relPath string) []string {
 	absPath := filepath.Join(root, relPath)
+	// Stat first: a changed file can be arbitrarily large (a checked-in bundle
+	// or data blob) and reading it whole to look for imports is unbounded.
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() || info.Size() > MaxImportScanBytes {
+		return nil
+	}
 	data, err := os.ReadFile(absPath)
 	if err != nil {
 		return nil

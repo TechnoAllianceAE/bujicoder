@@ -42,7 +42,10 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 	}
 
 	// Propagate plan mode to tools so write operations are blocked.
-	if cfg.CostMode == "plan" {
+	// CostMode never actually carries "plan" (costmode.ParseMode maps unknown
+	// values to "normal"), so PlanMode is the authoritative flag; the CostMode
+	// check is kept for callers that set it explicitly.
+	if cfg.PlanMode || cfg.CostMode == "plan" {
 		ctx = tools.WithPlanMode(ctx, true)
 	}
 
@@ -70,7 +73,6 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 	for i < len(toolCalls) {
 		// Collect a batch of consecutive safe tools.
 		batchStart := i
-		allSafe := true
 		for i < len(toolCalls) && isSafeTool(toolCalls[i].Name) {
 			i++
 		}
@@ -107,7 +109,6 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 					toolID:   tc.ID,
 				}
 			}
-			allSafe = true
 		}
 
 		// Process unsafe tools one at a time.
@@ -122,10 +123,7 @@ func dispatchToolCalls(ctx context.Context, rt *Runtime, toolCalls []llm.ToolCal
 				toolID:   tc.ID,
 			}
 			i++
-			allSafe = false
 		}
-
-		_ = allSafe
 	}
 
 	// Emit events and build content parts in original order.
@@ -158,7 +156,7 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 	// Pre-tool hooks: if any hook blocks (exit code 2), abort before execution.
 	if cfg.HookManager != nil {
 		argsMap := parseToolArgs(tc.ArgumentsJSON)
-		for _, r := range cfg.HookManager.RunHooks("PreToolUse", tc.Name, argsMap) {
+		for _, r := range cfg.HookManager.RunHooks(ctx, "PreToolUse", tc.Name, argsMap) {
 			if r.Blocked {
 				return r.Message, true
 			}
@@ -221,7 +219,7 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 		}
 
 	case "apply_proposals":
-		if cfg.CostMode == "plan" {
+		if cfg.PlanMode || cfg.CostMode == "plan" {
 			resultText = "BLOCKED (plan mode): apply_proposals is not allowed in plan mode."
 			isError = true
 		} else {
@@ -286,14 +284,18 @@ func executeSingleTool(ctx context.Context, rt *Runtime, tc llm.ToolCallEvent, c
 	if !isError && cfg.SnapshotManager != nil && isWriteTool(tc.Name) {
 		files := extractFilePaths(tc.Name, tc.ArgumentsJSON)
 		if len(files) > 0 {
-			cfg.SnapshotManager.Take(0, cfg.AgentDef.ID, tc.Name, files)
+			if _, err := cfg.SnapshotManager.Take(0, cfg.AgentDef.ID, tc.Name, files); err != nil {
+				// Not fatal for the tool call, but the user loses the undo
+				// point for this edit, so it must not pass silently.
+				rt.log.Warn().Str("tool", tc.Name).Str("agent", cfg.AgentDef.ID).Strs("files", files).Err(err).Msg("auto-snapshot failed")
+			}
 		}
 	}
 
 	// Post-tool hooks: fire after execution (informational, cannot block).
 	if cfg.HookManager != nil {
 		argsMap := parseToolArgs(tc.ArgumentsJSON)
-		cfg.HookManager.RunHooks("PostToolUse", tc.Name, argsMap)
+		cfg.HookManager.RunHooks(ctx, "PostToolUse", tc.Name, argsMap)
 	}
 
 	return resultText, isError
@@ -323,18 +325,24 @@ func extractFilePaths(toolName, argsJSON string) []string {
 	var paths []string
 	switch toolName {
 	case "write_file":
-		var a struct{ Path string `json:"path"` }
+		var a struct {
+			Path string `json:"path"`
+		}
 		if json.Unmarshal([]byte(argsJSON), &a) == nil && a.Path != "" {
 			paths = append(paths, a.Path)
 		}
 	case "str_replace":
-		var a struct{ Path string `json:"path"` }
+		var a struct {
+			Path string `json:"path"`
+		}
 		if json.Unmarshal([]byte(argsJSON), &a) == nil && a.Path != "" {
 			paths = append(paths, a.Path)
 		}
 	case "multi_edit":
 		var a struct {
-			Edits []struct{ Path string `json:"path"` } `json:"edits"`
+			Edits []struct {
+				Path string `json:"path"`
+			} `json:"edits"`
 		}
 		if json.Unmarshal([]byte(argsJSON), &a) == nil {
 			seen := map[string]bool{}
@@ -377,7 +385,7 @@ func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (st
 	for i, ch := range args.Changes {
 		absPath, err := tools.SafePath(workDir, ch.Path)
 		if err != nil {
-			summary.WriteString(fmt.Sprintf("[%d] %s: error: %v\n", i+1, ch.Path, err))
+			fmt.Fprintf(&summary, "[%d] %s: error: %v\n", i+1, ch.Path, err)
 			continue
 		}
 
@@ -385,35 +393,35 @@ func handleApplyProposals(_ context.Context, argsJSON string, cfg RunConfig) (st
 		case "edit":
 			data, err := os.ReadFile(absPath)
 			if err != nil {
-				summary.WriteString(fmt.Sprintf("[%d] %s: read error: %v\n", i+1, ch.Path, err))
+				fmt.Fprintf(&summary, "[%d] %s: read error: %v\n", i+1, ch.Path, err)
 				continue
 			}
 			content := string(data)
 			match := editmatch.Find(content, ch.OldStr)
 			if match == nil {
-				summary.WriteString(fmt.Sprintf("[%d] %s: old_str not found\n", i+1, ch.Path))
+				fmt.Fprintf(&summary, "[%d] %s: old_str not found\n", i+1, ch.Path)
 				continue
 			}
 			newContent := content[:match.Start] + ch.NewStr + content[match.End:]
 			if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
-				summary.WriteString(fmt.Sprintf("[%d] %s: write error: %v\n", i+1, ch.Path, err))
+				fmt.Fprintf(&summary, "[%d] %s: write error: %v\n", i+1, ch.Path, err)
 				continue
 			}
-			summary.WriteString(fmt.Sprintf("[%d] %s: edit applied\n", i+1, ch.Path))
+			fmt.Fprintf(&summary, "[%d] %s: edit applied\n", i+1, ch.Path)
 
 		case "write_file":
 			if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-				summary.WriteString(fmt.Sprintf("[%d] %s: mkdir error: %v\n", i+1, ch.Path, err))
+				fmt.Fprintf(&summary, "[%d] %s: mkdir error: %v\n", i+1, ch.Path, err)
 				continue
 			}
 			if err := os.WriteFile(absPath, []byte(ch.Content), 0o644); err != nil {
-				summary.WriteString(fmt.Sprintf("[%d] %s: write error: %v\n", i+1, ch.Path, err))
+				fmt.Fprintf(&summary, "[%d] %s: write error: %v\n", i+1, ch.Path, err)
 				continue
 			}
-			summary.WriteString(fmt.Sprintf("[%d] %s: file written (%d bytes)\n", i+1, ch.Path, len(ch.Content)))
+			fmt.Fprintf(&summary, "[%d] %s: file written (%d bytes)\n", i+1, ch.Path, len(ch.Content))
 
 		default:
-			summary.WriteString(fmt.Sprintf("[%d] %s: unknown type %q\n", i+1, ch.Path, ch.Type))
+			fmt.Fprintf(&summary, "[%d] %s: unknown type %q\n", i+1, ch.Path, ch.Type)
 		}
 	}
 
@@ -460,22 +468,25 @@ func handleThinkDeeply(ctx context.Context, rt *Runtime, argsJSON string, cfg Ru
 	maxTokens := 16384
 	thinkReq.MaxTokens = &maxTokens
 
-	ch, err := provider.StreamCompletion(ctx, thinkReq)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
+	ch, err := provider.StreamCompletion(streamCtx, thinkReq)
 	if err != nil {
 		return "", fmt.Errorf("start thinking: %w", err)
 	}
 
-	var result string
+	var result strings.Builder
 	for ev := range ch {
 		if ev.Delta != nil {
-			result += ev.Delta.Text
+			result.WriteString(ev.Delta.Text)
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
-			return "", fmt.Errorf("thinking error: %s", ev.Error.Message)
+			return "", drainStream(cancelStream, ch, fmt.Errorf("thinking error: %s", ev.Error.Message))
 		}
 	}
 
-	return result, nil
+	return result.String(), nil
 }
 
 // handleRevertSnapshot reverts project files to a previous snapshot state.
@@ -507,15 +518,15 @@ func handleListSnapshots(cfg RunConfig) (string, error) {
 	}
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Recent snapshots (%d):\n\n", len(snaps)))
+	fmt.Fprintf(&sb, "Recent snapshots (%d):\n\n", len(snaps))
 	for _, s := range snaps {
 		files := strings.Join(s.Files, ", ")
 		if len(files) > 60 {
 			files = files[:60] + "..."
 		}
-		sb.WriteString(fmt.Sprintf("  %s  step:%d  agent:%s  tool:%s  %s\n    files: %s\n",
+		fmt.Fprintf(&sb, "  %s  step:%d  agent:%s  tool:%s  %s\n    files: %s\n",
 			s.ID, s.StepNum, s.AgentID, s.ToolName,
-			s.Timestamp.Format("15:04:05"), files))
+			s.Timestamp.Format("15:04:05"), files)
 	}
 	return sb.String(), nil
 }

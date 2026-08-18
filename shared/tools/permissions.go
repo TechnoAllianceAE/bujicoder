@@ -35,10 +35,10 @@ type CommandRule struct {
 // ProjectPermissions holds the parsed permissions configuration.
 // Loaded from .bujicoder/permissions.yaml (project-local or ~/.bujicoder/).
 type ProjectPermissions struct {
-	Mode            PermissionMode            `yaml:"mode"`
+	Mode            PermissionMode              `yaml:"mode"`
 	Tools           map[string]PermissionAction `yaml:"tools"`
-	Commands        []CommandRule             `yaml:"commands"`
-	RestrictedPaths []string                  `yaml:"restricted_paths"`
+	Commands        []CommandRule               `yaml:"commands"`
+	RestrictedPaths []string                    `yaml:"restricted_paths"`
 
 	// sourceFile is the path from which this config was loaded (for display).
 	sourceFile string

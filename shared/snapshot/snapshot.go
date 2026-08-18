@@ -4,6 +4,8 @@ package snapshot
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +14,16 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
+)
+
+const (
+	// gitTimeout bounds every git invocation in the shadow repo.
+	gitTimeout = 5 * time.Second
+	// metadataFile marks the shadow repo. It lives only in the snapshot tree
+	// and must never be restored into the user's project.
+	metadataFile = ".snapshot-metadata"
 )
 
 // Manager manages snapshots in a shadow git repository.
@@ -34,11 +46,16 @@ type Snapshot struct {
 // NewManager creates a snapshot manager for the given project.
 // It initializes the shadow git repo if it doesn't exist.
 func NewManager(projectRoot string) (*Manager, error) {
-	snapshotDir := filepath.Join(projectRoot, ".bujicoder", "snapshots")
+	// An absolute root is required so snapshot paths can be validated against
+	// it even after the process changes directory.
+	absRoot, err := filepath.Abs(projectRoot)
+	if err != nil {
+		return nil, fmt.Errorf("resolve project root: %w", err)
+	}
 
 	m := &Manager{
-		projectRoot: projectRoot,
-		snapshotDir: snapshotDir,
+		projectRoot: absRoot,
+		snapshotDir: filepath.Join(absRoot, ".bujicoder", "snapshots"),
 	}
 
 	// Initialize shadow repo if needed.
@@ -46,8 +63,11 @@ func NewManager(projectRoot string) (*Manager, error) {
 		return nil, fmt.Errorf("init snapshot repo: %w", err)
 	}
 
-	// Ensure .bujicoder/ is in .gitignore.
-	m.ensureGitignore()
+	// Ensure .bujicoder/ is in .gitignore. Snapshots still work without it, so
+	// this is reported and not fatal.
+	if err := m.ensureGitignore(); err != nil {
+		log.Warn().Err(err).Str("project", absRoot).Msg("snapshot: could not update .gitignore")
+	}
 
 	return m, nil
 }
@@ -63,23 +83,36 @@ func (m *Manager) Take(stepNum int, agentID, toolName string, files []string) (*
 
 	// Copy files to snapshot working tree.
 	for _, f := range files {
-		srcPath := filepath.Join(m.projectRoot, f)
-		dstPath := filepath.Join(m.snapshotDir, f)
+		rel, err := m.relInProject(f)
+		if err != nil {
+			return nil, err
+		}
+		srcPath := filepath.Join(m.projectRoot, rel)
+		dstPath := filepath.Join(m.snapshotDir, rel)
+
+		data, readErr := os.ReadFile(srcPath)
+		if readErr != nil {
+			if !os.IsNotExist(readErr) {
+				// An unreadable-but-present file must not be recorded as a
+				// deletion: that would drop the last good copy from the
+				// snapshot tree and silently lose the user's revert target.
+				return nil, fmt.Errorf("snapshot %s: %w", rel, readErr)
+			}
+			// File was deleted — remove from snapshot tree too.
+			if err := os.Remove(dstPath); err != nil && !os.IsNotExist(err) {
+				return nil, fmt.Errorf("snapshot remove %s: %w", rel, err)
+			}
+			// Ignore the error: the path may never have been tracked.
+			_, _ = m.git("rm", "--force", "--quiet", "--ignore-unmatch", "--", rel)
+			continue
+		}
 
 		// Create parent dirs.
-		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
-			continue
+		if err := os.MkdirAll(filepath.Dir(dstPath), 0o700); err != nil {
+			return nil, fmt.Errorf("snapshot mkdir %s: %w", rel, err)
 		}
-
-		data, err := os.ReadFile(srcPath)
-		if err != nil {
-			// File was deleted — remove from snapshot tree too.
-			os.Remove(dstPath)
-			m.git("rm", "--force", "--quiet", f)
-			continue
-		}
-		if err := os.WriteFile(dstPath, data, 0o644); err != nil {
-			continue
+		if err := os.WriteFile(dstPath, data, 0o600); err != nil {
+			return nil, fmt.Errorf("snapshot write %s: %w", rel, err)
 		}
 	}
 
@@ -89,7 +122,10 @@ func (m *Manager) Take(stepNum int, agentID, toolName string, files []string) (*
 	}
 
 	// Check if there's anything to commit.
-	status, _ := m.git("status", "--porcelain")
+	status, err := m.git("status", "--porcelain")
+	if err != nil {
+		return nil, fmt.Errorf("git status: %w", err)
+	}
 	if strings.TrimSpace(status) == "" {
 		return nil, nil // no changes
 	}
@@ -165,13 +201,14 @@ func (m *Manager) List(limit int) ([]Snapshot, error) {
 			}
 		}
 
-		// Get files changed in this commit.
-		filesOut, _ := m.git("diff-tree", "--no-commit-id", "--name-only", "-r", parts[0])
-		if filesOut != "" {
-			for _, f := range strings.Split(strings.TrimSpace(filesOut), "\n") {
-				if f != "" {
-					snap.Files = append(snap.Files, f)
-				}
+		// Get files changed in this commit. -z keeps non-ASCII paths raw.
+		filesOut, err := m.git("diff-tree", "--no-commit-id", "--name-only", "-r", "-z", parts[0])
+		if err != nil {
+			return nil, fmt.Errorf("list snapshot %s files: %w", parts[0], err)
+		}
+		for _, f := range strings.Split(filesOut, "\x00") {
+			if f != "" && f != metadataFile {
+				snap.Files = append(snap.Files, f)
 			}
 		}
 
@@ -194,27 +231,38 @@ func (m *Manager) Revert(snapshotID string) error {
 	}
 	fullHash = strings.TrimSpace(fullHash)
 
-	// Get list of files in the snapshot's tree.
-	filesOut, err := m.git("ls-tree", "-r", "--name-only", fullHash)
+	// Get list of files in the snapshot's tree. -z keeps paths raw: without it
+	// git C-quotes any path with non-ASCII or special characters, and feeding
+	// the quoted form back to `git show` fails — so revert used to skip every
+	// file with a unicode name.
+	filesOut, err := m.git("ls-tree", "-r", "--name-only", "-z", fullHash)
 	if err != nil {
 		return fmt.Errorf("ls-tree: %w", err)
 	}
 
 	// For each file, extract from the snapshot commit and write to project root.
-	for _, f := range strings.Split(strings.TrimSpace(filesOut), "\n") {
-		if f == "" {
+	// A silently skipped file means the user believes work was restored when it
+	// was not, so every failure is surfaced.
+	for _, f := range strings.Split(filesOut, "\x00") {
+		if f == "" || f == metadataFile {
 			continue
 		}
 		content, err := m.git("show", fullHash+":"+f)
 		if err != nil {
-			continue
+			return fmt.Errorf("revert %s: %w", f, err)
 		}
 		dstPath := filepath.Join(m.projectRoot, f)
 		if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
-			continue
+			return fmt.Errorf("revert mkdir %s: %w", f, err)
 		}
-		if err := os.WriteFile(dstPath, []byte(content), 0o644); err != nil {
-			continue
+		// Preserve the existing mode so reverting does not strip the execute
+		// bit off scripts.
+		mode := os.FileMode(0o644)
+		if info, statErr := os.Stat(dstPath); statErr == nil {
+			mode = info.Mode().Perm()
+		}
+		if err := os.WriteFile(dstPath, []byte(content), mode); err != nil {
+			return fmt.Errorf("revert write %s: %w", f, err)
 		}
 	}
 
@@ -233,8 +281,17 @@ func (m *Manager) Diff(fromID, toID string) (string, error) {
 	return diff, nil
 }
 
-// Cleanup removes snapshots older than the given duration, keeping at most maxKeep.
+// Cleanup truncates snapshot history to at most maxKeep commits.
+//
+// The olderThan argument is accepted for API compatibility but is not used:
+// truncation is purely count-based.
+//
+// History is rewritten on a temporary branch and only swapped in once every
+// step has succeeded, so a failure part-way through leaves the existing
+// snapshot history — the user's only revert path — untouched.
 func (m *Manager) Cleanup(olderThan time.Duration, maxKeep int) error {
+	_ = olderThan
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -243,30 +300,73 @@ func (m *Manager) Cleanup(olderThan time.Duration, maxKeep int) error {
 	}
 
 	// Count total commits.
-	countOut, _ := m.git("rev-list", "--count", "HEAD")
-	count, _ := strconv.Atoi(strings.TrimSpace(countOut))
+	countOut, err := m.git("rev-list", "--count", "HEAD")
+	if err != nil {
+		return fmt.Errorf("count snapshots: %w", err)
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(countOut))
+	if err != nil {
+		return fmt.Errorf("parse snapshot count %q: %w", strings.TrimSpace(countOut), err)
+	}
 
 	if count <= maxKeep {
 		return nil
 	}
 
-	// Truncate history to maxKeep commits by rebasing.
-	// Use filter-branch or orphan approach.
-	// Simplest: reset to keep only last N commits via shallow clone technique.
+	branch, err := m.currentBranch()
+	if err != nil {
+		return err
+	}
+
 	keepHash, err := m.git("rev-parse", fmt.Sprintf("HEAD~%d", maxKeep))
 	if err != nil {
 		return nil // not enough commits
 	}
 	keepHash = strings.TrimSpace(keepHash)
 
-	// Create a new orphan branch from the keep point and force-replace.
-	m.git("checkout", "--orphan", "cleanup-temp", keepHash)
-	m.git("commit", "-m", "cleanup: truncated history", "--allow-empty", "--quiet")
-	m.git("cherry-pick", keepHash+"..main")
-	m.git("branch", "-M", "main")
-	m.git("checkout", "main")
+	const temp = "buji-cleanup-temp"
+	// Start a fresh root at the keep point on a throwaway branch. The original
+	// branch is not modified until the final rename.
+	if _, err := m.git("checkout", "--quiet", "--orphan", temp, keepHash); err != nil {
+		return fmt.Errorf("cleanup: start truncated history: %w", err)
+	}
+
+	abort := func(cause error) error {
+		if _, err := m.git("checkout", "--quiet", "--force", branch); err != nil {
+			return fmt.Errorf("cleanup failed (%w) and could not restore branch %s: %w", cause, branch, err)
+		}
+		_, _ = m.git("branch", "-D", temp)
+		return cause
+	}
+
+	if _, err := m.git("commit", "-m", "cleanup: truncated history", "--allow-empty", "--quiet"); err != nil {
+		return abort(fmt.Errorf("cleanup: root commit: %w", err))
+	}
+	if _, err := m.git("cherry-pick", keepHash+".."+branch); err != nil {
+		_, _ = m.git("cherry-pick", "--abort")
+		return abort(fmt.Errorf("cleanup: replay snapshots: %w", err))
+	}
+	// Renaming the current branch moves HEAD with it.
+	if _, err := m.git("branch", "-M", branch); err != nil {
+		return abort(fmt.Errorf("cleanup: swap branch: %w", err))
+	}
 
 	return nil
+}
+
+// currentBranch returns the checked-out branch of the shadow repo. The default
+// branch name depends on the user's git configuration, so it must never be
+// assumed to be "main".
+func (m *Manager) currentBranch() (string, error) {
+	out, err := m.git("rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolve snapshot branch: %w", err)
+	}
+	branch := strings.TrimSpace(out)
+	if branch == "" || branch == "HEAD" {
+		return "", fmt.Errorf("snapshot repo has no checked-out branch")
+	}
+	return branch, nil
 }
 
 // --- Internal helpers ---
@@ -285,61 +385,108 @@ func (m *Manager) initRepo() error {
 		return err
 	}
 
-	// Configure the repo to avoid user identity issues.
-	m.git("config", "user.email", "bujicoder@local")
-	m.git("config", "user.name", "BujiCoder Snapshots")
+	// Configure the repo to avoid user identity issues. Without this the
+	// initial commit — and every later snapshot — fails on machines with no
+	// global git identity.
+	if _, err := m.git("config", "user.email", "bujicoder@local"); err != nil {
+		return err
+	}
+	if _, err := m.git("config", "user.name", "BujiCoder Snapshots"); err != nil {
+		return err
+	}
 
-	// Initial commit so we have a HEAD.
-	readmePath := filepath.Join(m.snapshotDir, ".snapshot-metadata")
-	os.WriteFile(readmePath, []byte("BujiCoder snapshot repository\n"), 0o644)
-	m.git("add", "-A")
-	m.git("commit", "-m", "init", "--quiet")
+	// Initial commit so we have a HEAD. A missing HEAD makes every subsequent
+	// snapshot operation fail, so this must not be best-effort.
+	readmePath := filepath.Join(m.snapshotDir, metadataFile)
+	if err := os.WriteFile(readmePath, []byte("BujiCoder snapshot repository\n"), 0o600); err != nil {
+		return err
+	}
+	if _, err := m.git("add", "-A"); err != nil {
+		return err
+	}
+	if _, err := m.git("commit", "-m", "init", "--quiet"); err != nil {
+		return err
+	}
 
 	return nil
 }
 
+// relInProject validates that p refers to a location inside the project root
+// and returns it as a clean relative path. Without this a tool-reported path
+// such as "../../.ssh/config" would make the snapshot tree write outside
+// .bujicoder/snapshots/.
+func (m *Manager) relInProject(p string) (string, error) {
+	rel := p
+	if filepath.IsAbs(p) {
+		var err error
+		rel, err = filepath.Rel(m.projectRoot, p)
+		if err != nil {
+			return "", fmt.Errorf("snapshot path %q outside project: %w", p, err)
+		}
+	}
+	rel = filepath.Clean(rel)
+	if rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("snapshot path %q escapes project root", p)
+	}
+	return rel, nil
+}
+
+// git runs a git command inside the shadow repo. stderr is folded into the
+// returned error so a failing snapshot is never silent.
 func (m *Manager) git(args ...string) (string, error) {
-	cmd := exec.Command("git", args...)
+	if len(args) == 0 {
+		return "", fmt.Errorf("git: no arguments")
+	}
+
+	// Bounded so a hung git (for example one prompting for credentials) cannot
+	// stall the agent. CommandContext owns the kill, which avoids racing on
+	// cmd.Process while cmd.Run is still starting the process.
+	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = m.snapshotDir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// 5-second timeout to avoid hanging.
-	done := make(chan error, 1)
-	go func() { done <- cmd.Run() }()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			return stdout.String(), fmt.Errorf("%s: %s", err, stderr.String())
-		}
-		return stdout.String(), nil
-	case <-time.After(5 * time.Second):
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		return "", fmt.Errorf("git %s timed out", args[0])
+	err := cmd.Run()
+	if ctx.Err() != nil {
+		return stdout.String(), fmt.Errorf("git %s timed out after %s", args[0], gitTimeout)
 	}
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return "", fmt.Errorf("git executable not found: snapshots require git in PATH")
+		}
+		return stdout.String(), fmt.Errorf("git %s: %w: %s", args[0], err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
 
-func (m *Manager) ensureGitignore() {
+func (m *Manager) ensureGitignore() error {
 	gitignorePath := filepath.Join(m.projectRoot, ".gitignore")
 
-	data, _ := os.ReadFile(gitignorePath)
-	content := string(data)
+	data, err := os.ReadFile(gitignorePath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read .gitignore: %w", err)
+	}
 
-	if strings.Contains(content, ".bujicoder/") {
-		return
+	if strings.Contains(string(data), ".bujicoder/") {
+		return nil
 	}
 
 	// Append the entry.
-	entry := "\n# BujiCoder local data\n.bujicoder/\n"
 	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return
+		return fmt.Errorf("open .gitignore: %w", err)
 	}
-	defer f.Close()
-	f.WriteString(entry)
+	if _, err := f.WriteString("\n# BujiCoder local data\n.bujicoder/\n"); err != nil {
+		f.Close()
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close .gitignore: %w", err)
+	}
+	return nil
 }

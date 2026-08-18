@@ -63,7 +63,9 @@ func (p *PricingService) mergeVertexPricing(ctx context.Context, prices map[stri
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("vertex pricing status %d", resp.StatusCode)
 	}
-	body, err := io.ReadAll(resp.Body)
+	// The pricing page is untrusted network input; bound it like every other
+	// remote document we buffer whole.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10 MB limit
 	if err != nil {
 		return err
 	}

@@ -15,8 +15,8 @@ import (
 	"github.com/TechnoAllianceAE/bujicoder/shared/hooks"
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
 	"github.com/TechnoAllianceAE/bujicoder/shared/logging"
-	"github.com/TechnoAllianceAE/bujicoder/shared/memory"
 	"github.com/TechnoAllianceAE/bujicoder/shared/mcp"
+	"github.com/TechnoAllianceAE/bujicoder/shared/memory"
 	"github.com/TechnoAllianceAE/bujicoder/shared/tools"
 )
 
@@ -34,6 +34,8 @@ type AgentOrchestrator struct {
 	HookMgr       *hooks.Manager
 	MemoryStore   *memory.Store
 	Log           zerolog.Logger
+	ProjectRoot   string
+	PlanMode      bool
 
 	// Channels for interactive tool features (ask_user, approval)
 	AskQuestionCh  chan string
@@ -67,6 +69,7 @@ func NewOrchestrator(cfg OrchestratorConfig) (*AgentOrchestrator, error) {
 
 	o := &AgentOrchestrator{
 		Log:            log,
+		PlanMode:       cfg.PlanMode,
 		AskQuestionCh:  make(chan string, 1),
 		AskAnswerCh:    make(chan string, 1),
 		ApprovalCmdCh:  make(chan string, 1),
@@ -110,6 +113,8 @@ func NewOrchestrator(cfg OrchestratorConfig) (*AgentOrchestrator, error) {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
+	// Remember the resolved root so runs use the same root as the tools.
+	o.ProjectRoot = cwd
 
 	userPrompt := cfg.UserPrompt
 	if userPrompt == nil {
@@ -154,9 +159,8 @@ func NewOrchestrator(cfg OrchestratorConfig) (*AgentOrchestrator, error) {
 	o.LLMRegistry = llm.NewRegistry()
 	registerLocalProviders(o.LLMRegistry, ucfg)
 
-	// Hooks
-	home, _ := os.UserHomeDir()
-	configDir := home + "/.bujicoder"
+	// Hooks — honour BUJICODER_CONFIG_DIR like the rest of the CLI.
+	configDir := cliconfig.Dir()
 	o.HookMgr = hooks.NewManagerFromConfigDir(configDir, cwd)
 
 	// Memory
@@ -192,19 +196,19 @@ func (o *AgentOrchestrator) RunPrompt(
 		agentDef = agentDef.WithCostMode(mode, o.ModelResolver)
 	}
 
-	if planMode {
+	plan := planMode || o.PlanMode
+	if plan {
 		prompt = "[PLAN MODE] You are in documentation-only mode. Do NOT modify any source code files. " +
 			"You may: READ any files for understanding, CREATE or MODIFY only .md files, analyze code, write plans and documentation. " +
 			"Do not use write_file or str_replace on non-.md files.\n\n" + prompt
 	}
 
-	cwd, _ := os.Getwd()
-
 	runCfg := agentruntime.RunConfig{
 		AgentDef:      agentDef,
 		UserMessage:   prompt,
 		History:       history,
-		ProjectRoot:   cwd,
+		ProjectRoot:   o.ProjectRoot,
+		PlanMode:      plan,
 		CostMode:      mode,
 		ModelResolver: o.ModelResolver,
 		HookManager:   o.HookMgr,
@@ -231,12 +235,12 @@ func (o *AgentOrchestrator) BuildRunConfig(
 	mode costmode.Mode,
 	onEvent func(agentruntime.Event),
 ) agentruntime.RunConfig {
-	cwd, _ := os.Getwd()
 	return agentruntime.RunConfig{
 		AgentDef:      agentDef,
 		UserMessage:   userMessage,
 		History:       history,
-		ProjectRoot:   cwd,
+		ProjectRoot:   o.ProjectRoot,
+		PlanMode:      o.PlanMode,
 		CostMode:      mode,
 		ModelResolver: o.ModelResolver,
 		HookManager:   o.HookMgr,

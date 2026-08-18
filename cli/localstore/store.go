@@ -3,14 +3,24 @@ package localstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/TechnoAllianceAE/bujicoder/cli/config"
 )
 
 // Store manages local conversation files in ~/.bujicoder/conversations/.
+//
+// A Store is safe for concurrent use: conversation files are updated with a
+// read-modify-write cycle, so the mutex is what keeps two concurrent appends
+// from dropping each other's messages.
 type Store struct {
+	mu  sync.Mutex
 	dir string
 }
 
@@ -38,16 +48,32 @@ type ConversationSummary struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-// NewStore creates a Store using ~/.bujicoder/conversations/ as the storage directory.
+// NewStore creates a Store using <config dir>/conversations/ as the storage
+// directory, honouring BUJICODER_CONFIG_DIR like the rest of the CLI.
 func NewStore() *Store {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, ".bujicoder", "conversations")
+	dir := filepath.Join(config.Dir(), "conversations")
 	_ = os.MkdirAll(dir, 0o700)
 	return &Store{dir: dir}
 }
 
+// convPath validates the conversation ID and returns its file path.
+// IDs are used as filenames, so anything that could escape the store directory
+// (path separators, "..", empty) is rejected rather than written outside it.
+func (s *Store) convPath(id string) (string, error) {
+	if id == "" {
+		return "", fmt.Errorf("invalid conversation id: empty")
+	}
+	if id == "." || id == ".." || strings.ContainsAny(id, `/\`) || strings.Contains(id, "..") {
+		return "", fmt.Errorf("invalid conversation id: %q", id)
+	}
+	return filepath.Join(s.dir, id+".json"), nil
+}
+
 // SaveConversation writes a full conversation file.
 func (s *Store) SaveConversation(id, title string, msgs []StoredMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	now := time.Now().UTC()
 	conv := ConversationFile{
 		ID:        id,
@@ -62,9 +88,17 @@ func (s *Store) SaveConversation(id, title string, msgs []StoredMessage) error {
 // AppendMessages appends messages to an existing conversation.
 // Creates the conversation file if it doesn't exist.
 func (s *Store) AppendMessages(id, title string, msgs ...StoredMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	conv, err := s.readConv(id)
 	if err != nil {
-		// File doesn't exist — create new.
+		// Only a missing file means "new conversation". Any other failure
+		// (corrupt JSON, permissions) must not silently replace the existing
+		// history with just these messages.
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("read conversation %s: %w", id, err)
+		}
 		now := time.Now().UTC()
 		conv = &ConversationFile{
 			ID:        id,
@@ -83,6 +117,9 @@ func (s *Store) AppendMessages(id, title string, msgs ...StoredMessage) error {
 
 // ListConversations returns conversation summaries sorted by updated_at DESC.
 func (s *Store) ListConversations(limit, offset int) ([]ConversationSummary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -96,7 +133,7 @@ func (s *Store) ListConversations(limit, offset int) ([]ConversationSummary, err
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
 		}
-		conv, err := s.readConv(entry.Name()[:len(entry.Name())-5])
+		conv, err := s.readConv(strings.TrimSuffix(entry.Name(), ".json"))
 		if err != nil {
 			continue
 		}
@@ -113,6 +150,9 @@ func (s *Store) ListConversations(limit, offset int) ([]ConversationSummary, err
 	})
 
 	// Apply offset.
+	if offset < 0 {
+		offset = 0
+	}
 	if offset > 0 {
 		if offset >= len(summaries) {
 			return nil, nil
@@ -128,6 +168,9 @@ func (s *Store) ListConversations(limit, offset int) ([]ConversationSummary, err
 
 // GetMessages returns all messages for a conversation.
 func (s *Store) GetMessages(id string) ([]StoredMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	conv, err := s.readConv(id)
 	if err != nil {
 		return nil, err
@@ -137,28 +180,66 @@ func (s *Store) GetMessages(id string) ([]StoredMessage, error) {
 
 // DeleteConversation removes a conversation file.
 func (s *Store) DeleteConversation(id string) error {
-	path := filepath.Join(s.dir, id+".json")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	path, err := s.convPath(id)
+	if err != nil {
+		return err
+	}
 	return os.Remove(path)
 }
 
 func (s *Store) readConv(id string) (*ConversationFile, error) {
-	path := filepath.Join(s.dir, id+".json")
+	path, err := s.convPath(id)
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	var conv ConversationFile
 	if err := json.Unmarshal(data, &conv); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse conversation %s: %w", path, err)
 	}
 	return &conv, nil
 }
 
+// writeConv persists a conversation via a temp file + rename, so an interrupted
+// write can never leave a truncated conversation behind.
 func (s *Store) writeConv(conv *ConversationFile) error {
+	path, err := s.convPath(conv.ID)
+	if err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(conv, "", "  ")
 	if err != nil {
 		return err
 	}
-	_ = os.MkdirAll(s.dir, 0o700)
-	return os.WriteFile(filepath.Join(s.dir, conv.ID+".json"), data, 0o600)
+	if err := os.MkdirAll(s.dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(s.dir, "."+conv.ID+".tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer func() { _ = os.Remove(tmp) }() // no-op once renamed
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }

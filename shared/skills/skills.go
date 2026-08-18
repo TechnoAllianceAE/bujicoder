@@ -13,7 +13,7 @@ import (
 type Skill struct {
 	Name         string
 	Description  string
-	Content      string   // Markdown body injected as instruction
+	Content      string // Markdown body injected as instruction
 	WhenToUse    string
 	AllowedTools []string // If non-empty, restricts available tools during execution
 	FilePath     string
@@ -113,6 +113,12 @@ func parseSkillFile(content, path, source string) *Skill {
 		Source:   source,
 	}
 
+	// Normalise line endings first: a skill authored on Windows starts with
+	// "---\r\n", which used to miss the frontmatter check entirely — the whole
+	// file became the body and name/allowed-tools were silently dropped, so a
+	// skill that meant to restrict tools ran with no restriction at all.
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+
 	if strings.HasPrefix(content, "---\n") {
 		parts := strings.SplitN(content[4:], "\n---\n", 2)
 		if len(parts) == 2 {
@@ -148,10 +154,17 @@ func parseSkillFile(content, path, source string) *Skill {
 	return skill
 }
 
+// splitKV splits a frontmatter line on its first colon. A missing space after
+// the colon ("name:foo") is accepted: rejecting it silently discarded the whole
+// key, including allowed-tools.
 func splitKV(line string) (key, value string, ok bool) {
-	idx := strings.Index(line, ": ")
+	idx := strings.IndexByte(line, ':')
 	if idx < 0 {
 		return "", "", false
 	}
-	return strings.TrimSpace(line[:idx]), strings.TrimSpace(line[idx+2:]), true
+	key = strings.TrimSpace(line[:idx])
+	if key == "" {
+		return "", "", false
+	}
+	return key, strings.TrimSpace(line[idx+1:]), true
 }

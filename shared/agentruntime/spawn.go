@@ -56,21 +56,29 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 	results := make([]spawnResult, len(req.Agents))
 	var wg sync.WaitGroup
 
+	// Sub-agent events are emitted from every child goroutine. Serialise the
+	// forwarding so the parent's OnEvent callback (typically a TUI collector)
+	// is never invoked concurrently.
+	emit := serializedEmitter(parentCfg.OnEvent)
+
+	// Bound the fan-out. A model can ask for an arbitrary number of agents in
+	// a single spawn_agents call; running them all at once exhausts provider
+	// rate limits and memory.
+	sem := make(chan struct{}, maxConcurrentTasks)
+
 	for i, spec := range req.Agents {
 		wg.Add(1)
 		go func(idx int, s spawnAgentSpec) {
 			defer wg.Done()
+			sem <- struct{}{}        // acquire
+			defer func() { <-sem }() // release
 
 			// Emit "starting" status
-			if parentCfg.OnEvent != nil {
-				task := s.Task
-				if len(task) > 100 {
-					task = task[:100] + "..."
-				}
-				parentCfg.OnEvent(Event{
+			if emit != nil {
+				emit(Event{
 					Type:    EventStatus,
 					AgentID: s.AgentID,
-					Text:    fmt.Sprintf("Starting %s: %s", s.AgentID, task),
+					Text:    fmt.Sprintf("Starting %s: %s", s.AgentID, safeRuneTruncate(s.Task, 100)),
 				})
 			}
 
@@ -102,17 +110,18 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 				ContextCache:      parentCfg.ContextCache,  // Safe to share (read-only TTL cache)
 				SharedMemory:      parentCfg.SharedMemory,  // Share memory across agents
 				HookManager:       parentCfg.HookManager,   // Inherit hooks
-				SessionMemory:     parentCfg.SessionMemory,  // Inherit memories (read-only)
+				SessionMemory:     parentCfg.SessionMemory, // Inherit memories (read-only)
 				// NOTE: SnapshotManager and LSPManager intentionally nil for sub-agents
 				// to prevent snapshot flooding and LSP server overload from parallel agents.
+				PlanMode: parentCfg.PlanMode, // plan mode must bind sub-agents too
 				OnEvent: func(ev Event) {
-					if parentCfg.OnEvent == nil {
+					if emit == nil {
 						return
 					}
 					// Sub-agent events are forwarded with their AgentID.
 					// The UI is responsible for handling interleaved deltas and formatting.
 					ev.AgentID = s.AgentID
-					parentCfg.OnEvent(ev)
+					emit(ev)
 				},
 			}
 
@@ -129,7 +138,7 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 			}
 
 			// Emit "completed" status
-			if parentCfg.OnEvent != nil {
+			if emit != nil {
 				statusText := fmt.Sprintf("Completed %s", s.AgentID)
 				if result != nil {
 					statusText += fmt.Sprintf(" (%d steps)", result.TotalSteps)
@@ -137,7 +146,7 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 				if err != nil {
 					statusText += " (error)"
 				}
-				parentCfg.OnEvent(Event{
+				emit(Event{
 					Type:    EventStatus,
 					AgentID: s.AgentID,
 					Text:    statusText,
@@ -151,9 +160,9 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 	// Format results
 	var output strings.Builder
 	for _, r := range results {
-		output.WriteString(fmt.Sprintf("=== Agent: %s ===\n", r.agentID))
+		fmt.Fprintf(&output, "=== Agent: %s ===\n", r.agentID)
 		if r.err != nil {
-			output.WriteString(fmt.Sprintf("Error: %v\n", r.err))
+			fmt.Fprintf(&output, "Error: %v\n", r.err)
 		} else if r.result != nil {
 			output.WriteString(r.result.FinalText)
 			if len(r.result.ProposedChanges) > 0 {
@@ -163,7 +172,7 @@ func handleSpawnAgents(ctx context.Context, rt *Runtime, argsJSON string, parent
 					output.WriteString("\n")
 				}
 			}
-			output.WriteString(fmt.Sprintf("\n[Steps: %d, Finish: %s]\n", r.result.TotalSteps, r.result.FinishReason))
+			fmt.Fprintf(&output, "\n[Steps: %d, Finish: %s]\n", r.result.TotalSteps, r.result.FinishReason)
 		}
 		output.WriteString("\n")
 	}

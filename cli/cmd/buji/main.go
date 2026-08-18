@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/TechnoAllianceAE/bujicoder/cli/app"
+	"github.com/TechnoAllianceAE/bujicoder/cli/config"
 	"github.com/TechnoAllianceAE/bujicoder/shared/buildinfo"
 	"github.com/TechnoAllianceAE/bujicoder/shared/selfupdate"
 )
@@ -20,31 +21,33 @@ import (
 func main() {
 	// Parse flags
 	var prompt string
+	promptSet := false
 	verbose := false
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
-		switch {
-		case arg == "--version" || arg == "-v":
+		switch arg {
+		case "--version", "-v":
 			fmt.Printf("buji %s\n", buildinfo.String())
 			return
-		case arg == "--help" || arg == "-h":
+		case "--help", "-h":
 			printUsage()
 			return
-		case arg == "update":
+		case "update":
 			if err := selfupdate.ApplyUpdate(context.Background()); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
 			return
-		case arg == "uninstall":
+		case "uninstall":
 			runUninstall("buji")
 			return
-		case arg == "--verbose":
+		case "--verbose":
 			verbose = true
-		case arg == "-p" || arg == "--prompt":
+		case "-p", "--prompt":
 			if i+1 < len(os.Args) {
 				i++
 				prompt = os.Args[i]
+				promptSet = true
 			} else {
 				fmt.Fprintf(os.Stderr, "Error: %s requires an argument\n", arg)
 				os.Exit(1)
@@ -53,7 +56,11 @@ func main() {
 	}
 
 	// Non-interactive mode: run a single prompt and exit.
-	if prompt != "" {
+	if promptSet {
+		if strings.TrimSpace(prompt) == "" {
+			fmt.Fprintln(os.Stderr, "Error: -p requires a non-empty prompt")
+			os.Exit(1)
+		}
 		if err := app.RunNonInteractive(prompt, verbose); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -151,7 +158,8 @@ func runUninstall(binaryName string) {
 	if err := os.Remove(binaryPath); err != nil {
 		if os.IsPermission(err) && runtime.GOOS != "windows" {
 			fmt.Println("  Permission denied — retrying with sudo...")
-			cmd := exec.Command("sudo", "rm", "-f", binaryPath)
+			// Interactive: no timeout, sudo may prompt for a password.
+			cmd := exec.CommandContext(context.Background(), "sudo", "rm", "-f", binaryPath)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
@@ -166,9 +174,8 @@ func runUninstall(binaryName string) {
 	}
 	fmt.Printf("  ✓ Removed %s\n", binaryPath)
 
-	// Ask about config directory
-	home, _ := os.UserHomeDir()
-	configDir := filepath.Join(home, ".bujicoder")
+	// Ask about config directory (honours BUJICODER_CONFIG_DIR).
+	configDir := config.Dir()
 	if _, err := os.Stat(configDir); err == nil {
 		fmt.Printf("\n  Config directory found: %s\n", configDir)
 		fmt.Printf("  Contains: API keys, conversations, logs, permissions.\n")

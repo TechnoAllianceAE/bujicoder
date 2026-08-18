@@ -4,8 +4,10 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,6 +16,47 @@ import (
 	"strings"
 	"time"
 )
+
+const (
+	// defaultHookTimeout bounds a hook that does not set its own timeout.
+	defaultHookTimeout = 30 * time.Second
+
+	// waitDelay caps how long cmd.Wait tolerates a descendant that inherited the
+	// hook's output pipes after the hook itself was killed.
+	waitDelay = 5 * time.Second
+
+	// maxHookOutput caps how much stdout/stderr is retained per hook.
+	maxHookOutput = 64 << 10
+)
+
+// boundedBuffer collects at most limit bytes and reports every write as
+// successful, so a hook is never killed by a short write.
+type boundedBuffer struct {
+	buf       []byte
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := b.limit - len(b.buf); room > 0 {
+		if len(p) <= room {
+			b.buf = append(b.buf, p...)
+		} else {
+			b.buf = append(b.buf, p[:room]...)
+			b.truncated = true
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string {
+	if b.truncated {
+		return string(b.buf) + "\n... (output truncated)"
+	}
+	return string(b.buf)
+}
 
 // HookConfig ties a matcher to one or more hook entries.
 type HookConfig struct {
@@ -81,7 +124,11 @@ func (m *Manager) MergeHooks(hooks []HookConfig) {
 
 // RunHooks executes all matching hooks for the given event. Returns results
 // in order. If any hook returns exit code 2, its Blocked flag is set.
-func (m *Manager) RunHooks(event, toolName string, input map[string]any) []HookResult {
+//
+// ctx bounds the whole batch: each hook's own timeout is derived from it, so
+// cancelling the run (user pressed Escape) kills the running hook's process
+// group instead of waiting out its timeout, and no further hooks are started.
+func (m *Manager) RunHooks(ctx context.Context, event, toolName string, input map[string]any) []HookResult {
 	if len(m.hooks) == 0 {
 		return nil
 	}
@@ -98,8 +145,10 @@ func (m *Manager) RunHooks(event, toolName string, input map[string]any) []HookR
 			if entry.Type != "command" {
 				continue
 			}
-			r := executeHook(entry, event, toolName, input)
-			results = append(results, r)
+			if ctx.Err() != nil {
+				return results
+			}
+			results = append(results, executeHook(ctx, entry, event, toolName, input))
 		}
 	}
 	return results
@@ -123,13 +172,13 @@ func matchesEvent(matcher HookMatcher, event, toolName string) bool {
 	return true
 }
 
-func executeHook(entry HookEntry, event, toolName string, input map[string]any) HookResult {
+func executeHook(parent context.Context, entry HookEntry, event, toolName string, input map[string]any) HookResult {
 	timeout := time.Duration(entry.Timeout) * time.Millisecond
 	if timeout <= 0 {
-		timeout = 30 * time.Second
+		timeout = defaultHookTimeout
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	var cmd *exec.Cmd
@@ -138,10 +187,24 @@ func executeHook(entry HookEntry, event, toolName string, input map[string]any) 
 	} else {
 		cmd = exec.CommandContext(ctx, "bash", "-c", entry.Command)
 	}
+	// A hook command routinely spawns children. Put it in its own process group
+	// and kill the group on timeout: killing only the shell leaves the children
+	// running and holding the output pipes, which makes cmd.Wait block well past
+	// the hook's timeout and stalls the tool call that triggered it.
+	setProcessGroup(cmd)
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		return cmd.Process.Kill()
+	}
+	cmd.WaitDelay = waitDelay
 
-	// Pass tool input as JSON via stdin
-	inputJSON, _ := json.Marshal(input)
-	cmd.Stdin = strings.NewReader(string(inputJSON))
+	// Pass tool input as JSON via stdin.
+	inputJSON, err := json.Marshal(input)
+	if err != nil {
+		// Never feed the hook a half-encoded payload.
+		inputJSON = []byte("{}")
+	}
+	cmd.Stdin = bytes.NewReader(inputJSON)
 
 	// Set environment variables
 	cmd.Env = append(os.Environ(),
@@ -149,22 +212,40 @@ func executeHook(entry HookEntry, event, toolName string, input map[string]any) 
 		"BUJI_TOOL_NAME="+toolName,
 	)
 
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Bounded buffers: a hook that floods stdout would otherwise be buffered in
+	// full and then handed to the model.
+	stdout := &boundedBuffer{limit: maxHookOutput}
+	stderr := &boundedBuffer{limit: maxHookOutput}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
-	err := cmd.Run()
+	runErr := cmd.Run()
 
 	result := HookResult{
 		Stdout: stdout.String(),
 		Stderr: stderr.String(),
 	}
 
-	if err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok {
+	if runErr != nil {
+		var exitErr *exec.ExitError
+		if errors.As(runErr, &exitErr) {
 			result.ExitCode = exitErr.ExitCode()
-		} else {
+		}
+		// A hook that could not start, timed out, or was killed by a signal has
+		// no useful exit status; report a generic failure rather than 0 or -1.
+		if result.ExitCode <= 0 {
 			result.ExitCode = 1
+		}
+		// The reason must reach the user: a silently killed hook is invisible.
+		if result.Stderr == "" {
+			switch {
+			case parent.Err() != nil:
+				result.Stderr = fmt.Sprintf("hook cancelled: %v", runErr)
+			case ctx.Err() != nil:
+				result.Stderr = fmt.Sprintf("hook timed out after %v: %v", timeout, runErr)
+			default:
+				result.Stderr = runErr.Error()
+			}
 		}
 	}
 

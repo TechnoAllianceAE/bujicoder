@@ -7,24 +7,25 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 	"gopkg.in/yaml.v3"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/costmode"
 )
 
 // Definition represents a YAML agent definition.
 type Definition struct {
-	ID               string   `yaml:"id" json:"id"`
-	Version          string   `yaml:"version" json:"version"`
-	DisplayName      string   `yaml:"display_name" json:"display_name"`
-	Publisher        string   `yaml:"publisher" json:"publisher"`
-	Model            string   `yaml:"model" json:"model"`
-	OutputMode       string   `yaml:"output_mode" json:"output_mode"` // "last_message", "full_conversation"
-	Tools            []string `yaml:"tools" json:"tools"`
-	SpawnableAgents  []string `yaml:"spawnable_agents" json:"spawnable_agents"`
-	SystemPrompt     string   `yaml:"system_prompt" json:"system_prompt"`
-	InstructionsPrompt string `yaml:"instructions_prompt" json:"instructions_prompt"`
-	MaxSteps         int      `yaml:"max_steps" json:"max_steps"`
-	MaxTokens        int      `yaml:"max_tokens" json:"max_tokens"`
+	ID                 string   `yaml:"id" json:"id"`
+	Version            string   `yaml:"version" json:"version"`
+	DisplayName        string   `yaml:"display_name" json:"display_name"`
+	Publisher          string   `yaml:"publisher" json:"publisher"`
+	Model              string   `yaml:"model" json:"model"`
+	OutputMode         string   `yaml:"output_mode" json:"output_mode"` // "last_message", "full_conversation"
+	Tools              []string `yaml:"tools" json:"tools"`
+	SpawnableAgents    []string `yaml:"spawnable_agents" json:"spawnable_agents"`
+	SystemPrompt       string   `yaml:"system_prompt" json:"system_prompt"`
+	InstructionsPrompt string   `yaml:"instructions_prompt" json:"instructions_prompt"`
+	MaxSteps           int      `yaml:"max_steps" json:"max_steps"`
+	MaxTokens          int      `yaml:"max_tokens" json:"max_tokens"`
 }
 
 // Registry holds loaded agent definitions.
@@ -110,6 +111,30 @@ func (d *Definition) WithCostMode(mode costmode.Mode, resolver *costmode.Resolve
 	return &cp
 }
 
+// Defaults for optional numeric fields. Non-positive values (a typo such as
+// `max_steps: -1` in a hand-written agent YAML) are treated as unset: a
+// non-positive MaxSteps makes the runtime's step loop exit immediately and
+// return an empty answer with no error, and a non-positive MaxTokens is
+// rejected by providers.
+const (
+	defaultMaxSteps  = 50
+	defaultMaxTokens = 8192
+)
+
+// applyDefaults fills in optional fields that were omitted or set to an
+// unusable value.
+func (d *Definition) applyDefaults() {
+	if d.OutputMode == "" {
+		d.OutputMode = "last_message"
+	}
+	if d.MaxSteps <= 0 {
+		d.MaxSteps = defaultMaxSteps
+	}
+	if d.MaxTokens <= 0 {
+		d.MaxTokens = defaultMaxTokens
+	}
+}
+
 // LoadFile loads a single YAML agent definition from a file.
 func LoadFile(path string) (*Definition, error) {
 	data, err := os.ReadFile(path)
@@ -117,26 +142,11 @@ func LoadFile(path string) (*Definition, error) {
 		return nil, fmt.Errorf("read file: %w", err)
 	}
 
-	var def Definition
-	if err := yaml.Unmarshal(data, &def); err != nil {
-		return nil, fmt.Errorf("parse yaml: %w", err)
+	def, err := LoadBytes(data, path)
+	if err != nil {
+		return nil, err
 	}
-
-	if def.ID == "" {
-		return nil, fmt.Errorf("agent definition missing 'id' field")
-	}
-	// Defaults
-	if def.OutputMode == "" {
-		def.OutputMode = "last_message"
-	}
-	if def.MaxSteps == 0 {
-		def.MaxSteps = 50
-	}
-	if def.MaxTokens == 0 {
-		def.MaxTokens = 8192
-	}
-
-	return &def, nil
+	return def, nil
 }
 
 // LoadBytes loads a single YAML agent definition from raw bytes.
@@ -148,14 +158,6 @@ func LoadBytes(data []byte, source string) (*Definition, error) {
 	if def.ID == "" {
 		return nil, fmt.Errorf("agent definition %s missing 'id' field", source)
 	}
-	if def.OutputMode == "" {
-		def.OutputMode = "last_message"
-	}
-	if def.MaxSteps == 0 {
-		def.MaxSteps = 50
-	}
-	if def.MaxTokens == 0 {
-		def.MaxTokens = 8192
-	}
+	def.applyDefaults()
 	return &def, nil
 }

@@ -15,10 +15,10 @@ func structuredOutput() func(ctx context.Context, args json.RawMessage) (string,
 	return func(_ context.Context, args json.RawMessage) (string, error) {
 		var params struct {
 			Schema map[string]any `json:"schema"` // JSON Schema definition
-			Data   any            `json:"data"`    // The structured data to validate
+			Data   any            `json:"data"`   // The structured data to validate
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
-			return "", fmt.Errorf("parse structured_output args: %w", err)
+		if err := unmarshalArgs("structured_output", args, &params); err != nil {
+			return "", err
 		}
 
 		if params.Schema == nil {

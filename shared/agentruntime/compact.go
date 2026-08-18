@@ -34,7 +34,7 @@ type contextWindowEntry struct {
 }
 
 var knownContextWindows = []contextWindowEntry{
-	{"gpt-4o", 128000},   // must come before "gpt-4"
+	{"gpt-4o", 128000}, // must come before "gpt-4"
 	{"gpt-4", 128000},
 	{"claude", 200000},
 	{"gemini", 1000000},
@@ -82,24 +82,24 @@ func compactMessages(ctx context.Context, rt *Runtime, messages []llm.Message, m
 	}
 
 	// Split into old (to summarize) and recent (to keep verbatim).
-	splitIdx := len(messages) - CompactKeepRecent
+	splitIdx := compactSplitIndex(messages)
 	oldMessages := messages[:splitIdx]
 	recentMessages := messages[splitIdx:]
 
 	// Build a text representation of the old messages for the summarizer.
 	var oldText strings.Builder
 	for _, msg := range oldMessages {
-		oldText.WriteString(fmt.Sprintf("[%s]: ", msg.Role))
+		fmt.Fprintf(&oldText, "[%s]: ", msg.Role)
 		for _, part := range msg.Content {
 			switch part.Type {
 			case "text":
 				text := safeRuneTruncate(part.Text, 1000)
 				oldText.WriteString(text)
 			case "tool_call":
-				oldText.WriteString(fmt.Sprintf("[Tool: %s(%s)]", part.ToolName, truncateArgs(part.ArgumentsJSON)))
+				fmt.Fprintf(&oldText, "[Tool: %s(%s)]", part.ToolName, truncateArgs(part.ArgumentsJSON))
 			case "tool_result":
 				text := safeRuneTruncate(part.Text, 500)
-				oldText.WriteString(fmt.Sprintf("[Result from %s: %s]", part.ToolName, text))
+				fmt.Fprintf(&oldText, "[Result from %s: %s]", part.ToolName, text)
 			}
 			oldText.WriteString(" ")
 		}
@@ -156,7 +156,10 @@ Be concise but complete. Use bullet points. Do NOT omit file paths or function n
 		MaxTokens:    &maxTokens,
 	}
 
-	ch, err := provider.StreamCompletion(ctx, req)
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+
+	ch, err := provider.StreamCompletion(streamCtx, req)
 	if err != nil {
 		// If LLM call fails, fall back to truncation-based compression.
 		return truncateCompact(messages), nil
@@ -174,7 +177,9 @@ Be concise but complete. Use bullet points. Do NOT omit file paths or function n
 			compactUsg.CostCents = ev.Complete.Usage.CostCents
 		}
 		if ev.Error != nil && !ev.Error.Retryable {
-			// LLM error — fall back to truncation.
+			// LLM error — fall back to truncation. Drain first so the provider
+			// goroutine and its response body are released.
+			_ = drainStream(cancelStream, ch, nil)
 			return truncateCompact(messages), nil
 		}
 	}
@@ -223,6 +228,27 @@ Be concise but complete. Use bullet points. Do NOT omit file paths or function n
 	return compacted, &compactUsg
 }
 
+// compactSplitIndex returns the index at which the conversation may be split
+// into "old" (summarised away) and "recent" (kept verbatim) parts.
+//
+// The nominal split keeps the last CompactKeepRecent messages, but the split
+// must never land between an assistant message carrying tool_call parts and
+// the tool message carrying their results: dropping the tool_call side leaves
+// orphaned tool_result blocks, and providers reject those outright (Anthropic
+// 400 "unexpected tool_use_id"), killing the run right after compaction.
+// Tool results whose tool_call would be summarised away are therefore moved
+// into the old part as well.
+func compactSplitIndex(messages []llm.Message) int {
+	splitIdx := len(messages) - CompactKeepRecent
+	if splitIdx < 0 {
+		splitIdx = 0
+	}
+	for splitIdx < len(messages) && messages[splitIdx].Role == "tool" {
+		splitIdx++
+	}
+	return splitIdx
+}
+
 // maxTruncateSummaryChars caps the total size of a truncation-based summary
 // to prevent it from consuming too much context.
 const maxTruncateSummaryChars = 8000
@@ -234,7 +260,7 @@ func truncateCompact(messages []llm.Message) []llm.Message {
 		return messages
 	}
 
-	splitIdx := len(messages) - CompactKeepRecent
+	splitIdx := compactSplitIndex(messages)
 	oldMessages := messages[:splitIdx]
 	recentMessages := messages[splitIdx:]
 
@@ -249,12 +275,11 @@ func truncateCompact(messages []llm.Message) []llm.Message {
 		}
 		// Include tool results too, not just user/assistant text.
 		for _, part := range msg.Content {
-			if part.Type == "text" && len(part.Text) > 0 {
-				text := safeRuneTruncate(part.Text, 200)
-				summary.WriteString(fmt.Sprintf("- %s: %s\n", msg.Role, text))
-			} else if part.Type == "tool_result" && len(part.Text) > 0 {
-				text := safeRuneTruncate(part.Text, 150)
-				summary.WriteString(fmt.Sprintf("- [%s result]: %s\n", part.ToolName, text))
+			switch {
+			case part.Type == "text" && part.Text != "":
+				fmt.Fprintf(&summary, "- %s: %s\n", msg.Role, safeRuneTruncate(part.Text, 200))
+			case part.Type == "tool_result" && part.Text != "":
+				fmt.Fprintf(&summary, "- [%s result]: %s\n", part.ToolName, safeRuneTruncate(part.Text, 150))
 			}
 		}
 	}

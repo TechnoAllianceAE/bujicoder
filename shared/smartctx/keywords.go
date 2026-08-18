@@ -5,6 +5,11 @@ import (
 	"unicode"
 )
 
+// MaxKeywords bounds the keyword set extracted from a query. Ranking does a
+// substring test per keyword per project file, so an oversized query (a pasted
+// file, for example) would otherwise make ranking scale with query length.
+const MaxKeywords = 64
+
 // stopWords are common English words that don't help with file matching.
 var stopWords = map[string]bool{
 	"the": true, "a": true, "an": true, "and": true, "or": true, "but": true,
@@ -40,22 +45,26 @@ func ExtractKeywords(query string) []string {
 	var keywords []string
 
 	for _, word := range words {
-		word = strings.ToLower(word)
-		if len(word) < 2 {
-			continue
+		if len(keywords) >= MaxKeywords {
+			break
 		}
-		if stopWords[word] {
-			continue
-		}
-		if seen[word] {
-			continue
-		}
-		seen[word] = true
-		keywords = append(keywords, word)
 
-		// Also split camelCase and add parts.
-		parts := splitCamelCase(word)
-		for _, part := range parts {
+		lower := strings.ToLower(word)
+		if len(lower) < 2 {
+			continue
+		}
+		if stopWords[lower] {
+			continue
+		}
+		if seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		keywords = append(keywords, lower)
+
+		// Also split camelCase and add parts. This must use the original word:
+		// the lowercased form has no case boundaries left to split on.
+		for _, part := range splitCamelCase(word) {
 			part = strings.ToLower(part)
 			if len(part) < 2 || stopWords[part] || seen[part] {
 				continue

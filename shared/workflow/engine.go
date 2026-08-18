@@ -2,10 +2,15 @@ package workflow
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 )
+
+// maxParallelSteps caps how many steps of one parallel block run at once, so a
+// workflow cannot fan out to an unbounded number of concurrent agents.
+const maxParallelSteps = 4
 
 // AgentRunner is the interface the engine uses to execute a single agent.
 // This decouples the workflow engine from the agent runtime implementation.
@@ -20,13 +25,13 @@ type ApprovalFunc func(stepDescription string) (bool, error)
 
 // StepEvent is emitted during workflow execution for progress tracking.
 type StepEvent struct {
-	StepIndex   int
-	AgentID     string
-	Task        string
-	Status      string // "start", "complete", "skip", "error", "approval_needed", "denied"
-	Output      string
-	Error       error
-	IsParallel  bool
+	StepIndex  int
+	AgentID    string
+	Task       string
+	Status     string // "start", "complete", "skip", "error", "approval_needed", "denied"
+	Output     string
+	Error      error
+	IsParallel bool
 }
 
 // OnStepEvent is a callback for workflow step events.
@@ -188,9 +193,11 @@ func (e *Engine) executeStep(ctx context.Context, idx int, step Step, cfg Engine
 }
 
 // executeParallel runs multiple steps concurrently and collects their results.
+// Concurrency is capped at maxParallelSteps so a workflow listing dozens of
+// parallel steps cannot spawn dozens of agents at once, and cancellation stops
+// steps that have not started yet.
 func (e *Engine) executeParallel(ctx context.Context, idx int, steps []Step, cfg EngineConfig) error {
 	type result struct {
-		stepIdx   int
 		outputVar string
 		output    string
 		err       error
@@ -199,39 +206,66 @@ func (e *Engine) executeParallel(ctx context.Context, idx int, steps []Step, cfg
 	results := make([]result, len(steps))
 	var wg sync.WaitGroup
 
+	// OnEvent is supplied by the caller and is not required to be goroutine
+	// safe, so parallel steps must not call it concurrently.
+	var emitMu sync.Mutex
+	emit := func(ev StepEvent) {
+		if cfg.OnEvent == nil {
+			return
+		}
+		emitMu.Lock()
+		defer emitMu.Unlock()
+		cfg.OnEvent(ev)
+	}
+
+	limit := maxParallelSteps
+	if len(steps) < limit {
+		limit = len(steps)
+	}
+	sem := make(chan struct{}, limit)
+
 	for i, step := range steps {
 		wg.Add(1)
 		go func(i int, step Step) {
 			defer wg.Done()
 
+			// Respect cancellation instead of queueing work that will be thrown
+			// away.
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				results[i] = result{outputVar: step.OutputVar, err: ctx.Err()}
+				return
+			}
+			if err := ctx.Err(); err != nil {
+				results[i] = result{outputVar: step.OutputVar, err: err}
+				return
+			}
+
 			// Evaluate condition.
 			if !EvaluateCondition(step.Condition, e.vars) {
-				if cfg.OnEvent != nil {
-					cfg.OnEvent(StepEvent{
-						StepIndex:  idx,
-						AgentID:    step.Agent,
-						Status:     "skip",
-						IsParallel: true,
-					})
-				}
+				emit(StepEvent{
+					StepIndex:  idx,
+					AgentID:    step.Agent,
+					Status:     "skip",
+					IsParallel: true,
+				})
 				return
 			}
 
 			task := Interpolate(step.Task, e.vars)
 
-			if cfg.OnEvent != nil {
-				cfg.OnEvent(StepEvent{
-					StepIndex:  idx,
-					AgentID:    step.Agent,
-					Task:       task,
-					Status:     "start",
-					IsParallel: true,
-				})
-			}
+			emit(StepEvent{
+				StepIndex:  idx,
+				AgentID:    step.Agent,
+				Task:       task,
+				Status:     "start",
+				IsParallel: true,
+			})
 
 			output, err := cfg.Runner.RunAgent(ctx, step.Agent, task)
 			results[i] = result{
-				stepIdx:   i,
 				outputVar: step.OutputVar,
 				output:    output,
 				err:       err,
@@ -241,45 +275,53 @@ func (e *Engine) executeParallel(ctx context.Context, idx int, steps []Step, cfg
 			if err != nil {
 				status = "error"
 			}
-			if cfg.OnEvent != nil {
-				cfg.OnEvent(StepEvent{
-					StepIndex:  idx,
-					AgentID:    step.Agent,
-					Task:       task,
-					Status:     status,
-					Output:     output,
-					Error:      err,
-					IsParallel: true,
-				})
-			}
+			emit(StepEvent{
+				StepIndex:  idx,
+				AgentID:    step.Agent,
+				Task:       task,
+				Status:     status,
+				Output:     output,
+				Error:      err,
+				IsParallel: true,
+			})
 		}(i, step)
 	}
 
 	wg.Wait()
 
 	// Store output variables and check for errors.
-	var errs []string
+	var errs []error
 	for _, r := range results {
 		if r.err != nil {
-			errs = append(errs, r.err.Error())
+			errs = append(errs, r.err)
 		}
-		if r.outputVar != "" && r.output != "" {
+		// An empty output is still an output: skipping the assignment leaves the
+		// variable undefined for later steps.
+		if r.outputVar != "" && r.err == nil {
 			e.vars[r.outputVar] = r.output
 		}
 	}
 
-	if len(errs) > 0 {
-		return fmt.Errorf("parallel step errors: %s", strings.Join(errs, "; "))
+	// errors.Join keeps each step's error intact so callers can still use
+	// errors.Is / errors.As (e.g. to detect context.Canceled).
+	if err := errors.Join(errs...); err != nil {
+		return fmt.Errorf("parallel step errors: %w", err)
 	}
 
 	return nil
 }
 
-// truncateTask truncates a task string for display.
+// truncateTask truncates a task string for display. It counts runes rather than
+// bytes so a multi-byte task is never cut mid-character, and it cannot index out
+// of range for a small maxLen.
 func truncateTask(task string, maxLen int) string {
 	task = strings.ReplaceAll(task, "\n", " ")
-	if len(task) <= maxLen {
+	r := []rune(task)
+	if len(r) <= maxLen {
 		return task
 	}
-	return task[:maxLen-3] + "..."
+	if maxLen <= 3 {
+		return string(r[:maxLen])
+	}
+	return string(r[:maxLen-3]) + "..."
 }

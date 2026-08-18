@@ -257,7 +257,7 @@ func TestMigrateFromJSON(t *testing.T) {
 		Title:     "Migrated Chat",
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
-		Messages: []jsonStoredMessage{
+		Messages: []StoredMessage{
 			{Role: "user", Content: "hello from json", CreatedAt: time.Now().UTC()},
 			{Role: "assistant", Content: "migrated response", CreatedAt: time.Now().UTC()},
 		},

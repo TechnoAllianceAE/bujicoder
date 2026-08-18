@@ -118,14 +118,19 @@ func (r *Registry) Toggle(name string) bool {
 	return false
 }
 
-// List returns all flags sorted by category then name.
+// List returns a snapshot of all flags sorted by category then name.
+//
+// The returned flags are copies: handing out the registry's own pointers let a
+// caller read Enabled while Enable/Disable/Toggle wrote it, which is a data
+// race. Mutating the copies has no effect — use Enable/Disable/Toggle.
 func (r *Registry) List() []*Flag {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	result := make([]*Flag, 0, len(r.flags))
 	for _, f := range r.flags {
-		result = append(result, f)
+		snapshot := *f
+		result = append(result, &snapshot)
 	}
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].Category != result[j].Category {

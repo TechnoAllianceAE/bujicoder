@@ -10,11 +10,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
+)
+
+const (
+	// jobTimeout bounds a single job's shell command so a hung job cannot
+	// accumulate forever.
+	jobTimeout = 5 * time.Minute
+
+	// minInterval is the shortest schedule accepted by Create.
+	minInterval = 1 * time.Minute
+
+	// waitDelay caps how long cmd.Wait tolerates a descendant that inherited the
+	// job's output pipe after the job itself was killed.
+	waitDelay = 5 * time.Second
 )
 
 // Job represents a scheduled job.
@@ -37,7 +51,9 @@ type Scheduler struct {
 	filePath string // persistence path (e.g. ~/.bujicoder/cron.json)
 	log      zerolog.Logger
 	cancel   context.CancelFunc
+	started  bool
 	done     chan struct{}
+	running  sync.WaitGroup // in-flight job commands
 }
 
 // NewScheduler creates a scheduler that persists jobs to the given file path.
@@ -54,27 +70,53 @@ func NewScheduler(configDir string, log zerolog.Logger) *Scheduler {
 }
 
 // Start begins the background scheduler goroutine that checks for due jobs.
+// Calling it more than once is a no-op: a second scheduler goroutine would fire
+// every job twice and leak when only the newest cancel func is retained.
 func (s *Scheduler) Start() {
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
+		return
+	}
+	s.started = true
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
+	jobs := len(s.jobs)
+	s.mu.Unlock()
 
 	go s.runLoop(ctx)
-	s.log.Info().Int("jobs", len(s.jobs)).Msg("cron scheduler started")
+	s.log.Info().Int("jobs", jobs).Msg("cron scheduler started")
 }
 
-// Stop signals the scheduler to shut down and waits for completion.
+// Stop signals the scheduler to shut down and waits for the loop and any
+// in-flight job commands to finish.
 func (s *Scheduler) Stop() {
-	if s.cancel != nil {
-		s.cancel()
-		<-s.done
+	s.mu.Lock()
+	cancel := s.cancel
+	s.cancel = nil
+	started := s.started
+	s.started = false
+	s.mu.Unlock()
+
+	if !started || cancel == nil {
+		return
 	}
+	cancel()
+	<-s.done
+	s.running.Wait()
 }
 
-// Create adds a new job and persists to disk.
+// Create adds a new job and persists to disk. The schedule must be a Go
+// duration of at least one minute.
 func (s *Scheduler) Create(name, schedule, command string) (*Job, error) {
-	interval := parseDuration(schedule)
-	if interval < 1*time.Minute {
-		return nil, fmt.Errorf("minimum schedule interval is 1 minute, got %v", interval)
+	// An unparseable schedule silently fell back to 10m, so a job created with
+	// e.g. "every day" ran every ten minutes instead.
+	interval, err := time.ParseDuration(schedule)
+	if err != nil {
+		return nil, fmt.Errorf("invalid schedule %q: expected a Go duration such as 15m, 1h or 24h", schedule)
+	}
+	if interval < minInterval {
+		return nil, fmt.Errorf("minimum schedule interval is %v, got %v", minInterval, interval)
 	}
 
 	s.mu.Lock()
@@ -160,54 +202,132 @@ func (s *Scheduler) runLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			s.checkAndFire(now)
+			s.checkAndFire(ctx, now)
 		}
 	}
 }
 
-func (s *Scheduler) checkAndFire(now time.Time) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+// checkAndFire claims every due job under the lock, then runs the commands
+// outside it. Holding the lock across command execution would block List,
+// Create and Delete — i.e. the whole TUI — for as long as a job runs.
+func (s *Scheduler) checkAndFire(ctx context.Context, now time.Time) {
+	type due struct {
+		id      string
+		name    string
+		command string
+	}
 
+	var claimed []due
+	s.mu.Lock()
 	for _, job := range s.jobs {
 		if !job.Enabled || now.Before(job.NextRun) {
 			continue
 		}
-
-		// Fire the job
-		s.log.Info().Str("id", job.ID).Str("name", job.Name).Msg("firing cron job")
-		if err := executeCommand(job.Command); err != nil {
-			job.LastErr = err.Error()
-			s.log.Error().Str("id", job.ID).Err(err).Msg("cron job failed")
-		} else {
-			job.LastErr = ""
-		}
-
+		// Reschedule immediately so the job is not fired again by the next tick
+		// while this run is still in flight.
 		job.LastRun = now
-		interval := parseDuration(job.Schedule)
-		job.NextRun = now.Add(interval)
+		job.NextRun = now.Add(parseDuration(job.Schedule))
+		claimed = append(claimed, due{id: job.ID, name: job.Name, command: job.Command})
 	}
+	s.mu.Unlock()
 
-	s.save()
+	if len(claimed) == 0 {
+		return
+	}
+	s.persist()
+
+	for _, job := range claimed {
+		s.log.Info().Str("id", job.id).Str("name", job.name).Msg("firing cron job")
+		s.running.Add(1)
+		go func(job due) {
+			defer s.running.Done()
+			err := executeCommand(ctx, job.command)
+			s.mu.Lock()
+			if j, ok := s.jobs[job.id]; ok {
+				if err != nil {
+					j.LastErr = err.Error()
+				} else {
+					j.LastErr = ""
+				}
+			}
+			s.mu.Unlock()
+			if err != nil {
+				s.log.Error().Str("id", job.id).Err(err).Msg("cron job failed")
+			}
+			s.persist()
+		}(job)
+	}
 }
 
-func executeCommand(command string) error {
+// executeCommand runs a job's shell command, bounded by jobTimeout and by the
+// scheduler's lifetime: cancelling ctx (Stop) terminates a running job.
+func executeCommand(ctx context.Context, command string) error {
+	ctx, cancel := context.WithTimeout(ctx, jobTimeout)
+	defer cancel()
+
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.Command("cmd.exe", "/c", command)
+		cmd = exec.CommandContext(ctx, "cmd.exe", "/c", command)
 	} else {
-		cmd = exec.Command("bash", "-c", command)
+		cmd = exec.CommandContext(ctx, "bash", "-c", command)
 	}
+	// The shell may spawn children; put it in its own process group so the whole
+	// group can be cleaned up instead of outliving the timeout as orphans.
+	setProcessGroup(cmd)
+	// Killing only the shell is not enough: descendants keep the output pipe
+	// open, so cmd.Wait would block until they exit on their own. Kill the group
+	// on cancellation and cap how long Wait tolerates a lingering descendant.
+	cmd.Cancel = func() error {
+		killProcessGroup(cmd)
+		return cmd.Process.Kill()
+	}
+	cmd.WaitDelay = waitDelay
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	cmd = exec.CommandContext(ctx, cmd.Path, cmd.Args[1:]...)
+	// Capture output through a bounded buffer: a chatty job (e.g. `cat
+	// /dev/urandom`) would otherwise buffer unbounded data in memory.
+	var out boundedBuffer
+	out.limit = maxJobOutput
+	cmd.Stdout = &out
+	cmd.Stderr = &out
 
-	output, err := cmd.CombinedOutput()
+	err := cmd.Run()
+	killProcessGroup(cmd)
 	if err != nil {
-		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(out.String()))
 	}
 	return nil
+}
+
+// maxJobOutput caps how much of a job's output is retained for the error message.
+const maxJobOutput = 8 << 10
+
+// boundedBuffer collects at most limit bytes and reports every write as
+// successful, so the child is never killed by a short write.
+type boundedBuffer struct {
+	buf       []byte
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if room := b.limit - len(b.buf); room > 0 {
+		if len(p) <= room {
+			b.buf = append(b.buf, p...)
+		} else {
+			b.buf = append(b.buf, p[:room]...)
+			b.truncated = true
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+func (b *boundedBuffer) String() string {
+	if b.truncated {
+		return string(b.buf) + " ... (output truncated)"
+	}
+	return string(b.buf)
 }
 
 // Persistence
@@ -215,6 +335,9 @@ func executeCommand(command string) error {
 func (s *Scheduler) load() {
 	data, err := os.ReadFile(s.filePath)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			s.log.Warn().Err(err).Str("path", s.filePath).Msg("cannot read cron jobs")
+		}
 		return
 	}
 
@@ -223,20 +346,48 @@ func (s *Scheduler) load() {
 		NextID int    `json:"next_id"`
 	}
 	if err := json.Unmarshal(data, &state); err != nil {
+		s.log.Warn().Err(err).Str("path", s.filePath).Msg("cron jobs file is malformed; ignoring it")
 		return
 	}
 
 	for _, j := range state.Jobs {
+		if j == nil || j.ID == "" {
+			continue
+		}
 		s.jobs[j.ID] = j
 	}
 	s.nextID = state.NextID
+	// Repair a stale/missing next_id: reusing an id would silently replace an
+	// existing job on the next Create.
+	for id := range s.jobs {
+		var n int
+		if _, err := fmt.Sscanf(id, "cron_%d", &n); err == nil && n > s.nextID {
+			s.nextID = n
+		}
+	}
 }
 
+// save writes the current state to disk. Callers must hold s.mu.
 func (s *Scheduler) save() {
+	s.writeState(s.marshalState())
+}
+
+// persist writes the current state to disk without the caller holding s.mu.
+func (s *Scheduler) persist() {
+	s.mu.RLock()
+	data := s.marshalState()
+	s.mu.RUnlock()
+	s.writeState(data)
+}
+
+// marshalState serialises the job list. Callers must hold s.mu (read or write).
+func (s *Scheduler) marshalState() []byte {
 	jobs := make([]*Job, 0, len(s.jobs))
 	for _, j := range s.jobs {
 		jobs = append(jobs, j)
 	}
+	// Stable order so the file does not churn between saves.
+	sort.Slice(jobs, func(i, j int) bool { return jobs[i].ID < jobs[j].ID })
 
 	state := struct {
 		Jobs   []*Job `json:"jobs"`
@@ -248,12 +399,47 @@ func (s *Scheduler) save() {
 
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
+		s.log.Error().Err(err).Msg("cannot encode cron jobs")
+		return nil
+	}
+	return data
+}
+
+// writeState replaces the jobs file atomically: a crash or full disk mid-write
+// would otherwise leave a truncated file and lose every scheduled job.
+func (s *Scheduler) writeState(data []byte) {
+	if data == nil {
 		return
 	}
-
 	dir := filepath.Dir(s.filePath)
-	os.MkdirAll(dir, 0755)
-	os.WriteFile(s.filePath, data, 0644)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		s.log.Error().Err(err).Str("dir", dir).Msg("cannot create cron config dir")
+		return
+	}
+	tmp, err := os.CreateTemp(dir, ".cron-*.json")
+	if err != nil {
+		s.log.Error().Err(err).Msg("cannot create temp file for cron jobs")
+		return
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		s.log.Error().Err(err).Msg("cannot write cron jobs")
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		s.log.Error().Err(err).Msg("cannot close cron jobs temp file")
+		return
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		s.log.Warn().Err(err).Msg("cannot chmod cron jobs temp file")
+	}
+	if err := os.Rename(tmpName, s.filePath); err != nil {
+		_ = os.Remove(tmpName)
+		s.log.Error().Err(err).Str("path", s.filePath).Msg("cannot replace cron jobs file")
+	}
 }
 
 // parseDuration parses a schedule string. Supports Go durations (5m, 1h, 24h).

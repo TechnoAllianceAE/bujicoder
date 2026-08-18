@@ -18,10 +18,10 @@ const (
 
 // SecurityVerdict holds the analysis result for a shell command.
 type SecurityVerdict struct {
-	Level    ThreatLevel
-	Reason   string
-	Command  string
-	Blocked  bool   // Whether this should be blocked outright
+	Level         ThreatLevel
+	Reason        string
+	Command       string
+	Blocked       bool // Whether this should be blocked outright
 	NeedsApproval bool // Whether this needs user confirmation
 }
 
@@ -107,14 +107,16 @@ var securityPatterns = []destructivePattern{
 		reason: "redirect to block device — will overwrite raw disk",
 	},
 	{
-		match:  func(_, lower string) bool { return hasCommand(lower, ":(){ :|:& };:") || strings.Contains(lower, "fork bomb") },
+		match: func(_, lower string) bool {
+			return hasCommand(lower, ":(){ :|:& };:") || strings.Contains(lower, "fork bomb")
+		},
 		level:  ThreatCritical,
 		reason: "fork bomb — will crash the system",
 	},
 	{
 		match: func(_, lower string) bool {
 			// Match "rm -rf /" but not "rm -rf /tmp/foo" — the target must be / or /*
-			return strings.Contains(lower, "rm -rf /") && !strings.Contains(lower, "rm -rf /.")  &&
+			return strings.Contains(lower, "rm -rf /") && !strings.Contains(lower, "rm -rf /.") &&
 				(strings.HasSuffix(strings.TrimSpace(lower), "rm -rf /") ||
 					strings.Contains(lower, "rm -rf /*") ||
 					strings.Contains(lower, "rm -rf / "))

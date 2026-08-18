@@ -8,11 +8,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/codeintel"
 	"github.com/TechnoAllianceAE/bujicoder/shared/contextcache"
@@ -28,8 +32,10 @@ type Tool struct {
 	Execute     func(ctx context.Context, args json.RawMessage) (string, error)
 }
 
-// Registry holds available local tools.
+// Registry holds available local tools. It is safe for concurrent use: MCP
+// servers register tools while agent goroutines look them up.
 type Registry struct {
+	mu    sync.RWMutex
 	tools map[string]*Tool
 }
 
@@ -55,9 +61,51 @@ func IsPlanMode(ctx context.Context) bool {
 }
 
 // isPlanModeAllowedPath returns true if the path is allowed in plan mode.
-// Only .md (markdown) files can be written in plan mode.
+// Only .md (markdown) files can be written in plan mode. The path is cleaned
+// first so that tricks like "notes.md/../main.go" cannot pass the suffix test.
 func isPlanModeAllowedPath(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), ".md")
+	if path == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(filepath.Clean(path)), ".md")
+}
+
+// planModeWriteAllowed reports whether writing to requested (resolved to
+// absPath) is permitted in plan mode. Both the requested path and the symlink
+// target are checked, so a "notes.md" symlink pointing at a source file inside
+// the workspace cannot be used to escape plan mode.
+func planModeWriteAllowed(requested, absPath string) bool {
+	if !isPlanModeAllowedPath(requested) {
+		return false
+	}
+	target := absPath
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		target = resolved
+	}
+	return isPlanModeAllowedPath(target)
+}
+
+// pathRestricted reports whether the requested path, or the workspace-relative
+// path it actually resolves to, is restricted by permissions.yaml. Checking only
+// the requested spelling lets a symlink inside the workspace (link.txt -> .env)
+// read or overwrite a restricted file.
+func pathRestricted(perms *ProjectPermissions, workDir, requested, absPath string) bool {
+	if perms.IsPathRestricted(requested) {
+		return true
+	}
+	target := absPath
+	if resolved, err := filepath.EvalSymlinks(absPath); err == nil {
+		target = resolved
+	}
+	root := filepath.Clean(workDir)
+	if resolvedRoot, err := filepath.EvalSymlinks(workDir); err == nil {
+		root = resolvedRoot
+	}
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false // outside the workspace: safePath already rejects those
+	}
+	return perms.IsPathRestricted(rel)
 }
 
 // WithContextCache returns a child context carrying a file content cache.
@@ -231,19 +279,41 @@ func NewRegistry(workDir string, opts ...RegistryOpts) *Registry {
 	return r
 }
 
-// Register adds a tool to the registry.
-func (r *Registry) Register(t *Tool) {
+// Register adds a tool to the registry and reports whether it was accepted.
+//
+// A tool without a name or without an executor is rejected: registering it would
+// hand the dispatch loop a value it would nil-dereference on the first call. A
+// name that is already registered is also rejected instead of silently replacing
+// the incumbent — an MCP server exposing "read_files" must not displace the
+// built-in file reader. Callers that can retry under another name (e.g. MCP with
+// a "<server>_<tool>" fallback) should act on the returned value; the collision
+// is logged either way.
+func (r *Registry) Register(t *Tool) bool {
+	if t == nil || t.Name == "" || t.Execute == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.tools[t.Name]; exists {
+		log.Warn().Str("tool", t.Name).Msg("tool name already registered; keeping the existing tool")
+		return false
+	}
 	r.tools[t.Name] = t
+	return true
 }
 
 // Get returns a tool by name.
 func (r *Registry) Get(name string) (*Tool, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	t, ok := r.tools[name]
 	return t, ok
 }
 
 // List returns all tool names.
 func (r *Registry) List() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	names := make([]string, 0, len(r.tools))
 	for name := range r.tools {
 		names = append(names, name)
@@ -258,38 +328,44 @@ func readFiles(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		var params struct {
 			Paths []string `json:"paths"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("read_files", args, &params); err != nil {
 			return "", err
+		}
+		if len(params.Paths) == 0 {
+			return "", fmt.Errorf("read_files: 'paths' is required and must be a non-empty array of file paths")
 		}
 
 		wd := effectiveWorkDir(ctx, workDir)
 		cache := getContextCache(ctx)
 		var result strings.Builder
 		for _, p := range params.Paths {
-			if perms.IsPathRestricted(p) {
-				result.WriteString(fmt.Sprintf("--- %s ---\nError: access denied: path is restricted by permissions.yaml\n\n", p))
+			// Containment and permission checks run before any read, including
+			// the cache lookup: a symlink inside the workspace pointing at a
+			// restricted file must not be readable under either path.
+			absPath, err := safePath(wd, p)
+			if err != nil {
+				fmt.Fprintf(&result, "--- %s ---\nError: %v\n\n", p, err)
+				continue
+			}
+			if pathRestricted(perms, wd, p, absPath) {
+				fmt.Fprintf(&result, "--- %s ---\nError: access denied: path is restricted by permissions.yaml\n\n", p)
 				continue
 			}
 
 			// Try the context cache first (avoids redundant disk reads).
 			if cache != nil {
 				if content, err := cache.Get(p); err == nil {
-					result.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", p, content))
+					fmt.Fprintf(&result, "--- %s ---\n%s\n\n", p, content)
 					continue
 				}
 			}
 
-			absPath, err := safePath(wd, p)
-			if err != nil {
-				result.WriteString(fmt.Sprintf("--- %s ---\nError: %v\n\n", p, err))
-				continue
-			}
 			data, err := os.ReadFile(absPath)
 			if err != nil {
-				result.WriteString(fmt.Sprintf("--- %s ---\nError: %v\n\n", p, err))
+				fmt.Fprintf(&result, "--- %s ---\nError: %v\n\n", p, err)
 				continue
 			}
-			result.WriteString(fmt.Sprintf("--- %s ---\n%s\n\n", p, string(data)))
+			fmt.Fprintf(&result, "--- %s ---\n%s\n\n", p, string(data))
 		}
 		return result.String(), nil
 	}
@@ -301,11 +377,15 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("write_file", args, &params); err != nil {
 			return "", err
 		}
+		if params.Path == "" {
+			return "", fmt.Errorf("write_file: 'path' is required")
+		}
 
-		if IsPlanMode(ctx) && !isPlanModeAllowedPath(params.Path) {
+		planMode := IsPlanMode(ctx)
+		if planMode && !isPlanModeAllowedPath(params.Path) {
 			return "", fmt.Errorf("BLOCKED (plan mode): write_file is not allowed for non-.md files in plan mode. Use propose_write_file instead.\nPath: %s", params.Path)
 		}
 
@@ -317,10 +397,19 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 		if err != nil {
 			return "", err
 		}
-		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
-			return "", err
+		// Re-check plan mode and path restrictions against the resolved target:
+		// a symlink named "notes.md" (or one pointing at .env) must not be a
+		// back door. Both checks run before any write happens.
+		if planMode && !planModeWriteAllowed(params.Path, absPath) {
+			return "", fmt.Errorf("BLOCKED (plan mode): %s resolves to a non-.md file", params.Path)
 		}
-		if err := os.WriteFile(absPath, []byte(params.Content), 0o644); err != nil {
+		if pathRestricted(perms, effectiveWorkDir(ctx, workDir), params.Path, absPath) {
+			return "", fmt.Errorf("access denied: path %q resolves to a path restricted by permissions.yaml", params.Path)
+		}
+		if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
+			return "", fmt.Errorf("create parent directory: %w", err)
+		}
+		if err := writeFileAtomic(absPath, []byte(params.Content), 0o644); err != nil {
 			return "", err
 		}
 		// Invalidate cache for the written file.
@@ -341,15 +430,25 @@ func writeFile(workDir string, perms *ProjectPermissions) func(ctx context.Conte
 func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Context, args json.RawMessage) (string, error) {
 	return func(ctx context.Context, args json.RawMessage) (string, error) {
 		var params struct {
-			Path      string `json:"path"`
-			OldStr    string `json:"old_str"`
-			NewStr    string `json:"new_str"`
+			Path   string `json:"path"`
+			OldStr string `json:"old_str"`
+			NewStr string `json:"new_str"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("str_replace", args, &params); err != nil {
 			return "", err
 		}
+		if params.Path == "" {
+			return "", fmt.Errorf("str_replace: 'path' is required")
+		}
+		if params.OldStr == "" {
+			return "", fmt.Errorf("str_replace: 'old_str' must not be empty — an empty match would insert at an arbitrary position")
+		}
+		if params.OldStr == params.NewStr {
+			return "", fmt.Errorf("str_replace: 'old_str' and 'new_str' are identical — nothing to do")
+		}
 
-		if IsPlanMode(ctx) && !isPlanModeAllowedPath(params.Path) {
+		planMode := IsPlanMode(ctx)
+		if planMode && !isPlanModeAllowedPath(params.Path) {
 			return "", fmt.Errorf("BLOCKED (plan mode): str_replace is not allowed for non-.md files in plan mode. Use propose_edit instead.\nPath: %s", params.Path)
 		}
 
@@ -361,6 +460,12 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		if err != nil {
 			return "", err
 		}
+		if planMode && !planModeWriteAllowed(params.Path, absPath) {
+			return "", fmt.Errorf("BLOCKED (plan mode): %s resolves to a non-.md file", params.Path)
+		}
+		if pathRestricted(perms, effectiveWorkDir(ctx, workDir), params.Path, absPath) {
+			return "", fmt.Errorf("access denied: path %q resolves to a path restricted by permissions.yaml", params.Path)
+		}
 		data, err := os.ReadFile(absPath)
 		if err != nil {
 			return "", err
@@ -369,13 +474,14 @@ func strReplace(workDir string, perms *ProjectPermissions) func(ctx context.Cont
 		content := string(data)
 
 		// Use fuzzy edit matching — tries exact first, then cascading strategies.
+		// A non-unique match is reported as not found rather than guessing.
 		match := editmatch.Find(content, params.OldStr)
 		if match == nil {
-			return "", fmt.Errorf("old_str not found in %s (tried exact + fuzzy matching)", params.Path)
+			return "", fmt.Errorf("old_str not found or not unique in %s (tried exact + fuzzy matching); include more surrounding context to disambiguate", params.Path)
 		}
 
 		newContent := content[:match.Start] + params.NewStr + content[match.End:]
-		if err := os.WriteFile(absPath, []byte(newContent), 0o644); err != nil {
+		if err := writeFileAtomic(absPath, []byte(newContent), 0o644); err != nil {
 			return "", err
 		}
 		// Invalidate cache for the edited file.
@@ -401,8 +507,11 @@ func listDirectory(workDir string) func(ctx context.Context, args json.RawMessag
 		var params struct {
 			Path string `json:"path"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("list_directory", args, &params); err != nil {
 			return "", err
+		}
+		if params.Path == "" {
+			params.Path = "."
 		}
 
 		absPath, err := safePath(effectiveWorkDir(ctx, workDir), params.Path)
@@ -417,19 +526,53 @@ func listDirectory(workDir string) func(ctx context.Context, args json.RawMessag
 		var result strings.Builder
 		for _, entry := range entries {
 			if entry.IsDir() {
-				result.WriteString(fmt.Sprintf("%s/\n", entry.Name()))
+				fmt.Fprintf(&result, "%s/\n", entry.Name())
 			} else {
-				result.WriteString(fmt.Sprintf("%s\n", entry.Name()))
+				fmt.Fprintf(&result, "%s\n", entry.Name())
 			}
 		}
 		return result.String(), nil
 	}
 }
 
-// isReadOnlyCommand checks if a terminal command is safe for plan mode (read-only).
+// isReadOnlyCommand checks if a terminal command is safe for plan mode
+// (read-only). Every segment of a chained command must be read-only, and shell
+// constructs that can write files or hide the real command — redirection,
+// command substitution, backgrounding — are rejected outright. Checking only
+// the first segment would let "ls && rm -rf x", "cat f | sh" or
+// "echo x > main.go" run in plan mode.
 func isReadOnlyCommand(cmd string) bool {
-	lower := strings.ToLower(strings.TrimSpace(cmd))
-	// Allow common read-only commands
+	trimmed := strings.TrimSpace(cmd)
+	if trimmed == "" {
+		return false
+	}
+	if strings.ContainsAny(trimmed, ">`") || strings.Contains(trimmed, "$(") {
+		return false
+	}
+	segments := splitCommandSegments(trimmed)
+	if len(segments) == 0 {
+		return false
+	}
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		if !isReadOnlySegment(strings.ToLower(seg)) {
+			return false
+		}
+	}
+	return true
+}
+
+// isReadOnlySegment reports whether a single (already lower-cased) command
+// segment is a known read-only invocation.
+func isReadOnlySegment(lower string) bool {
+	// A bare '&' survives segment splitting (which only consumes "&&"): it is
+	// either backgrounding or an "&>" redirect. Both are unsafe here.
+	if strings.Contains(lower, "&") {
+		return false
+	}
 	readOnlyPrefixes := []string{
 		"ls", "cat", "head", "tail", "less", "more", "wc",
 		"find", "grep", "rg", "ag", "ack",
@@ -446,11 +589,6 @@ func isReadOnlyCommand(cmd string) bool {
 			return true
 		}
 	}
-	// Allow piped read-only commands if the first command is read-only
-	if idx := strings.Index(lower, "|"); idx > 0 {
-		first := strings.TrimSpace(lower[:idx])
-		return isReadOnlyCommand(first)
-	}
 	return false
 }
 
@@ -459,8 +597,11 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectP
 		var params struct {
 			Command string `json:"command"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("run_terminal_command", args, &params); err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(params.Command) == "" {
+			return "", fmt.Errorf("run_terminal_command: 'command' is required")
 		}
 
 		// Plan mode: only allow read-only commands.
@@ -525,11 +666,11 @@ func runTerminalCommand(workDir string, approvalFn ApprovalFunc, perms *ProjectP
 	execute:
 		cmd := exec.CommandContext(ctx, "sh", "-c", params.Command)
 		cmd.Dir = effectiveWorkDir(ctx, workDir)
-		output, err := cmd.CombinedOutput()
+		output, err := runCommandBounded(ctx, cmd, terminalCommandTimeout)
 		if err != nil {
-			return string(output), fmt.Errorf("command failed: %w\n%s", err, string(output))
+			return output, fmt.Errorf("command failed: %w\n%s", err, output)
 		}
-		return string(output), nil
+		return output, nil
 	}
 }
 
@@ -538,8 +679,11 @@ func globFiles(workDir string) func(ctx context.Context, args json.RawMessage) (
 		var params struct {
 			Pattern string `json:"pattern"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("glob", args, &params); err != nil {
 			return "", err
+		}
+		if params.Pattern == "" {
+			return "", fmt.Errorf("glob: 'pattern' is required")
 		}
 
 		wd := effectiveWorkDir(ctx, workDir)
@@ -583,18 +727,31 @@ func findFiles(workDir string) func(ctx context.Context, args json.RawMessage) (
 		var params struct {
 			Pattern string `json:"pattern"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("find_files", args, &params); err != nil {
 			return "", err
+		}
+		if params.Pattern == "" {
+			return "", fmt.Errorf("find_files: 'pattern' is required")
 		}
 
 		wd := effectiveWorkDir(ctx, workDir)
 		var results strings.Builder
 		count := 0
 		maxResults := 200
+		var skipped []string
 
-		_ = filepath.WalkDir(wd, func(path string, d os.DirEntry, err error) error {
+		lowerPattern := strings.ToLower(params.Pattern)
+		walkErr := filepath.WalkDir(wd, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				return nil // skip errors
+				// An unreadable entry must not abort the whole search, but it is
+				// reported so the caller knows the listing is incomplete.
+				if len(skipped) < 10 {
+					skipped = append(skipped, fmt.Sprintf("%s: %v", path, err))
+				}
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil //nolint:nilerr // recorded in `skipped` and reported below
 			}
 			if count >= maxResults {
 				return filepath.SkipAll
@@ -611,20 +768,29 @@ func findFiles(workDir string) func(ctx context.Context, args json.RawMessage) (
 			}
 
 			// Check if name matches the pattern (case-insensitive substring match)
-			lowerName := strings.ToLower(name)
-			lowerPattern := strings.ToLower(params.Pattern)
-			if strings.Contains(lowerName, lowerPattern) {
-				rel, _ := filepath.Rel(wd, path)
+			if strings.Contains(strings.ToLower(name), lowerPattern) {
+				rel, relErr := filepath.Rel(wd, path)
+				if relErr != nil {
+					rel = path
+				}
 				results.WriteString(rel + "\n")
 				count++
 			}
 			return nil
 		})
 
-		if count == 0 {
-			return "No files found matching: " + params.Pattern, nil
+		var notes strings.Builder
+		if walkErr != nil {
+			fmt.Fprintf(&notes, "\n[search incomplete: %v]\n", walkErr)
 		}
-		return results.String(), nil
+		for _, s := range skipped {
+			notes.WriteString("[skipped " + s + "]\n")
+		}
+
+		if count == 0 {
+			return "No files found matching: " + params.Pattern + "\n" + notes.String(), nil
+		}
+		return results.String() + notes.String(), nil
 	}
 }
 
@@ -634,8 +800,11 @@ func codeSearch(workDir string) func(ctx context.Context, args json.RawMessage) 
 			Pattern string `json:"pattern"`
 			Glob    string `json:"glob,omitempty"` // optional file pattern filter
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("code_search", args, &params); err != nil {
 			return "", err
+		}
+		if params.Pattern == "" {
+			return "", fmt.Errorf("code_search: 'pattern' is required")
 		}
 
 		wd := effectiveWorkDir(ctx, workDir)
@@ -655,20 +824,25 @@ func codeSearch(workDir string) func(ctx context.Context, args json.RawMessage) 
 
 		cmd := exec.CommandContext(ctx, "rg", rgArgs...)
 		cmd.Dir = wd
-		output, err := cmd.CombinedOutput()
+		output, err := runCommandBounded(ctx, cmd, searchCommandTimeout)
 		if err == nil {
-			return string(output), nil
+			return output, nil
+		}
+		if ctx.Err() != nil {
+			return output, ctx.Err()
 		}
 
 		// Fallback: use grep
-		grepArgs := []string{"-rn", "--max-count=50", params.Pattern, "."}
-		cmd = exec.CommandContext(ctx, "grep", grepArgs...)
+		cmd = exec.CommandContext(ctx, "grep", "-rn", "--max-count=50", params.Pattern, ".")
 		cmd.Dir = wd
-		output, err = cmd.CombinedOutput()
-		if err != nil && len(output) == 0 {
+		output, err = runCommandBounded(ctx, cmd, searchCommandTimeout)
+		if err != nil && output == "" {
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
 			return "No matches found for: " + params.Pattern, nil
 		}
-		return string(output), nil
+		return output, nil
 	}
 }
 
@@ -677,12 +851,15 @@ func webSearch() func(ctx context.Context, args json.RawMessage) (string, error)
 		var params struct {
 			Query string `json:"query"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("web_search", args, &params); err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(params.Query) == "" {
+			return "", fmt.Errorf("web_search: 'query' is required")
 		}
 
 		// Use DuckDuckGo HTML lite (no API key required)
-		searchURL := "https://html.duckduckgo.com/html/?q=" + strings.ReplaceAll(params.Query, " ", "+")
+		searchURL := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(params.Query)
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 		if err != nil {
@@ -739,8 +916,11 @@ func askUser(promptFn UserPromptFunc) func(ctx context.Context, args json.RawMes
 		var params struct {
 			Question string `json:"question"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("ask_user", args, &params); err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(params.Question) == "" {
+			return "", fmt.Errorf("ask_user: 'question' is required")
 		}
 
 		if promptFn == nil {
@@ -756,7 +936,7 @@ func symbols(workDir string) func(ctx context.Context, args json.RawMessage) (st
 		var params struct {
 			Paths []string `json:"paths"` // optional: specific file paths to analyze
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("symbols", args, &params); err != nil {
 			return "", err
 		}
 
@@ -808,11 +988,13 @@ func safePath(workDir, path string) (string, error) {
 		canonicalRoot = filepath.Clean(workDir)
 	}
 
-	// Canonicalize the target if it exists (follow symlinks).
+	// Canonicalize the target (follow symlinks). For a path that does not exist
+	// yet — write_file, apply_patch add — EvalSymlinks fails, so resolve the
+	// longest existing ancestor instead: otherwise a symlinked parent directory
+	// pointing outside the workspace would silently pass the boundary check.
 	canonicalResolved, err := filepath.EvalSymlinks(resolved)
 	if err != nil {
-		// File may not exist yet (write_file), check the cleaned path.
-		canonicalResolved = resolved
+		canonicalResolved = resolveExistingAncestor(resolved)
 	}
 
 	if canonicalResolved != canonicalRoot &&
@@ -820,4 +1002,24 @@ func safePath(workDir, path string) (string, error) {
 		return "", fmt.Errorf("access denied: path %q is outside the project directory", path)
 	}
 	return resolved, nil
+}
+
+// resolveExistingAncestor canonicalizes a path that does not exist by resolving
+// symlinks on its longest existing prefix and re-appending the missing
+// components. filepath.EvalSymlinks fails outright on missing paths, which
+// would otherwise leave a symlinked parent unresolved.
+func resolveExistingAncestor(path string) string {
+	cur := path
+	rest := ""
+	for {
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return path // reached the filesystem root, nothing resolvable
+		}
+		if resolvedParent, err := filepath.EvalSymlinks(parent); err == nil {
+			return filepath.Join(resolvedParent, filepath.Base(cur), rest)
+		}
+		rest = filepath.Join(filepath.Base(cur), rest)
+		cur = parent
+	}
 }

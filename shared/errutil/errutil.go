@@ -2,7 +2,11 @@
 // Use success/failure return values instead of throwing exceptions.
 package errutil
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"reflect"
+)
 
 // UserError wraps an internal error with a user-friendly message and optional
 // action hint. The CLI TUI displays UserMsg instead of the raw error string,
@@ -14,11 +18,25 @@ type UserError struct {
 	Retryable bool   // Whether the operation can be retried
 }
 
-func (e *UserError) Error() string { return e.Err.Error() }
+// Error reports the wrapped error's message, falling back to the user-facing
+// message when a UserError was built without an underlying error (a bare
+// dereference of Err would panic).
+func (e *UserError) Error() string {
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	if e.UserMsg != "" {
+		return e.UserMsg
+	}
+	return "unspecified error"
+}
+
+// Unwrap exposes the underlying error for errors.Is / errors.As.
 func (e *UserError) Unwrap() error { return e.Err }
 
 // ClassifyError wraps a raw error into a UserError with a friendly message
 // based on common error patterns from LLM providers and network issues.
+// It returns nil when err is nil.
 func ClassifyError(err error) *UserError {
 	if err == nil {
 		return nil
@@ -84,28 +102,28 @@ func ClassifyError(err error) *UserError {
 	}
 }
 
-// As is a convenience wrapper around errors.As for UserError.
+// As is a convenience wrapper around errors.As. It delegates to the standard
+// library so the whole unwrap chain is walked, including errors joined with
+// errors.Join and wrappers that expose Unwrap() []error.
+//
+// Unlike errors.As it never panics: a nil or unusable target reports false
+// rather than blowing up a caller that is already on an error path.
 func As(err error, target interface{}) bool {
-	return fmt.Errorf("%w", err) != nil && asImpl(err, target)
-}
-
-func asImpl(err error, target interface{}) bool {
-	if target == nil {
+	if err == nil || target == nil {
 		return false
 	}
-	// Use errors.As from stdlib
-	type unwrapper interface{ Unwrap() error }
-	if ue, ok := target.(**UserError); ok {
-		if e, ok2 := err.(*UserError); ok2 {
-			*ue = e
-			return true
-		}
-		if u, ok2 := err.(unwrapper); ok2 {
-			return asImpl(u.Unwrap(), target)
-		}
+	rv := reflect.ValueOf(target)
+	if rv.Kind() != reflect.Pointer || rv.IsNil() {
+		return false
 	}
-	return false
+	elem := rv.Type().Elem()
+	if elem.Kind() != reflect.Interface && !elem.Implements(errorType) {
+		return false
+	}
+	return errors.As(err, target)
 }
+
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
@@ -132,8 +150,18 @@ func Success[T any](value T) Result[T] {
 	return Result[T]{value: value, ok: true}
 }
 
-// Failure creates a failed result.
+// ErrUnspecified is reported by a failed Result that carries no error of its
+// own — for example Failure(nil) or the zero Result value. Without it, callers
+// following the usual `v, err := r.Unwrap()` shape would see a nil error next
+// to a zero value and treat a failure as success.
+var ErrUnspecified = errors.New("failed result with no error")
+
+// Failure creates a failed result. A nil err is replaced by ErrUnspecified so a
+// failure can never be mistaken for a success.
 func Failure[T any](err error) Result[T] {
+	if err == nil {
+		err = ErrUnspecified
+	}
 	return Result[T]{err: err, ok: false}
 }
 
@@ -160,14 +188,23 @@ func (r Result[T]) Value() T {
 	return r.value
 }
 
-// Err returns the error. Returns nil if the result is successful.
+// Err returns the error, or nil if the result is successful. A failed result
+// always reports a non-nil error, even if it was built with a nil one.
 func (r Result[T]) Err() error {
+	if !r.ok && r.err == nil {
+		return ErrUnspecified
+	}
 	return r.err
 }
 
 // Unwrap returns the value and error separately, similar to Go convention.
+// On failure the value is the zero value of T and the error is never nil.
 func (r Result[T]) Unwrap() (T, error) {
-	return r.value, r.err
+	if !r.ok {
+		var zero T
+		return zero, r.Err()
+	}
+	return r.value, nil
 }
 
 // Map transforms the success value using the given function.

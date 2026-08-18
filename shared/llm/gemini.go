@@ -48,7 +48,11 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 		return nil, fmt.Errorf("marshal gemini request: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse&key=%s", geminiAPIURL, req.Model, g.apiKey)
+	// The API key goes in the x-goog-api-key header, never the query string:
+	// net/http wraps transport failures in *url.Error, whose Error() prints the
+	// full URL, so a key in the query leaks into every log line and TUI error
+	// message on any network failure.
+	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse", geminiAPIURL, req.Model)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -56,6 +60,7 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", g.apiKey)
 
 	resp, err := g.client.Do(httpReq)
 	if err != nil {
@@ -63,16 +68,15 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go g.processStream(resp.Body, ch)
+	go g.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -160,7 +164,7 @@ func (g *GeminiProvider) buildRequest(req *CompletionRequest) map[string]any {
 	return body
 }
 
-func (g *GeminiProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (g *GeminiProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -206,7 +210,9 @@ func (g *GeminiProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 
 			// Text content
 			if text, ok := part["text"].(string); ok && text != "" {
-				ch <- StreamEvent{Delta: &DeltaEvent{Text: text}}
+				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: text}}) {
+					return
+				}
 			}
 
 			// Function call
@@ -214,11 +220,13 @@ func (g *GeminiProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 				name, _ := fc["name"].(string)
 				args, _ := fc["args"].(map[string]any)
 				argsJSON, _ := json.Marshal(args)
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+				if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            fmt.Sprintf("call_%s", name),
 					Name:          name,
 					ArgumentsJSON: string(argsJSON),
-				}}
+				}}) {
+					return
+				}
 			}
 		}
 
@@ -238,23 +246,24 @@ func (g *GeminiProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent
 
 		if finishReason != "" {
 			fr := "stop"
-			if finishReason == "STOP" {
-				fr = "stop"
-			} else if finishReason == "MAX_TOKENS" {
+			switch finishReason {
+			case "MAX_TOKENS":
 				fr = "max_tokens"
-			} else if finishReason == "TOOL_CALLS" || finishReason == "FUNCTION_CALL" {
+			case "TOOL_CALLS", "FUNCTION_CALL":
 				fr = "tool_calls"
 			}
-			ch <- StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}
+			if !sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{FinishReason: fr, Usage: usage}}) {
+				return
+			}
 		}
 	}
 
 	// Distinguish clean EOF from a network/parse error so the gateway can
 	// surface truncations instead of treating them as successful streams.
 	if err := scanner.Err(); err != nil {
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "stream_truncated",
 			Message: fmt.Sprintf("gemini stream read error: %v", err),
-		}}
+		}})
 	}
 }

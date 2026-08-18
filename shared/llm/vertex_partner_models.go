@@ -42,7 +42,7 @@ func (v *VertexProvider) streamRawPredict(
 	publisher string,
 	modelName string,
 	payload map[string]any,
-	streamProcessor func(io.ReadCloser, chan<- StreamEvent),
+	streamProcessor func(context.Context, io.ReadCloser, chan<- StreamEvent),
 ) (<-chan StreamEvent, error) {
 	jsonBody, err := json.Marshal(payload)
 	if err != nil {
@@ -76,14 +76,13 @@ func (v *VertexProvider) streamRawPredict(
 		return nil, fmt.Errorf("vertex rawPredict request: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(respBody), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go streamProcessor(resp.Body, ch)
+	go streamProcessor(ctx, resp.Body, ch)
 	return ch, nil
 }

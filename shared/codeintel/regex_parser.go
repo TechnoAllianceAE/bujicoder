@@ -5,19 +5,29 @@ import (
 	"strings"
 )
 
-// symbolPattern defines a regex pattern for extracting symbols.
+// maxScanLines bounds the number of lines a regex extractor will examine. A
+// single generated or minified file must not turn indexing into an O(n^2) stall.
+const maxScanLines = 20000
+
+// symbolPattern defines a compiled regex for extracting symbols.
+// The first capture group is the symbol name.
 type symbolPattern struct {
-	kind    string // "function", "class", "method", "type", "interface", "variable"
-	pattern string // regex pattern (first capture group = symbol name)
+	kind string // "function", "class", "method", "type", "interface", "variable"
+	re   *regexp.Regexp
+}
+
+// pat builds a symbolPattern. Patterns are compiled once at package
+// initialization rather than on every parsed file.
+func pat(kind, expr string) symbolPattern {
+	return symbolPattern{kind: kind, re: regexp.MustCompile(expr)}
 }
 
 // extractWithPatterns applies regex patterns to extract symbols from source code.
 // It handles multi-line constructs by tracking brace depth to determine end lines.
 func extractWithPatterns(content string, patterns []symbolPattern) []Symbol {
 	lines := strings.Split(content, "\n")
-	compiled := make([]*regexp.Regexp, len(patterns))
-	for i, p := range patterns {
-		compiled[i] = regexp.MustCompile(p.pattern)
+	if len(lines) > maxScanLines {
+		lines = lines[:maxScanLines]
 	}
 
 	var symbols []Symbol
@@ -28,21 +38,20 @@ func extractWithPatterns(content string, patterns []symbolPattern) []Symbol {
 			continue
 		}
 
-		for i, re := range compiled {
-			matches := re.FindStringSubmatch(trimmed)
+		for _, p := range patterns {
+			// Matched against the raw line: several patterns are anchored on
+			// leading indentation to tell a method from a free function, which
+			// can never match a trimmed line.
+			matches := p.re.FindStringSubmatch(line)
 			if len(matches) < 2 {
 				continue
 			}
 
-			name := matches[1]
-			startLine := lineIdx + 1
-			endLine := findBlockEnd(lines, lineIdx)
-
 			symbols = append(symbols, Symbol{
-				Name:      name,
-				Kind:      patterns[i].kind,
-				StartLine: startLine,
-				EndLine:   endLine,
+				Name:      matches[1],
+				Kind:      p.kind,
+				StartLine: lineIdx + 1,
+				EndLine:   findBlockEnd(lines, lineIdx),
 				Signature: truncateLine(trimmed, 120),
 			})
 			break // First pattern match wins for this line
@@ -121,10 +130,18 @@ func getIndent(line string) int {
 	return indent
 }
 
-// truncateLine truncates a line to maxLen characters.
+// truncateLine truncates a line to maxLen runes. Cutting on a byte boundary
+// would split a multi-byte rune and emit invalid UTF-8 in the signature.
 func truncateLine(line string, maxLen int) string {
-	if len(line) <= maxLen {
+	if maxLen < 4 || len(line) <= maxLen {
 		return line
 	}
-	return line[:maxLen-3] + "..."
+	count := 0
+	for i := range line {
+		if count == maxLen-3 {
+			return line[:i] + "..."
+		}
+		count++
+	}
+	return line
 }

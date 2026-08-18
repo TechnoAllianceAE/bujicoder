@@ -75,8 +75,14 @@ func proposeEdit(workDir string) func(ctx context.Context, args json.RawMessage)
 			OldStr string `json:"old_str"`
 			NewStr string `json:"new_str"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("propose_edit", args, &params); err != nil {
 			return "", err
+		}
+		if params.Path == "" {
+			return "", fmt.Errorf("propose_edit: 'path' is required")
+		}
+		if params.OldStr == "" {
+			return "", fmt.Errorf("propose_edit: 'old_str' must not be empty")
 		}
 
 		pc := GetProposalCollector(ctx)
@@ -98,7 +104,7 @@ func proposeEdit(workDir string) func(ctx context.Context, args json.RawMessage)
 
 		match := editmatch.Find(content, params.OldStr)
 		if match == nil {
-			return "", fmt.Errorf("old_str not found in %s (tried exact + fuzzy matching)", params.Path)
+			return "", fmt.Errorf("old_str not found or not unique in %s (tried exact + fuzzy matching)", params.Path)
 		}
 
 		newContent := content[:match.Start] + params.NewStr + content[match.End:]
@@ -127,8 +133,11 @@ func proposeWriteFile(workDir string) func(ctx context.Context, args json.RawMes
 			Path    string `json:"path"`
 			Content string `json:"content"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
+		if err := unmarshalArgs("propose_write_file", args, &params); err != nil {
 			return "", err
+		}
+		if params.Path == "" {
+			return "", fmt.Errorf("propose_write_file: 'path' is required")
 		}
 
 		pc := GetProposalCollector(ctx)

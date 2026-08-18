@@ -9,7 +9,9 @@ LDFLAGS = -s -w \
   -X $(MODULE)/shared/buildinfo.Commit=$(COMMIT) \
   -X $(MODULE)/shared/buildinfo.BuildTime=$(BUILD_TIME)
 
-.PHONY: build install test lint fmt clean dist
+SHASUM = $(shell command -v sha256sum >/dev/null 2>&1 && echo "sha256sum" || echo "shasum -a 256")
+
+.PHONY: build install test test-coverage lint fmt vulncheck clean dist release
 
 ## Build the CLI binary
 build:
@@ -42,17 +44,23 @@ fmt:
 
 ## Clean build artifacts
 clean:
-	rm -rf bin/ coverage.out coverage.html
+	rm -rf bin/ dist/ coverage.out coverage.html
 
-## Cross-compile for all platforms
+## Scan for known vulnerabilities
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+## Cross-compile for all platforms (CGO-free, reproducible, checksummed)
+dist: DIST_ENV = CGO_ENABLED=0
 dist:
-	@mkdir -p dist
-	GOOS=darwin  GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_darwin_amd64  ./cli/cmd/buji
-	GOOS=darwin  GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_darwin_arm64  ./cli/cmd/buji
-	GOOS=linux   GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_linux_amd64   ./cli/cmd/buji
-	GOOS=linux   GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_linux_arm64   ./cli/cmd/buji
-	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_windows_amd64.exe ./cli/cmd/buji
-	@echo "Binaries in dist/"
+	@rm -rf dist && mkdir -p dist
+	$(DIST_ENV) GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_darwin_amd64      ./cli/cmd/buji
+	$(DIST_ENV) GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_darwin_arm64      ./cli/cmd/buji
+	$(DIST_ENV) GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_linux_amd64       ./cli/cmd/buji
+	$(DIST_ENV) GOOS=linux   GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_linux_arm64       ./cli/cmd/buji
+	$(DIST_ENV) GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o dist/$(BINARY)_windows_amd64.exe ./cli/cmd/buji
+	@cd dist && $(SHASUM) $(BINARY)_* > checksums.txt
+	@echo "Binaries + checksums.txt in dist/"
 
 ## Create a GitHub release (requires gh CLI)
 release: dist

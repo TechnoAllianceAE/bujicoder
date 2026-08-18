@@ -62,8 +62,8 @@ func todoWrite() func(ctx context.Context, args json.RawMessage) (string, error)
 		var params struct {
 			Items []TodoItem `json:"items"`
 		}
-		if err := json.Unmarshal(args, &params); err != nil {
-			return "", fmt.Errorf("parse todo_write args: %w", err)
+		if err := unmarshalArgs("todo_write", args, &params); err != nil {
+			return "", err
 		}
 
 		list := getTodoList(ctx)
@@ -94,11 +94,11 @@ func todoWrite() func(ctx context.Context, args json.RawMessage) (string, error)
 		}
 
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("Todo list updated (%d items):\n", len(params.Items)))
+		fmt.Fprintf(&sb, "Todo list updated (%d items):\n", len(params.Items))
 		for _, item := range params.Items {
-			sb.WriteString(fmt.Sprintf("  %s %s", statusIcon(item.Status), item.Task))
+			fmt.Fprintf(&sb, "  %s %s", statusIcon(item.Status), item.Task)
 			if item.Note != "" {
-				sb.WriteString(fmt.Sprintf(" — %s", item.Note))
+				fmt.Fprintf(&sb, " — %s", item.Note)
 			}
 			sb.WriteString("\n")
 		}

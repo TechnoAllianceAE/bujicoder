@@ -5,6 +5,7 @@ package settings
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -20,6 +21,10 @@ type layer struct {
 	name     string
 	path     string
 	settings map[string]any
+	// malformed is true when the file exists but could not be parsed. Writing
+	// such a layer would replace the user's file with a single key and destroy
+	// whatever was in it, so writes are refused instead.
+	malformed bool
 }
 
 // NewHierarchy creates a settings hierarchy from the standard config locations.
@@ -39,19 +44,25 @@ func NewHierarchy(configDir, projectRoot string) *Hierarchy {
 }
 
 func (h *Hierarchy) loadLayer(name, path string) {
+	l := layer{name: name, path: path}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		h.layers = append(h.layers, layer{name: name, path: path, settings: nil})
+		// A missing file is normal; anything else (unreadable, permission
+		// denied) must not be treated as "empty and safe to overwrite".
+		l.malformed = !os.IsNotExist(err)
+		h.layers = append(h.layers, l)
 		return
 	}
 
 	var settings map[string]any
 	if err := json.Unmarshal(data, &settings); err != nil {
-		h.layers = append(h.layers, layer{name: name, path: path, settings: nil})
+		l.malformed = true
+		h.layers = append(h.layers, l)
 		return
 	}
 
-	h.layers = append(h.layers, layer{name: name, path: path, settings: settings})
+	l.settings = settings
+	h.layers = append(h.layers, l)
 }
 
 // Get returns the value of a setting, searching layers from highest to lowest
@@ -112,50 +123,75 @@ func (h *Hierarchy) GetStringSlice(key string) []string {
 func (h *Hierarchy) Set(key string, value any) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	// Find the user layer
-	for i := range h.layers {
-		if h.layers[i].name == "user" {
-			if h.layers[i].settings == nil {
-				h.layers[i].settings = make(map[string]any)
-			}
-			h.layers[i].settings[key] = value
-			return h.saveLayer(h.layers[i])
-		}
-	}
-	return nil
+	return h.setInLayer("user", key, value)
 }
 
 // SetProject writes a setting to the project layer and persists to disk.
 func (h *Hierarchy) SetProject(key string, value any) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-
-	for i := range h.layers {
-		if h.layers[i].name == "project" {
-			if h.layers[i].settings == nil {
-				h.layers[i].settings = make(map[string]any)
-			}
-			h.layers[i].settings[key] = value
-			return h.saveLayer(h.layers[i])
-		}
-	}
-	return nil
+	return h.setInLayer("project", key, value)
 }
 
+// setInLayer stores a key in the named layer and persists it. Callers must hold
+// h.mu. A missing layer is an error rather than a silent no-op, which would
+// look like a successful save to the caller.
+func (h *Hierarchy) setInLayer(name, key string, value any) error {
+	for i := range h.layers {
+		if h.layers[i].name != name {
+			continue
+		}
+		if h.layers[i].malformed {
+			return fmt.Errorf("refusing to overwrite %s settings at %s: the existing file could not be parsed", name, h.layers[i].path)
+		}
+		if h.layers[i].settings == nil {
+			h.layers[i].settings = make(map[string]any)
+		}
+		h.layers[i].settings[key] = value
+		return h.saveLayer(h.layers[i])
+	}
+	return fmt.Errorf("no %s settings layer is configured", name)
+}
+
+// saveLayer writes a layer to disk atomically: writing in place would leave a
+// truncated, unparseable settings file if the process died or the disk filled
+// mid-write, losing every user setting.
 func (h *Hierarchy) saveLayer(l layer) error {
 	if l.path == "" {
 		return nil
 	}
 	dir := filepath.Dir(l.path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(l.settings, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(l.path, data, 0644)
+
+	tmp, err := os.CreateTemp(dir, ".settings-*.json")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	if err := os.Rename(tmpName, l.path); err != nil {
+		_ = os.Remove(tmpName)
+		return err
+	}
+	return nil
 }
 
 // Reload re-reads all layers from disk.
@@ -167,14 +203,16 @@ func (h *Hierarchy) Reload() {
 		if h.layers[i].path == "" {
 			continue
 		}
+		h.layers[i].settings = nil
+		h.layers[i].malformed = false
 		data, err := os.ReadFile(h.layers[i].path)
 		if err != nil {
-			h.layers[i].settings = nil
+			h.layers[i].malformed = !os.IsNotExist(err)
 			continue
 		}
 		var settings map[string]any
 		if err := json.Unmarshal(data, &settings); err != nil {
-			h.layers[i].settings = nil
+			h.layers[i].malformed = true
 			continue
 		}
 		h.layers[i].settings = settings

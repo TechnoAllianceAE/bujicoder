@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -22,17 +23,22 @@ func (e *ProviderError) Error() string {
 	return fmt.Sprintf("provider error (status %d): %s", e.StatusCode, e.Message)
 }
 
-// IsRetryable returns true if err is a ProviderError with a retryable status code.
+// IsRetryable returns true if err wraps a ProviderError with a retryable
+// status code. Uses errors.As so a wrapped error (e.g. the "max retries
+// exceeded: %w" wrapper) is still classified correctly.
 func IsRetryable(err error) bool {
-	if pe, ok := err.(*ProviderError); ok {
+	var pe *ProviderError
+	if errors.As(err, &pe) {
 		return pe.Retryable
 	}
 	return false
 }
 
-// RetryAfterDuration extracts the Retry-After duration from err if it's a ProviderError.
+// RetryAfterDuration extracts the Retry-After duration from err if it wraps a
+// ProviderError.
 func RetryAfterDuration(err error) time.Duration {
-	if pe, ok := err.(*ProviderError); ok {
+	var pe *ProviderError
+	if errors.As(err, &pe) {
 		return pe.RetryAfter
 	}
 	return 0
@@ -86,16 +92,14 @@ func NewProviderError(statusCode int, message string, retryAfterDur time.Duratio
 // isRetryableStatus returns true for transient error status codes.
 func isRetryableStatus(statusCode int) bool {
 	switch statusCode {
-	case 429: // Too Many Requests
-		fallthrough
-	case 500: // Internal Server Error
-		fallthrough
-	case 502: // Bad Gateway
-		fallthrough
-	case 503: // Service Unavailable
-		fallthrough
-	case 504: // Gateway Timeout
-		fallthrough
+	case 408, // Request Timeout
+		429, // Too Many Requests
+		500, // Internal Server Error
+		502, // Bad Gateway
+		503, // Service Unavailable
+		504, // Gateway Timeout
+		529: // Overloaded (Anthropic)
+		return true
 	case 520, 521, 522, 523, 524, 525, 526, 527: // Cloudflare edge errors (524 = origin timeout)
 		return true
 	default:

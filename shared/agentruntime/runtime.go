@@ -5,6 +5,7 @@ package agentruntime
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/rs/zerolog"
 
@@ -57,27 +58,44 @@ type Event struct {
 // OnEvent is a callback invoked for each runtime event.
 type OnEvent func(Event)
 
+// serializedEmitter wraps an OnEvent callback so it can be invoked from
+// several goroutines at once (parallel sub-agents) without racing. Consumers
+// such as the TUI append to their own state inside the callback and are not
+// written to be re-entrant. Returns nil when fn is nil.
+func serializedEmitter(fn OnEvent) OnEvent {
+	if fn == nil {
+		return nil
+	}
+	var mu sync.Mutex
+	return func(ev Event) {
+		mu.Lock()
+		defer mu.Unlock()
+		fn(ev)
+	}
+}
+
 // RunConfig configures a single agent run.
 type RunConfig struct {
 	AgentDef          *agent.Definition
 	UserMessage       string
-	UserImages        []llm.ContentPart      // Optional image_url parts to include in the user message
-	History           []llm.Message           // Prior conversation history
-	AncestorIDs       []string                // Parent run IDs for sub-agent tracking
-	ProjectRoot       string                  // Working directory for dynamic context (file tree, git, knowledge files)
+	UserImages        []llm.ContentPart // Optional image_url parts to include in the user message
+	History           []llm.Message     // Prior conversation history
+	AncestorIDs       []string          // Parent run IDs for sub-agent tracking
+	ProjectRoot       string            // Working directory for dynamic context (file tree, git, knowledge files)
 	OnEvent           OnEvent
-	CostMode          costmode.Mode           // Cost mode for model selection (propagated to sub-agents)
-	ModelResolver     *costmode.Resolver      // Server-side model resolver (propagated to sub-agents)
-	ProposalCollector *tools.ProposalCollector    // When set, proposal tools accumulate here instead of writing to disk
-	ContextCache      *contextcache.Cache         // When set, file reads are cached to avoid redundant disk I/O
-	SnapshotManager   *snapshot.Manager           // When set, auto-snapshots after write tools
-	LSPManager        *lsp.Manager                // When set, LSP diagnostics run after file edits
-	TodoList          *tools.TodoList             // When set, agents can track tasks
-	SharedMemory      *SharedMemory              // When set, enables inter-agent knowledge sharing
+	CostMode          costmode.Mode            // Cost mode for model selection (propagated to sub-agents)
+	PlanMode          bool                     // When true, write tools are hard-blocked (read-only/plan run)
+	ModelResolver     *costmode.Resolver       // Server-side model resolver (propagated to sub-agents)
+	ProposalCollector *tools.ProposalCollector // When set, proposal tools accumulate here instead of writing to disk
+	ContextCache      *contextcache.Cache      // When set, file reads are cached to avoid redundant disk I/O
+	SnapshotManager   *snapshot.Manager        // When set, auto-snapshots after write tools
+	LSPManager        *lsp.Manager             // When set, LSP diagnostics run after file edits
+	TodoList          *tools.TodoList          // When set, agents can track tasks
+	SharedMemory      *SharedMemory            // When set, enables inter-agent knowledge sharing
 
 	// Extensibility (ported from bc2 — all optional, nil = no-op)
-	HookManager   *hooks.Manager   // When set, Pre/PostToolUse hooks fire around tool calls
-	SessionMemory *memory.Store    // When set, cross-session project memories injected into prompt
+	HookManager   *hooks.Manager // When set, Pre/PostToolUse hooks fire around tool calls
+	SessionMemory *memory.Store  // When set, cross-session project memories injected into prompt
 }
 
 // RunResult summarises a completed agent run.

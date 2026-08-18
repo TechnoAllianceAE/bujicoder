@@ -98,16 +98,15 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody := readErrorBody(resp)
 		// Parse Retry-After header for rate limit responses
 		headers := NormalizeHeaders(resp.Header)
 		retryAfter := ExtractRetryAfterFromHeaders(headers)
-		return nil, NewProviderError(resp.StatusCode, string(body), retryAfter)
+		return nil, NewProviderError(resp.StatusCode, respBody, retryAfter)
 	}
 
 	ch := make(chan StreamEvent, 64)
-	go a.processStream(resp.Body, ch)
+	go a.processStream(ctx, resp.Body, ch)
 	return ch, nil
 }
 
@@ -254,7 +253,7 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	return body
 }
 
-func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEvent) {
+func (a *AnthropicProvider) processStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamEvent) {
 	defer close(ch)
 	defer body.Close()
 
@@ -299,7 +298,9 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 			switch deltaType {
 			case "text_delta":
 				text, _ := delta["text"].(string)
-				ch <- StreamEvent{Delta: &DeltaEvent{Text: text}}
+				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: text}}) {
+					return
+				}
 			case "input_json_delta":
 				if partial, ok := delta["partial_json"].(string); ok {
 					argsBuffer.WriteString(partial)
@@ -312,11 +313,13 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 				if args == "" {
 					args = "{}"
 				}
-				ch <- StreamEvent{ToolCall: &ToolCallEvent{
+				if !sendEvent(ctx, ch, StreamEvent{ToolCall: &ToolCallEvent{
 					ID:            pendingToolID,
 					Name:          pendingToolName,
 					ArgumentsJSON: args,
-				}}
+				}}) {
+					return
+				}
 				pendingToolID = ""
 				pendingToolName = ""
 				argsBuffer.Reset()
@@ -340,16 +343,19 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 			}
 
 			finishReason := "stop"
-			if stopReason == "tool_use" {
+			switch stopReason {
+			case "tool_use":
 				finishReason = "tool_calls"
-			} else if stopReason == "max_tokens" {
+			case "max_tokens":
 				finishReason = "max_tokens"
 			}
 
-			ch <- StreamEvent{Complete: &CompleteEvent{
+			if !sendEvent(ctx, ch, StreamEvent{Complete: &CompleteEvent{
 				FinishReason: finishReason,
 				Usage:        usage,
-			}}
+			}}) {
+				return
+			}
 
 		case "message_start":
 			msg, _ := event["message"].(map[string]any)
@@ -372,9 +378,9 @@ func (a *AnthropicProvider) processStream(body io.ReadCloser, ch chan<- StreamEv
 	// Distinguish clean EOF from a network/parse error so the gateway can
 	// log truncations instead of treating them as successful streams.
 	if err := scanner.Err(); err != nil {
-		ch <- StreamEvent{Error: &ErrorEvent{
+		sendEvent(ctx, ch, StreamEvent{Error: &ErrorEvent{
 			Code:    "stream_truncated",
 			Message: fmt.Sprintf("anthropic stream read error: %v", err),
-		}}
+		}})
 	}
 }

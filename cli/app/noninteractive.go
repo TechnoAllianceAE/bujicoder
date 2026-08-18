@@ -14,7 +14,10 @@ import (
 // the Bubble Tea TUI. Streams output text to stdout and exits.
 // Uses the shared AgentOrchestrator so behavior matches the TUI.
 func RunNonInteractive(prompt string, verbose bool) error {
-	ucfg := cliconfig.LoadUnifiedConfig()
+	ucfg, err := cliconfig.LoadUnifiedConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
 	if ucfg == nil {
 		return fmt.Errorf("no config found — run 'buji' interactively first to complete setup")
 	}

@@ -27,8 +27,21 @@ type Result struct {
 }
 
 // Find attempts to locate oldStr within content using cascading strategies.
-// Returns nil if no unique match is found.
+// Returns nil if no unique match is found: an empty search string, a search
+// string that occurs more than once, and a strategy that produced an
+// out-of-range span are all reported as "no match" so a caller can never
+// silently rewrite the wrong occurrence.
 func Find(content, oldStr string) *Result {
+	if oldStr == "" {
+		return nil
+	}
+	// An exact substring occurring more than once is ambiguous. Reject it here
+	// rather than falling through to the fuzzy strategies, which would happily
+	// pick one of the duplicates.
+	if strings.Count(content, oldStr) > 1 {
+		return nil
+	}
+
 	strategies := []struct {
 		name string
 		fn   func(content, oldStr string) *Result
@@ -42,10 +55,17 @@ func Find(content, oldStr string) *Result {
 	}
 
 	for _, s := range strategies {
-		if r := s.fn(content, oldStr); r != nil {
-			r.Strategy = s.name
-			return r
+		r := s.fn(content, oldStr)
+		if r == nil {
+			continue
 		}
+		// Guard against a mapping helper producing a span that would panic or
+		// corrupt the file when sliced.
+		if r.Start < 0 || r.End < r.Start || r.End > len(content) {
+			continue
+		}
+		r.Strategy = s.name
+		return r
 	}
 	return nil
 }
@@ -57,11 +77,9 @@ func matchExact(content, oldStr string) *Result {
 	if idx < 0 {
 		return nil
 	}
-	// Ensure unique — only one occurrence.
-	if strings.Index(content[idx+1:], oldStr) >= 0 {
-		// Multiple matches — still return the first one for exact match
-		// since exact match is unambiguous in intent.
-		return &Result{Start: idx, End: idx + len(oldStr), Matched: oldStr}
+	// Only a single occurrence is unambiguous.
+	if strings.Contains(content[idx+1:], oldStr) {
+		return nil
 	}
 	return &Result{Start: idx, End: idx + len(oldStr), Matched: oldStr}
 }
@@ -82,7 +100,7 @@ func matchLineTrimmed(content, oldStr string) *Result {
 		return nil
 	}
 	// Check uniqueness.
-	if strings.Index(trimmedContent[idx+1:], trimmedOld) >= 0 {
+	if strings.Contains(trimmedContent[idx+1:], trimmedOld) {
 		return nil
 	}
 	// Map back to original content position.
@@ -104,7 +122,7 @@ func matchWhitespaceNormalized(content, oldStr string) *Result {
 	if idx < 0 {
 		return nil
 	}
-	if strings.Index(normContent[idx+1:], normOld) >= 0 {
+	if strings.Contains(normContent[idx+1:], normOld) {
 		return nil // ambiguous
 	}
 	return mapNormalizedToOriginal(content, normContent, idx, len(normOld))
@@ -125,7 +143,7 @@ func matchIndentationFlexible(content, oldStr string) *Result {
 	if idx < 0 {
 		return nil
 	}
-	if strings.Index(strippedContent[idx+1:], strippedOld) >= 0 {
+	if strings.Contains(strippedContent[idx+1:], strippedOld) {
 		return nil
 	}
 	return mapStrippedToOriginal(content, strippedContent, idx, len(strippedOld))
@@ -146,7 +164,7 @@ func matchEscapeNormalized(content, oldStr string) *Result {
 	if idx < 0 {
 		return nil
 	}
-	if strings.Index(normContent[idx+1:], normOld) >= 0 {
+	if strings.Contains(normContent[idx+1:], normOld) {
 		return nil
 	}
 	// Since escape normalization changes byte positions but preserves line structure,
@@ -341,21 +359,16 @@ func mapTrimmedToOriginal(original, trimmed string, trimIdx, trimLen int) *Resul
 // mapNormalizedToOriginal maps a position in whitespace-normalized text back
 // to the original. Uses a sliding-window approach on original lines.
 func mapNormalizedToOriginal(original, _ string, normIdx, normLen int) *Result {
-	// Brute force: try each line range in the original.
-	lines := strings.Split(original, "\n")
-	target := normIdx // approximate start
-
-	// Find the char count in original that corresponds to normIdx normalized chars.
+	// Find the byte offsets in the original that correspond to the normalized
+	// start and end positions.
 	origStart := mapNormCharToOrigByte(original, normIdx)
 	origEnd := mapNormCharToOrigByte(original, normIdx+normLen)
 
-	if origStart < 0 || origEnd < 0 || origEnd > len(original) {
-		// Fallback: search with expanding windows.
+	// An unmappable or inverted span means the normalized position could not be
+	// projected back reliably; slicing it would panic or mangle the file.
+	if origStart < 0 || origEnd < 0 || origEnd > len(original) || origEnd < origStart {
 		return nil
 	}
-
-	_ = target
-	_ = lines
 
 	return &Result{Start: origStart, End: origEnd, Matched: original[origStart:origEnd]}
 }

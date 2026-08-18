@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"fmt"
+	"unicode/utf8"
 
 	"github.com/TechnoAllianceAE/bujicoder/shared/llm"
 )
@@ -9,7 +10,7 @@ import (
 // state holds the mutable conversation state for a single agent run.
 type state struct {
 	messages       []llm.Message
-	dynamicCtx     string // cached dynamic context (file tree, git, knowledge) built once per run
+	dynamicCtx     string         // cached dynamic context (file tree, git, knowledge) built once per run
 	toolCallCounts map[string]int // track repeated tool calls: "toolName:argsHash" -> count
 }
 
@@ -80,6 +81,11 @@ const (
 
 // CompressHistory iterates through old messages and truncates massive tool results
 // to prevent context window overflow during long-running tasks.
+//
+// Message content slices may be shared with the caller-supplied history (newState
+// copies the message headers, not the underlying ContentPart slices), so a message
+// is copy-on-written before any part of it is truncated. Mutating in place would
+// corrupt the caller's conversation record.
 func (s *state) CompressHistory() {
 	if len(s.messages) <= KeepUncompressedSteps {
 		return
@@ -88,18 +94,45 @@ func (s *state) CompressHistory() {
 	// Only compress messages older than the uncompressed window
 	compressLimit := len(s.messages) - KeepUncompressedSteps
 
-	for i := 0; i < compressLimit; i++ {
+	for i := range compressLimit {
 		msg := &s.messages[i]
 		if msg.Role != "tool" {
 			continue // Only compress tool results (file reads, grep output, etc.)
 		}
 
+		copied := false
 		for j := range msg.Content {
-			part := &msg.Content[j]
-			if part.Type == "text" && len(part.Text) > MaxToolResultSize {
-				removed := len(part.Text) - TruncatedSize
-				part.Text = part.Text[:TruncatedSize] + fmt.Sprintf("\n\n... [Truncated for brevity. %d characters removed.]", removed)
+			// Tool results are stored as "tool_result" parts; older code only
+			// looked at "text" parts, which never appear in a tool message.
+			if t := msg.Content[j].Type; t != "tool_result" && t != "text" {
+				continue
 			}
+			if len(msg.Content[j].Text) <= MaxToolResultSize {
+				continue
+			}
+			if !copied {
+				parts := make([]llm.ContentPart, len(msg.Content))
+				copy(parts, msg.Content)
+				msg.Content = parts
+				copied = true
+			}
+			part := &msg.Content[j]
+			kept := safeRuneTruncateRaw(part.Text, TruncatedSize)
+			removed := len(part.Text) - len(kept)
+			part.Text = kept + fmt.Sprintf("\n\n... [Truncated for brevity. %d characters removed.]", removed)
 		}
 	}
+}
+
+// safeRuneTruncateRaw returns the first maxBytes bytes of s, backing up to the
+// nearest rune boundary so the result is always valid UTF-8. No marker is added.
+func safeRuneTruncateRaw(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	end := maxBytes
+	for end > 0 && !utf8.RuneStart(s[end]) {
+		end--
+	}
+	return s[:end]
 }

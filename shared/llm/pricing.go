@@ -35,6 +35,7 @@ type PricingService struct {
 	client      *http.Client
 	log         zerolog.Logger
 	stopCh      chan struct{}
+	stopOnce    sync.Once
 }
 
 // NewPricingService creates a new pricing service. Call Start to fetch
@@ -77,7 +78,7 @@ func (p *PricingService) Start(ctx context.Context) error {
 		p.log.Warn().Err(err).Msg("initial API pricing fetch failed, using static registry")
 	}
 
-	go p.refreshLoop()
+	go p.refreshLoop(ctx)
 	return nil
 }
 
@@ -98,9 +99,12 @@ func (p *PricingService) loadBedrockPricing() error {
 	return nil
 }
 
-// Stop signals the background refresh goroutine to exit.
+// Stop signals the background refresh goroutine to exit. Safe to call multiple
+// times — a second bare close(p.stopCh) would panic.
 func (p *PricingService) Stop() {
-	close(p.stopCh)
+	p.stopOnce.Do(func() {
+		close(p.stopCh)
+	})
 }
 
 // ModelCount returns the number of models with known pricing.
@@ -169,8 +173,11 @@ func (p *PricingService) lookup(model string) (ModelPricing, bool) {
 	return ModelPricing{}, false
 }
 
-// refreshLoop periodically re-fetches pricing data until Stop is called.
-func (p *PricingService) refreshLoop() {
+// refreshLoop periodically re-fetches pricing data until Stop is called or the
+// context passed to Start is canceled. Honoring startCtx matters because the
+// caller's shutdown path may only cancel the context: without this the loop
+// (and its 6-hourly network fetches) would outlive the service that owns it.
+func (p *PricingService) refreshLoop(startCtx context.Context) {
 	ticker := time.NewTicker(6 * time.Hour)
 	defer ticker.Stop()
 
@@ -178,8 +185,10 @@ func (p *PricingService) refreshLoop() {
 		select {
 		case <-p.stopCh:
 			return
+		case <-startCtx.Done():
+			return
 		case <-ticker.C:
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(startCtx, 30*time.Second)
 			if err := p.fetchPricing(ctx); err != nil {
 				p.log.Warn().Err(err).Msg("failed to refresh pricing")
 			}
@@ -297,7 +306,9 @@ func (p *PricingService) fetchPricing(ctx context.Context) error {
 		p.log.Warn().Err(err).Msg("failed to re-apply bedrock pricing after refresh")
 	}
 
-	p.log.Info().Int("api_models", len(prices)).Int("total_models", len(p.prices)).Int("skipped", skipped).Msg("refreshed model prices")
+	// ModelCount takes the read lock; reading len(p.prices) directly here races
+	// with concurrent writers of the mutex-guarded map.
+	p.log.Info().Int("api_models", len(prices)).Int("total_models", p.ModelCount()).Int("skipped", skipped).Msg("refreshed model prices")
 	return nil
 }
 
