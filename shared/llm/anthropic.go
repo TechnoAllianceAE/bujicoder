@@ -219,6 +219,27 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 						"content":     part.Text,
 						"is_error":    part.IsError,
 					})
+				case "reasoning":
+					// Round-trip assistant chain-of-thought. Thinking-mode
+					// upstreams (Anthropic, DeepSeek's /anthropic endpoint)
+					// reject requests whose assistant history dropped the
+					// thinking blocks the model originally produced:
+					//   "The `content[].thinking` in the thinking mode must be
+					//    passed back to the API."
+					if part.Reasoning != "" {
+						block := map[string]any{"type": "thinking", "thinking": part.Reasoning}
+						if part.Signature != "" {
+							block["signature"] = part.Signature
+						}
+						content = append(content, block)
+					} else if part.Signature != "" {
+						// No plaintext (redacted thinking): the opaque blob
+						// rides in Signature and goes back verbatim as data.
+						content = append(content, map[string]any{
+							"type": "redacted_thinking",
+							"data": part.Signature,
+						})
+					}
 				}
 			}
 			// Cache marker attaches to the last content block of this message.

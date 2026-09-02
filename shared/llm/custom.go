@@ -33,6 +33,12 @@ func NewCustomOpenAIProvider(name, baseURL, apiKey string, timeout ...time.Durat
 			APIKey:       apiKey,
 			ProviderName: name,
 			Timeout:      t,
+			// Echo assistant chain-of-thought back as reasoning_content.
+			// The echo only fires when the conversation history actually
+			// contains reasoning parts, so providers whose clients never
+			// send thinking blocks are unaffected — while thinking-mode
+			// upstreams (DeepSeek v4, ...) get the field they require.
+			SupportsReasoning: true,
 		}),
 	}
 }
