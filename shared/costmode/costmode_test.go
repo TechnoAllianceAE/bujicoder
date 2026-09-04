@@ -3,6 +3,8 @@ package costmode
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -336,5 +338,72 @@ func TestAllModes(t *testing.T) {
 func TestModeString(t *testing.T) {
 	if ModeNormal.String() != "normal" {
 		t.Errorf("ModeNormal.String() = %q", ModeNormal.String())
+	}
+}
+
+// TestSaveModelConfigBindMountFallback simulates the Docker bind-mount case:
+// rename(2) over a mount point fails with EBUSY, and saveModelConfig must
+// fall back to overwriting the target in place.
+func TestSaveModelConfigBindMountFallback(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model_config.yaml")
+	if err := os.WriteFile(path, []byte("modes: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	orig := renameFile
+	renameFile = func(oldpath, newpath string) error {
+		return &os.SyscallError{Syscall: "rename", Err: syscall.EBUSY}
+	}
+	t.Cleanup(func() { renameFile = orig })
+
+	cfg := ModelConfig{Modes: map[Mode]ModelMapping{
+		ModeNormal: {Main: "new/model"},
+	}}
+	if err := saveModelConfig(path, &cfg); err != nil {
+		t.Fatalf("saveModelConfig with EBUSY rename: %v", err)
+	}
+
+	loaded, err := LoadModelConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loaded.Modes[ModeNormal].Main; got != "new/model" {
+		t.Errorf("persisted main = %q, want %q", got, "new/model")
+	}
+
+	// The temp file must not survive the fallback.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "model_config.yaml" {
+		names := make([]string, len(entries))
+		for i, e := range entries {
+			names[i] = e.Name()
+		}
+		t.Errorf("dir after fallback = %v, want only model_config.yaml", names)
+	}
+}
+
+// TestSaveModelConfigRenameErrorPropagates checks that rename failures other
+// than EBUSY/EXDEV are surfaced, not masked by the in-place fallback.
+func TestSaveModelConfigRenameErrorPropagates(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "model_config.yaml")
+
+	orig := renameFile
+	renameFile = func(oldpath, newpath string) error {
+		return &os.SyscallError{Syscall: "rename", Err: syscall.EACCES}
+	}
+	t.Cleanup(func() { renameFile = orig })
+
+	cfg := ModelConfig{Modes: map[Mode]ModelMapping{ModeNormal: {Main: "x/y"}}}
+	err := saveModelConfig(path, &cfg)
+	if err == nil || !strings.Contains(err.Error(), "write model config") {
+		t.Fatalf("err = %v, want wrapped write model config error", err)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Errorf("target created despite rename failure; stat err = %v", statErr)
 	}
 }

@@ -150,10 +150,38 @@ type ModelCatalog struct {
 	cerebrasKey    string
 	opencodeKey    string
 	opencodeZenKey string
-	client         *http.Client
-	log            zerolog.Logger
-	stopCh         chan struct{}
-	stopOnce       sync.Once
+	// customCompat holds admin-registered custom OpenAI-compatible provider
+	// specs (e.g. deepseek) so fetchFromAPI can re-fetch them on every
+	// refresh — unlike the Set*Key providers above, these have no fixed
+	// endpoint to special-case, so the spec itself must be retained.
+	customCompat []customCompatSource
+	client       *http.Client
+	log          zerolog.Logger
+	stopCh       chan struct{}
+	stopOnce     sync.Once
+}
+
+// customCompatSource is a remembered MergeOpenAICompatModels call, replayed
+// by fetchFromAPI on every refresh so admin-registered custom providers
+// survive the periodic catalog rebuild instead of being dropped after the
+// next auto-refresh or manual "Refresh Models".
+type customCompatSource struct {
+	provider string
+	baseURL  string
+	apiKey   string
+}
+
+// upsertCustomCompat replaces the existing spec for provider, or appends a
+// new one — a provider re-registering with a new base URL or key must not
+// accumulate stale duplicate entries.
+func upsertCustomCompat(specs []customCompatSource, next customCompatSource) []customCompatSource {
+	for i, s := range specs {
+		if s.provider == next.provider {
+			specs[i] = next
+			return specs
+		}
+	}
+	return append(specs, next)
 }
 
 // parseModelEntries converts raw model entries into a ModelInfo map.
@@ -406,6 +434,23 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 			for k, v := range oc {
 				models[k] = v
 			}
+		}
+	}
+
+	// Custom OpenAI-compatible providers (e.g. deepseek) registered via
+	// MergeOpenAICompatModels. Re-fetched here so they survive this refresh
+	// rebuilding the map from scratch.
+	c.mu.RLock()
+	customs := append([]customCompatSource(nil), c.customCompat...)
+	c.mu.RUnlock()
+	for _, spec := range customs {
+		cm, err := fetchOpenAICompatModels(ctx, c.client, spec.provider, spec.baseURL, spec.apiKey)
+		if err != nil {
+			c.log.Warn().Err(err).Str("provider", spec.provider).Msg("failed to fetch custom OpenAI-compatible models during catalog refresh")
+			continue
+		}
+		for k, v := range cm {
+			models[k] = v
 		}
 	}
 
@@ -824,11 +869,18 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, apiKey, model
 // host, a versioned base (".../v1"), or the chat-completions URL itself; the
 // canonical "/models" path is derived from it. Pricing/context are not assumed
 // from the response, so those stay zero unless the endpoint supplies them.
+//
+// The (provider, baseURL, apiKey) spec is also remembered so fetchFromAPI
+// re-merges it on every subsequent refresh — see customCompat.
 func (c *ModelCatalog) MergeOpenAICompatModels(ctx context.Context, provider, baseURL, apiKey string) error {
 	provider = strings.TrimSpace(provider)
 	if provider == "" || strings.TrimSpace(baseURL) == "" {
 		return nil
 	}
+	c.mu.Lock()
+	c.customCompat = upsertCustomCompat(c.customCompat, customCompatSource{provider: provider, baseURL: baseURL, apiKey: apiKey})
+	c.mu.Unlock()
+
 	client := c.client
 	if client == nil {
 		client = &http.Client{Timeout: 30 * time.Second}

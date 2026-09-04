@@ -6,10 +6,12 @@
 package costmode
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
+	"syscall"
 
 	"gopkg.in/yaml.v3"
 )
@@ -216,11 +218,20 @@ func LoadModelConfig(path string) (*ModelConfig, error) {
 	return &cfg, nil
 }
 
+// renameFile is os.Rename, swappable in tests to simulate the rename
+// failures bind-mounted targets produce.
+var renameFile = os.Rename
+
 // saveModelConfig writes a ModelConfig to a YAML file atomically: the payload
 // goes to a temp file in the destination directory and is then renamed over the
 // target. Writing in place truncates the live config first, so a crash — or a
 // concurrent reader, e.g. another buji process — would see a half-written or
 // empty model_config.yaml and lose every model mapping.
+//
+// When the target cannot be replaced by rename — a bind-mounted file is a
+// mount point, and rename(2) over it fails with EBUSY (the Docker Compose
+// ./model_config.yaml:/app/model_config.yaml deployment case) — the payload
+// is written over the target in place instead.
 func saveModelConfig(path string, cfg *ModelConfig) error {
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
@@ -246,7 +257,22 @@ func saveModelConfig(path string, cfg *ModelConfig) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close model config %s: %w", tmpName, err)
 	}
-	if err := os.Rename(tmpName, path); err != nil {
+	if err := renameFile(tmpName, path); err != nil {
+		if errors.Is(err, syscall.EBUSY) || errors.Is(err, syscall.EXDEV) {
+			return writeModelConfigInPlace(path, data)
+		}
+		return fmt.Errorf("write model config %s: %w", path, err)
+	}
+	return nil
+}
+
+// writeModelConfigInPlace overwrites the target file without a rename — the
+// fallback for bind-mounted targets that cannot be atomically replaced. A
+// crash mid-write can leave the file truncated, but the payload was already
+// fully serialized before this runs, and refusing to save would lock the
+// admin panel out of its own config.
+func writeModelConfigInPlace(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("write model config %s: %w", path, err)
 	}
 	return nil

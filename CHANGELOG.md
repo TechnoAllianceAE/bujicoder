@@ -4,6 +4,29 @@ All notable changes to BujiCoder are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 conventions.
 
+## [v0.10.1] — 2026-09-04
+
+Bugfix release: two data-loss-adjacent bugs in server-side config persistence.
+
+### Fixed
+
+- **`model_config.yaml` writes failed on bind-mounted deployments**
+  (`shared/costmode/costmode.go`) — the atomic temp-file-then-rename write
+  path fails with `EBUSY` when the target is a Docker bind-mounted file (a
+  mount point, not a plain file), so the admin panel's "Save Changes" on
+  the routing page errored with `rename ... device or resource busy` on
+  every save. `saveModelConfig` now falls back to an in-place
+  `os.WriteFile` when rename returns `EBUSY`/`EXDEV`.
+- **Admin-registered custom OpenAI-compatible providers vanished from the
+  model catalog after the next refresh** (`shared/llm/catalog.go`) —
+  `fetchFromAPI` rebuilds the catalog's model map from scratch on every
+  auto-refresh (every 6h) and manual "Refresh Models", but only
+  re-fetched the aggregator providers that have a dedicated `Set*Key`;
+  custom providers merged via `MergeOpenAICompatModels` had no such
+  re-fetch path and were silently dropped on the next rebuild. The
+  `(provider, baseURL, apiKey)` spec is now remembered and replayed on
+  every refresh.
+
 ## [v0.10.0] — 2026-08-18
 
 Production-hardening release: a full audit of every package for concurrency,
@@ -265,6 +288,7 @@ feature set.
 - **z-ai source tag persistence** — Source tags no longer get wiped when
   the model catalog auto-refreshes.
 
+[v0.10.1]: https://github.com/TechnoAllianceAE/bujicoder/releases/tag/v0.10.1
 [v0.10.0]: https://github.com/TechnoAllianceAE/bujicoder/releases/tag/v0.10.0
 [v0.9.5]: https://github.com/TechnoAllianceAE/bujicoder/releases/tag/v0.9.5
 [v0.9.4]: https://github.com/TechnoAllianceAE/bujicoder/releases/tag/v0.9.4
