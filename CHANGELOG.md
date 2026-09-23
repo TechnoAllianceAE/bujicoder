@@ -4,6 +4,19 @@ All notable changes to BujiCoder are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 conventions.
 
+## [v0.10.2] — 2026-09-23
+
+v0.10.1 was documented but never tagged. Its fixes ship in this release.
+
+### Added
+
+- **`APIKey()` on `OpenRouterProvider` and `OpenCodeProvider`**
+  (`shared/llm/openrouter.go`, `shared/llm/opencode.go`), matching the
+  existing `AnthropicProvider.APIKey()`. This lets callers reuse a
+  configured provider key for other endpoints on the same account.
+  BujiCoder Enterprise v1.8.0 uses it to call `/v1/systemone` (the TypeSafe
+  Jev decision model) for agent routing without a separate key.
+
 ## [v0.10.1] — 2026-09-04
 
 Bugfix release: two data-loss-adjacent bugs in server-side config persistence.
