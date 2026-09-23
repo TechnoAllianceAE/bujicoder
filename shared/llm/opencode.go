@@ -57,6 +57,10 @@ func NewOpenCodeZenProvider(apiKey string, timeout ...time.Duration) *OpenCodePr
 // Name returns the provider name ("opencode" or "opencode-zen").
 func (c *OpenCodeProvider) Name() string { return c.name }
 
+// APIKey returns the provider's API key, for callers that hit other
+// OpenCode endpoints (e.g. /v1/systemone) with the same credentials.
+func (c *OpenCodeProvider) APIKey() string { return c.compat.cfg.APIKey }
+
 // StreamCompletion sends a streaming request to the OpenCode Zen API.
 func (c *OpenCodeProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
 	return c.compat.streamCompletion(ctx, req)

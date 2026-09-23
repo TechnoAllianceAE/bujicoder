@@ -40,6 +40,10 @@ func NewOpenRouterProvider(apiKey string, timeout ...time.Duration) *OpenRouterP
 // Name returns "openrouter".
 func (o *OpenRouterProvider) Name() string { return "openrouter" }
 
+// APIKey returns the provider's API key, for callers that hit other
+// OpenRouter endpoints (e.g. /v1/systemone) with the same credentials.
+func (o *OpenRouterProvider) APIKey() string { return o.apiKey }
+
 // StreamCompletion sends a streaming request to the OpenRouter API (OpenAI-compatible).
 func (o *OpenRouterProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
 	body := o.buildRequest(req)
