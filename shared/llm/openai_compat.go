@@ -18,6 +18,9 @@ type OpenAICompatConfig struct {
 	APIKey       string
 	ProviderName string
 	ExtraHeaders map[string]string
+	// RequestHeaders, when set, adds headers computed per request (e.g. a
+	// provider-required session ID). Applied after ExtraHeaders.
+	RequestHeaders func(req *CompletionRequest) map[string]string
 	// ZeroCost forces cost to 0 (e.g., for Ollama local models).
 	ZeroCost bool
 	// SupportsReasoning enables echoing reasoning ContentParts back as the
@@ -82,6 +85,11 @@ func (p *openAICompatProvider) doStreamRequest(ctx context.Context, req *Complet
 	}
 	for k, v := range p.cfg.ExtraHeaders {
 		httpReq.Header.Set(k, v)
+	}
+	if p.cfg.RequestHeaders != nil {
+		for k, v := range p.cfg.RequestHeaders(req) {
+			httpReq.Header.Set(k, v)
+		}
 	}
 
 	resp, err := p.client.Do(httpReq)

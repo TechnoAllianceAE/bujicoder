@@ -2,7 +2,11 @@ package llm
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
+
+	"github.com/TechnoAllianceAE/bujicoder/shared/buildinfo"
 )
 
 // OpenCode Zen exposes two OpenAI-compatible chat-completions endpoints, one
@@ -39,6 +43,7 @@ func newOpenCode(name, apiURL, apiKey string, timeout ...time.Duration) *OpenCod
 			ProviderName:      name,
 			Timeout:           t,
 			SupportsReasoning: true,
+			RequestHeaders:    opencodeHeaders,
 		}),
 	}
 }
@@ -64,4 +69,36 @@ func (c *OpenCodeProvider) APIKey() string { return c.compat.cfg.APIKey }
 // StreamCompletion sends a streaming request to the OpenCode Zen API.
 func (c *OpenCodeProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
 	return c.compat.streamCompletion(ctx, req)
+}
+
+// opencodeHeaders identifies the client the way OpenCode requires: its own
+// user agent (generic HTTP-library UAs are refused) and a stable
+// x-opencode-session per conversation. The Go tier rejects requests without
+// the session header (400 MissingSessionID); it also drives routing and
+// prompt caching, so it's derived from the user plus the conversation's first
+// message rather than a per-request ID.
+func opencodeHeaders(req *CompletionRequest) map[string]string {
+	return map[string]string{
+		"User-Agent":         "bujicoder/" + buildinfo.Version,
+		"x-opencode-session": opencodeSession(req),
+	}
+}
+
+func opencodeSession(req *CompletionRequest) string {
+	for _, m := range req.Messages {
+		if m.Role != "user" {
+			continue
+		}
+		for _, p := range m.Content {
+			if p.Type == "text" && p.Text != "" {
+				sum := sha256.Sum256([]byte(req.UserID + "\x00" + p.Text))
+				return "bc-" + hex.EncodeToString(sum[:12])
+			}
+		}
+		break
+	}
+	if req.RequestID != "" {
+		return req.RequestID
+	}
+	return "bc-anon"
 }

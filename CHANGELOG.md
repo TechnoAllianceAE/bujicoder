@@ -4,6 +4,22 @@ All notable changes to BujiCoder are documented here. This project follows
 [Semantic Versioning](https://semver.org/) and [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 conventions.
 
+## [Unreleased]
+
+### Fixed
+
+- **OpenCode Go requests failed with `400 MissingSessionID`**. OpenCode now
+  requires every request to carry `x-opencode-session` and a client-specific
+  User-Agent. The OpenCode providers send `User-Agent: bujicoder/<version>`
+  and a session ID that stays stable across a conversation (a hash of user
+  and first message, falling back to the request ID), so OpenCode's routing
+  and prompt caching work too.
+
+### Added
+
+- **`OpenAICompatConfig.RequestHeaders`**. An optional per-request header
+  hook for OpenAI-compatible providers, applied after `ExtraHeaders`.
+
 ## [v0.10.2] — 2026-09-23
 
 v0.10.1 was documented but never tagged. Its fixes ship in this release.
