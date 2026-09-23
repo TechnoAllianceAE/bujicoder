@@ -8,6 +8,12 @@ conventions.
 
 ### Fixed
 
+- **Costs for bare model names priced at $0**. The agent runtime reports the
+  routed model with its provider prefix stripped (`glm-5.3-flash` for
+  `z-ai/glm-5.3-flash`), which the pricing lookup couldn't match. Lookup now
+  accepts a bare name when exactly one `<vendor>/<name>` entry exists;
+  ambiguous names stay unpriced rather than guessed. `GetPricing` now uses
+  the same matching as `CalculateCostCents` (it was exact-match only).
 - **OpenCode Go requests failed with `400 MissingSessionID`**. OpenCode now
   requires every request to carry `x-opencode-session` and a client-specific
   User-Agent. The OpenCode providers send `User-Agent: bujicoder/<version>`

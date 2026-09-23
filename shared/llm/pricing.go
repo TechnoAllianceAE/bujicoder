@@ -114,12 +114,11 @@ func (p *PricingService) ModelCount() int {
 	return len(p.prices)
 }
 
-// GetPricing returns the pricing for a specific model, or false if unknown.
+// GetPricing returns the pricing for a model, or false if unknown. It uses
+// the same matching as CalculateCostCents (exact ID, then provider-prefix
+// stripping, then an unambiguous bare name), so callers agree on prices.
 func (p *PricingService) GetPricing(model string) (ModelPricing, bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	pricing, ok := p.prices[model]
-	return pricing, ok
+	return p.lookup(model)
 }
 
 // CalculateCostCents computes the cost in cents for a given model and token
@@ -159,6 +158,27 @@ func (p *PricingService) lookup(model string) (ModelPricing, bool) {
 	defer p.mu.RUnlock()
 	if pricing, ok := p.prices[model]; ok {
 		return pricing, true
+	}
+	if !strings.Contains(model, "/") {
+		// Bare name: routing strips the provider prefix ("z-ai/glm-5.3-flash"
+		// is dispatched, and reported by the agent runtime, as "glm-5.3-flash").
+		// Accept a "<vendor>/<name>" entry only when exactly one exists; a name
+		// several vendors list (e.g. an open-weights model) stays unpriced
+		// rather than billed at a guessed rate.
+		var hit ModelPricing
+		n := 0
+		for k, v := range p.prices {
+			if strings.HasSuffix(k, "/"+model) {
+				hit, n = v, n+1
+				if n > 1 {
+					break
+				}
+			}
+		}
+		if n == 1 {
+			return hit, true
+		}
+		return ModelPricing{}, false
 	}
 	for {
 		i := strings.IndexByte(model, '/')

@@ -187,3 +187,29 @@ func TestConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+// The agent runtime reports the routed (provider-stripped) model name, e.g.
+// "glm-5.3-flash" for "z-ai/glm-5.3-flash"; that must still price, but only
+// when the bare name is unambiguous.
+func TestLookupBareModelName(t *testing.T) {
+	p := &PricingService{
+		prices: map[string]ModelPricing{
+			"z-ai/glm-5.3-flash":       {PromptCostPerToken: 1e-7, CompletionCostPerToken: 4e-7},
+			"meta-llama/llama-4-scout": {PromptCostPerToken: 1e-7},
+			"groq/llama-4-scout":       {PromptCostPerToken: 2e-7},
+		},
+		log: zerolog.Nop(),
+	}
+	if pr, ok := p.GetPricing("glm-5.3-flash"); !ok || pr.PromptCostPerToken != 1e-7 {
+		t.Errorf("bare unique name: got %+v ok=%v", pr, ok)
+	}
+	if _, ok := p.GetPricing("llama-4-scout"); ok {
+		t.Error("ambiguous bare name must stay unpriced")
+	}
+	if _, ok := p.GetPricing("no-such-model"); ok {
+		t.Error("unknown bare name priced")
+	}
+	if pr, ok := p.GetPricing("openrouter/z-ai/glm-5.3-flash"); !ok || pr.CompletionCostPerToken != 4e-7 {
+		t.Errorf("prefixed name regressed: %+v ok=%v", pr, ok)
+	}
+}
