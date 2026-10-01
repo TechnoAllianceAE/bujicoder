@@ -20,11 +20,25 @@ conventions.
   and a session ID that stays stable across a conversation (a hash of user
   and first message, falling back to the request ID), so OpenCode's routing
   and prompt caching work too.
+- **Zen treats non-CLI traffic as anonymous (free-tier limits/refusals)**.
+  Chat, models, and systemone calls now identify as the official CLI:
+  `User-Agent: opencode/1.18.34 ai-sdk/provider-utils/4.0.40
+  runtime/bun/1.3.14` plus `x-opencode-client: cli`, a fresh
+  `x-opencode-request-id: msg_…` per call, and a stable `ses_…` session per
+  conversation. Zen endpoint layout is configurable without a code change:
+  `OPENCODE_ZEN_BASE_URL`, `OPENCODE_GO_BASE_URL`, `OPENCODE_API_VERSION`
+  (default `v1`), and `OPENCODE_USER_AGENT`. Verified 2026-10-01 that
+  `/zen/v1/*` is the live gateway (the `/v2` API docs cover the CLI's local
+  server API, not Zen — `/zen/v2/*` is 404).
 
 ### Added
 
 - **`OpenAICompatConfig.RequestHeaders`**. An optional per-request header
   hook for OpenAI-compatible providers, applied after `ExtraHeaders`.
+- **`llm.OpenCodeClientHeaders` + endpoint builders** (`OpenCodeChatURL`,
+  `OpenCodeModelsURL`, `OpenCodeSystemOneURL`, `OpenCodeUserAgent`,
+  `OpenCodeAPIVersion`). Single source for Zen's official-client headers and
+  versioned endpoint layout.
 
 ## [v0.10.2] — 2026-09-23
 

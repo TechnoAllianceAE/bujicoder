@@ -416,7 +416,7 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 	}
 
 	if c.opencodeKey != "" {
-		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeKey, opencodeGoModelsURL, "opencode/")
+		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeKey, opencodeGoModelsURL(), "opencode/")
 		if err != nil {
 			c.log.Warn().Err(err).Msg("failed to fetch OpenCode (Go) models during catalog refresh")
 		} else {
@@ -427,7 +427,7 @@ func (c *ModelCatalog) fetchFromAPI(ctx context.Context) error {
 	}
 
 	if c.opencodeZenKey != "" {
-		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeZenKey, opencodeZenModelsURL, "opencode-zen/")
+		oc, err := fetchOpenCodeModels(ctx, c.client, c.opencodeZenKey, opencodeZenModelsURL(), "opencode-zen/")
 		if err != nil {
 			c.log.Warn().Err(err).Msg("failed to fetch OpenCode (Zen) models during catalog refresh")
 		} else {
@@ -772,12 +772,13 @@ type opencodeModelsResponse struct {
 	Data   []opencodeModelEntry `json:"data"`
 }
 
-// OpenCode Zen /v1/models listing endpoints, one per subscription tier. They
-// return different model sets; see opencode.go for the chat endpoints.
-const (
-	opencodeGoModelsURL  = "https://opencode.ai/zen/go/v1/models"
-	opencodeZenModelsURL = "https://opencode.ai/zen/v1/models"
-)
+// OpenCode Zen models-listing endpoints, one per subscription tier. They
+// return different model sets; see opencode.go for the chat endpoints and for
+// the OPENCODE_*_BASE_URL / OPENCODE_API_VERSION overrides. Defaults:
+// https://opencode.ai/zen/go/<version>/models and
+// https://opencode.ai/zen/<version>/models.
+func opencodeGoModelsURL() string  { return OpenCodeModelsURL("go") }
+func opencodeZenModelsURL() string { return OpenCodeModelsURL("zen") }
 
 // SetOpenCodeKey configures an OpenCode Zen "Go" tier API key so that those
 // models are included during catalog refresh.
@@ -795,14 +796,14 @@ func (c *ModelCatalog) SetOpenCodeZenKey(key string) {
 // endpoint and merges them into the catalog, prefixed with "opencode/" so the
 // router directs them to the OpenCode provider.
 func (c *ModelCatalog) MergeOpenCodeModels(ctx context.Context) error {
-	return c.mergeOpenCodeTier(ctx, c.opencodeKey, opencodeGoModelsURL, "opencode/")
+	return c.mergeOpenCodeTier(ctx, c.opencodeKey, opencodeGoModelsURL(), "opencode/")
 }
 
 // MergeOpenCodeZenModels fetches models from the OpenCode Zen base /models
 // endpoint and merges them into the catalog, prefixed with "opencode-zen/" so
 // the router directs them to the OpenCode Zen provider.
 func (c *ModelCatalog) MergeOpenCodeZenModels(ctx context.Context) error {
-	return c.mergeOpenCodeTier(ctx, c.opencodeZenKey, opencodeZenModelsURL, "opencode-zen/")
+	return c.mergeOpenCodeTier(ctx, c.opencodeZenKey, opencodeZenModelsURL(), "opencode-zen/")
 }
 
 func (c *ModelCatalog) mergeOpenCodeTier(ctx context.Context, apiKey, modelsURL, prefix string) error {
@@ -835,6 +836,9 @@ func fetchOpenCodeModels(ctx context.Context, client *http.Client, apiKey, model
 		return nil, fmt.Errorf("build opencode request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	// Identify as an official client; Zen gates anonymous traffic.
+	req.Header.Set("User-Agent", OpenCodeUserAgent())
+	req.Header.Set("x-opencode-client", opencodeClient)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("opencode http get: %w", err)

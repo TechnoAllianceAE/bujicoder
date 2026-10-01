@@ -9,12 +9,15 @@ import (
 )
 
 // OpenCode Go rejects requests without x-opencode-session (400
-// MissingSessionID) and Cloudflare refuses generic library user agents.
+// MissingSessionID) and Cloudflare refuses generic library user agents, so we
+// identify as the official CLI.
 func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
-	var sessions, agents []string
+	var sessions, agents, clients, reqIDs []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sessions = append(sessions, r.Header.Get("x-opencode-session"))
 		agents = append(agents, r.Header.Get("User-Agent"))
+		clients = append(clients, r.Header.Get("x-opencode-client"))
+		reqIDs = append(reqIDs, r.Header.Get("x-opencode-request-id"))
 		w.Header().Set("Content-Type", "text/event-stream")
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	}))
@@ -35,19 +38,70 @@ func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
 		Message{Role: "assistant", Content: []ContentPart{{Type: "text", Text: "done"}}},
 		Message{Role: "user", Content: []ContentPart{{Type: "text", Text: "now commit"}}})
 
-	if sessions[0] == "" || !strings.HasPrefix(sessions[0], "bc-") {
-		t.Fatalf("session header = %q", sessions[0])
+	if sessions[0] == "" || !strings.HasPrefix(sessions[0], "ses_") {
+		t.Fatalf("session header = %q, want ses_ prefix", sessions[0])
 	}
 	if sessions[0] != sessions[1] {
 		t.Errorf("session changed within one conversation: %q vs %q", sessions[0], sessions[1])
 	}
-	if !strings.HasPrefix(agents[0], "bujicoder/") {
-		t.Errorf("User-Agent = %q", agents[0])
+	if !strings.HasPrefix(agents[0], "opencode/") {
+		t.Errorf("User-Agent = %q, want official opencode client UA", agents[0])
+	}
+	if clients[0] != "cli" {
+		t.Errorf("x-opencode-client = %q, want cli", clients[0])
+	}
+	for i, id := range reqIDs {
+		if !strings.HasPrefix(id, "msg_") {
+			t.Errorf("x-opencode-request-id[%d] = %q, want msg_ prefix", i, id)
+		}
+	}
+	if len(reqIDs) == 2 && reqIDs[0] == reqIDs[1] {
+		t.Errorf("x-opencode-request-id reused across requests: %q", reqIDs[0])
 	}
 }
 
 func TestOpenCodeSessionFallsBackToRequestID(t *testing.T) {
 	if got := opencodeSession(&CompletionRequest{RequestID: "req-7"}); got != "req-7" {
 		t.Errorf("got %q, want the request ID", got)
+	}
+}
+
+func TestOpenCodeEndpointsConfigurable(t *testing.T) {
+	t.Setenv("OPENCODE_API_VERSION", "v9")
+	t.Setenv("OPENCODE_ZEN_BASE_URL", "https://zen.example.com/custom")
+	t.Setenv("OPENCODE_GO_BASE_URL", "https://go.example.com/custom/")
+	t.Setenv("OPENCODE_USER_AGENT", "test-agent/1.0")
+
+	if got := OpenCodeChatURL("zen"); got != "https://zen.example.com/custom/v9/chat/completions" {
+		t.Errorf("zen chat URL = %q", got)
+	}
+	if got := OpenCodeChatURL("go"); got != "https://go.example.com/custom/v9/chat/completions" {
+		t.Errorf("go chat URL = %q", got)
+	}
+	if got := OpenCodeModelsURL("zen"); got != "https://zen.example.com/custom/v9/models" {
+		t.Errorf("zen models URL = %q", got)
+	}
+	if got := OpenCodeSystemOneURL("go"); got != "https://go.example.com/custom/v9/systemone" {
+		t.Errorf("go systemone URL = %q", got)
+	}
+	if got := OpenCodeUserAgent(); got != "test-agent/1.0" {
+		t.Errorf("user agent = %q", got)
+	}
+}
+
+func TestOpenCodeEndpointsDefault(t *testing.T) {
+	t.Setenv("OPENCODE_API_VERSION", "")
+	t.Setenv("OPENCODE_ZEN_BASE_URL", "")
+	t.Setenv("OPENCODE_GO_BASE_URL", "")
+	t.Setenv("OPENCODE_USER_AGENT", "")
+
+	if got := OpenCodeChatURL("zen"); got != "https://opencode.ai/zen/v1/chat/completions" {
+		t.Errorf("zen chat URL = %q", got)
+	}
+	if got := OpenCodeChatURL("go"); got != "https://opencode.ai/zen/go/v1/chat/completions" {
+		t.Errorf("go chat URL = %q", got)
+	}
+	if got := OpenCodeUserAgent(); got != opencodeUserAgent {
+		t.Errorf("user agent = %q", got)
 	}
 }
