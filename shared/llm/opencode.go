@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -97,14 +98,17 @@ func OpenCodeClientHeaders(session string) map[string]string {
 }
 
 // OpenCodeProvider implements the Provider interface for OpenCode Zen's
-// OpenAI-compatible API. The same type serves both tiers; name + endpoint
-// distinguish them.
+// APIs. The same type serves both tiers; name + endpoint distinguish them.
+// Chat/completions and Responses clients are both held: Zen serves model
+// families on different protocols (gpt-*/grok-*/muse-spark-* need Responses;
+// everything else stays on chat/completions), routed per request model.
 type OpenCodeProvider struct {
 	name   string
 	compat *openAICompatProvider
+	resp   *openAIResponsesProvider
 }
 
-func newOpenCode(name, apiURL, apiKey string, timeout ...time.Duration) *OpenCodeProvider {
+func newOpenCode(name, chatURL, responsesURL, apiKey string, timeout ...time.Duration) *OpenCodeProvider {
 	var t time.Duration
 	if len(timeout) > 0 {
 		t = timeout[0]
@@ -112,25 +116,26 @@ func newOpenCode(name, apiURL, apiKey string, timeout ...time.Duration) *OpenCod
 	return &OpenCodeProvider{
 		name: name,
 		compat: newOpenAICompatProvider(OpenAICompatConfig{
-			APIURL:            apiURL,
+			APIURL:            chatURL,
 			APIKey:            apiKey,
 			ProviderName:      name,
 			Timeout:           t,
 			SupportsReasoning: true,
 			RequestHeaders:    opencodeHeaders,
 		}),
+		resp: newOpenAIResponsesProvider(responsesURL, apiKey, name, t),
 	}
 }
 
 // NewOpenCodeProvider creates a new OpenCode Zen "Go" tier provider.
 func NewOpenCodeProvider(apiKey string, timeout ...time.Duration) *OpenCodeProvider {
-	return newOpenCode("opencode", OpenCodeChatURL("go"), apiKey, timeout...)
+	return newOpenCode("opencode", OpenCodeChatURL("go"), OpenCodeResponsesURL("go"), apiKey, timeout...)
 }
 
 // NewOpenCodeZenProvider creates a new OpenCode Zen base-tier provider, which
 // serves zen-only models such as "big-pickle".
 func NewOpenCodeZenProvider(apiKey string, timeout ...time.Duration) *OpenCodeProvider {
-	return newOpenCode("opencode-zen", OpenCodeChatURL("zen"), apiKey, timeout...)
+	return newOpenCode("opencode-zen", OpenCodeChatURL("zen"), OpenCodeResponsesURL("zen"), apiKey, timeout...)
 }
 
 // Name returns the provider name ("opencode" or "opencode-zen").
@@ -140,8 +145,21 @@ func (c *OpenCodeProvider) Name() string { return c.name }
 // OpenCode endpoints (e.g. /v1/systemone) with the same credentials.
 func (c *OpenCodeProvider) APIKey() string { return c.compat.cfg.APIKey }
 
-// StreamCompletion sends a streaming request to the OpenCode Zen API.
+// StreamCompletion sends a streaming request to the OpenCode Zen API,
+// picking the protocol the model family needs (Responses for gpt-*/grok-*/
+// muse-spark-*, chat/completions otherwise). Claude/qwen-anthropic and
+// gemini ids fail fast with a clear error: those protocols have no client
+// yet, and Zen answers them with 400 ModelProtocolUnsupported.
 func (c *OpenCodeProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
+	if isResponsesModel(req.Model) {
+		return c.resp.streamCompletion(ctx, req)
+	}
+	if needsAnthropicMessages(req.Model) {
+		return nil, fmt.Errorf("%s: model %q needs the Anthropic messages protocol (/v1/messages), which is not implemented; use a chat/completions or responses model", c.name, req.Model)
+	}
+	if isGeminiModel(req.Model) {
+		return nil, fmt.Errorf("%s: model %q is Google-native and not implemented; use a chat/completions or responses model", c.name, req.Model)
+	}
 	return c.compat.streamCompletion(ctx, req)
 }
 

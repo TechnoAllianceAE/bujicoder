@@ -23,7 +23,7 @@ func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newOpenCode("opencode", srv.URL, "k")
+	p := newOpenCode("opencode", srv.URL, srv.URL, "k")
 	first := Message{Role: "user", Content: []ContentPart{{Type: "text", Text: "fix the bug"}}}
 	turn := func(msgs ...Message) {
 		ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{RequestID: "req-x", UserID: "u1", Model: "m", Messages: msgs})
