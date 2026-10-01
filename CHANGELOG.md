@@ -40,6 +40,17 @@ conventions.
 
 ### Added
 
+- **Responses-API client for GPT/Grok/Muse-Spark Zen models**
+  (`shared/llm/opencode_responses.go`). Zen serves families on different
+  protocols; `gpt-*`/`grok-*`/`muse-spark-*` need `/responses` and fail on
+  chat/completions with `400 ModelProtocolUnsupported` (seen live for
+  `opencode/gpt-5.6-luna`). `OpenCodeProvider` now holds both clients and
+  routes per request model, with request builder (function tools,
+  `function_call_output` history replay), SSE parser (text/reasoning deltas,
+  streamed function-call args, usage), and fail-fast errors for the still
+  unsupported Anthropic-messages (`claude-*`) and Google-native (`gemini-*`)
+  families. Verified live 2026-10-01: `opencode/gpt-5.6-luna` answers via
+  BYOK Test Model.
 - **`OpenAICompatConfig.RequestHeaders`**. An optional per-request header
   hook for OpenAI-compatible providers, applied after `ExtraHeaders`.
 - **`llm.OpenCodeClientHeaders` + endpoint builders** (`OpenCodeChatURL`,
