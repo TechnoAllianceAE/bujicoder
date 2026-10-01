@@ -32,7 +32,11 @@ conventions.
   `OPENCODE_ZEN_BASE_URL`, `OPENCODE_GO_BASE_URL`, `OPENCODE_API_VERSION`
   (default `v1`), and `OPENCODE_USER_AGENT`. Verified 2026-10-01 that
   `/zen/v1/*` is the live gateway (the `/v2` API docs cover the CLI's local
-  server API, not Zen — `/zen/v2/*` is 404).
+  server API, not Zen — `/zen/v2/*` is 404). Verified live against
+  production the same day: paid models stream on both tiers, but Zen
+  **free** models (`big-pickle`) still 403 with `FreeTierError` — that gate
+  sits below the HTTP headers (likely TLS fingerprinting), so free models
+  remain CLI-only. Details in `docs/OPENCODE-ZEN.md` (enterprise repo).
 
 ### Added
 
