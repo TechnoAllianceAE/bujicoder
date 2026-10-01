@@ -61,6 +61,17 @@ func OpenCodeResponsesURL(tier string) string {
 	return zenBase(tier) + "/" + OpenCodeAPIVersion() + "/responses"
 }
 
+// OpenCodeMessagesURL returns the Anthropic-messages URL for a tier.
+func OpenCodeMessagesURL(tier string) string {
+	return zenBase(tier) + "/" + OpenCodeAPIVersion() + "/messages"
+}
+
+// OpenCodeGeminiBaseURL returns the Gemini models collection URL for a tier
+// (per-model suffix ":streamGenerateContent" is appended by the client).
+func OpenCodeGeminiBaseURL(tier string) string {
+	return zenBase(tier) + "/" + OpenCodeAPIVersion() + "/models"
+}
+
 // openAIResponsesProvider streams via the OpenAI Responses API
 // (POST {base}/responses, SSE). Wire format follows the public OpenAI spec:
 // request {model, input[], stream, tools}; events

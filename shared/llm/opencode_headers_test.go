@@ -23,7 +23,7 @@ func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newOpenCode("opencode", srv.URL, srv.URL, "k")
+	p := newOpenCodeWithBase(t, "opencode", "go", srv.URL, "k")
 	first := Message{Role: "user", Content: []ContentPart{{Type: "text", Text: "fix the bug"}}}
 	turn := func(msgs ...Message) {
 		ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{RequestID: "req-x", UserID: "u1", Model: "m", Messages: msgs})
@@ -81,6 +81,16 @@ func assertOpenCodeIDShape(t *testing.T, what, payload string) {
 			t.Fatalf("%s payload = %q, char %d not base62", what, payload, i)
 		}
 	}
+}
+
+// newOpenCodeWithBase points both tier bases at a test server and builds a
+// provider for the given tier.
+func newOpenCodeWithBase(t *testing.T, name, tier, base, key string) *OpenCodeProvider {
+	t.Helper()
+	t.Setenv("OPENCODE_ZEN_BASE_URL", base)
+	t.Setenv("OPENCODE_GO_BASE_URL", base)
+	t.Setenv("OPENCODE_API_VERSION", "v1")
+	return newOpenCode(name, tier, key)
 }
 
 func TestOpenCodeSessionFallsBackToRequestID(t *testing.T) {

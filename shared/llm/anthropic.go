@@ -19,7 +19,12 @@ type AnthropicProvider struct {
 	apiKey string
 	apiURL string
 	name   string
-	client *http.Client
+	// ExtraHeaders are sent on every request (e.g. client identification for
+	// gateways). RequestHeaders, when set, adds per-request headers and wins
+	// over ExtraHeaders on conflict.
+	ExtraHeaders   map[string]string
+	RequestHeaders func(req *CompletionRequest) map[string]string
+	client         *http.Client
 }
 
 // NewAnthropicProvider creates a new Anthropic provider.
@@ -90,6 +95,14 @@ func (a *AnthropicProvider) StreamCompletion(ctx context.Context, req *Completio
 		httpReq.Header.Set("Anthropic-Beta", "oauth-2025-04-20")
 	} else {
 		httpReq.Header.Set("x-api-key", a.apiKey)
+	}
+	for k, v := range a.ExtraHeaders {
+		httpReq.Header.Set(k, v)
+	}
+	if a.RequestHeaders != nil {
+		for k, v := range a.RequestHeaders(req) {
+			httpReq.Header.Set(k, v)
+		}
 	}
 
 	resp, err := a.client.Do(httpReq)
@@ -281,7 +294,7 @@ func (a *AnthropicProvider) processStream(ctx context.Context, body io.ReadClose
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 	var usage UsageInfo
-	usage.Provider = "anthropic"
+	usage.Provider = a.name
 
 	var pendingToolID, pendingToolName string
 	var argsBuffer strings.Builder

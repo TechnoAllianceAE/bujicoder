@@ -65,7 +65,7 @@ func TestResponsesStreamParsesTextToolCallsAndUsage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := newOpenCode("opencode", "http://127.0.0.1:1", srv.URL, "k")
+	p := newOpenCodeWithBase(t, "opencode", "go", srv.URL, "k")
 	ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{
 		RequestID: "req-x", UserID: "u1", Model: "gpt-5.6-luna",
 		Messages: []Message{{Role: "user", Content: []ContentPart{{Type: "text", Text: "hi"}}}},
@@ -112,8 +112,8 @@ func TestResponsesStreamParsesTextToolCallsAndUsage(t *testing.T) {
 	if complete.Usage.InputTokens != 19 || complete.Usage.OutputTokens != 61 || complete.Usage.Model != "gpt-5.6-luna" {
 		t.Errorf("usage = %+v", complete.Usage)
 	}
-	if gotPath != "/" {
-		t.Errorf("path = %q", gotPath)
+	if gotPath != "/v1/responses" {
+		t.Errorf("path = %q, want the responses endpoint", gotPath)
 	}
 	if !strings.HasPrefix(gotUA, "opencode/") || gotClient != "cli" ||
 		!strings.HasPrefix(gotSession, "ses_") || !strings.HasPrefix(gotReqID, "msg_") {
@@ -121,21 +121,84 @@ func TestResponsesStreamParsesTextToolCallsAndUsage(t *testing.T) {
 	}
 }
 
-// TestResponsesUnsupportedFamiliesFailFast ensures claude/gemini ids get a
-// clear client-side error instead of an upstream 400.
-func TestResponsesUnsupportedFamiliesFailFast(t *testing.T) {
-	p := NewOpenCodeProvider("k")
-	for _, id := range []string{"claude-sonnet-4-5", "gemini-3-flash"} {
-		ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{Model: id})
-		if err == nil {
-			for range ch {
-			}
-			t.Errorf("model %q: expected error, got stream", id)
-			continue
+// TestClientForProtocolMapping checks per-family dispatch without HTTP.
+func TestClientForProtocolMapping(t *testing.T) {
+	p := &OpenCodeProvider{}
+	for model, want := range map[string]string{
+		"gpt-5.6-luna": "responses", "grok-4.5": "responses", "muse-spark-1.3": "responses",
+		"claude-sonnet-4-5": "messages", "qwen3.7-max": "messages",
+		"gemini-3-flash": "gemini", "gemini-3.5-flash-lite": "gemini",
+		"kimi-k2.6": "chat", "big-pickle": "chat", "qwen3.8-max": "chat",
+	} {
+		if got := p.clientFor(model); got != want {
+			t.Errorf("clientFor(%q) = %q, want %q", model, got, want)
 		}
-		if !strings.Contains(err.Error(), "not implemented") {
-			t.Errorf("model %q: error = %q, want protocol guidance", id, err)
+	}
+}
+
+// TestMessagesAndGeminiReachTheirEndpoints verifies the messages/gemini
+// clients hit the tier URLs with Zen client headers (and native auth).
+func TestMessagesAndGeminiReachTheirEndpoints(t *testing.T) {
+	var msgPath, msgUA, msgClient, msgKey, msgVersion string
+	msgSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		msgPath, msgUA, msgClient, msgKey, msgVersion =
+			r.URL.Path, r.Header.Get("User-Agent"), r.Header.Get("x-opencode-client"),
+			r.Header.Get("x-api-key"), r.Header.Get("anthropic-version")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-haiku-4-5\",\"usage\":{\"input_tokens\":5}}}\n\n"))
+	}))
+	defer msgSrv.Close()
+
+	var gemPath, gemUA, gemKey, gemBearer string
+	gemSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gemPath, gemUA, gemKey, gemBearer =
+			r.URL.Path, r.Header.Get("User-Agent"),
+			r.Header.Get("x-goog-api-key"), r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hi\"}]},\"finishReason\":\"STOP\",\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1}}]}\n\n"))
+	}))
+	defer gemSrv.Close()
+
+	t.Setenv("OPENCODE_ZEN_BASE_URL", msgSrv.URL)
+	t.Setenv("OPENCODE_GO_BASE_URL", gemSrv.URL)
+	t.Setenv("OPENCODE_API_VERSION", "v1")
+	zen := newOpenCode("opencode-zen", "zen", "zk")
+	goTier := newOpenCode("opencode", "go", "gk")
+
+	ctx := context.Background()
+	userMsg := []Message{{Role: "user", Content: []ContentPart{{Type: "text", Text: "hi"}}}}
+
+	ch, err := zen.StreamCompletion(ctx, &CompletionRequest{RequestID: "r", UserID: "u", Model: "claude-haiku-4-5", Messages: userMsg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range ch {
+	}
+	if msgPath != "/v1/messages" {
+		t.Errorf("messages path = %q", msgPath)
+	}
+	if !strings.HasPrefix(msgUA, "opencode/") || msgClient != "cli" || msgKey != "zk" || msgVersion != "2023-06-01" {
+		t.Errorf("messages headers ua=%q client=%q key-set=%v version=%q", msgUA, msgClient, msgKey != "", msgVersion)
+	}
+
+	ch, err = goTier.StreamCompletion(ctx, &CompletionRequest{RequestID: "r", UserID: "u", Model: "gemini-3.5-flash-lite", Messages: userMsg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawText bool
+	for ev := range ch {
+		if ev.Delta != nil && ev.Delta.Text == "hi" {
+			sawText = true
 		}
+	}
+	if !sawText {
+		t.Errorf("gemini stream produced no text")
+	}
+	if gemPath != "/v1/models/gemini-3.5-flash-lite:streamGenerateContent" {
+		t.Errorf("gemini path = %q", gemPath)
+	}
+	if !strings.HasPrefix(gemUA, "opencode/") || gemKey != "gk" || gemBearer != "Bearer gk" {
+		t.Errorf("gemini headers ua=%q key-set=%v bearer=%q", gemUA, gemKey != "", gemBearer)
 	}
 }
 
@@ -152,7 +215,7 @@ func TestResponsesBuildRequestShape(t *testing.T) {
 	defer srv.Close()
 
 	maxTok := 150
-	p := newOpenCode("opencode", "http://127.0.0.1:1", srv.URL, "k")
+	p := newOpenCodeWithBase(t, "opencode", "go", srv.URL, "k")
 	sys := "be nice"
 	ch, err := p.StreamCompletion(context.Background(), &CompletionRequest{
 		RequestID: "r", UserID: "u", Model: "gpt-5.6-luna", MaxTokens: &maxTok,

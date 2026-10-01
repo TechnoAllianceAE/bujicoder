@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,7 +17,19 @@ const geminiAPIURL = "https://generativelanguage.googleapis.com/v1beta/models"
 // GeminiProvider implements the Provider interface for Google's Gemini API.
 type GeminiProvider struct {
 	apiKey string
-	client *http.Client
+	// baseURL is the models collection URL (default Google's). Override for
+	// gateways that re-host the Gemini wire format (e.g. OpenCode Zen's
+	// {base}/v1/models collection).
+	baseURL string
+	name    string
+	// bearer, when set, is also sent as Authorization (some gateways front
+	// the native API with bearer auth in addition to x-goog-api-key).
+	bearer string
+	// ExtraHeaders are sent on every request; RequestHeaders, when set, adds
+	// per-request headers and wins on conflict.
+	ExtraHeaders   map[string]string
+	RequestHeaders func(req *CompletionRequest) map[string]string
+	client         *http.Client
 }
 
 // NewGeminiProvider creates a new Gemini provider.
@@ -29,15 +42,36 @@ func NewGeminiProvider(apiKey string, timeout ...time.Duration) *GeminiProvider 
 		headerTimeout = timeout[0]
 	}
 	return &GeminiProvider{
-		apiKey: apiKey,
+		apiKey:  apiKey,
+		baseURL: geminiAPIURL,
+		name:    "google",
 		client: &http.Client{
 			Transport: sharedPooledTransport(headerTimeout),
 		},
 	}
 }
 
-// Name returns "google".
-func (g *GeminiProvider) Name() string { return "google" }
+// NewGeminiProviderWithEndpoint creates a Gemini-native provider pointed at a
+// custom models collection URL under a custom registry name. Used for
+// gateways that re-host the Gemini wire format (e.g. OpenCode Zen). bearer,
+// when non-empty, is additionally sent as Authorization.
+func NewGeminiProviderWithEndpoint(name, baseURL, apiKey, bearer string, timeout ...time.Duration) *GeminiProvider {
+	p := NewGeminiProvider(apiKey, timeout...)
+	if name != "" {
+		p.name = name
+	}
+	if b := strings.TrimRight(strings.TrimSpace(baseURL), "/"); b != "" {
+		p.baseURL = b
+	}
+	p.bearer = bearer
+	return p
+}
+
+// Name returns the provider's registry name ("google" by default).
+func (g *GeminiProvider) Name() string { return g.name }
+
+// APIKey returns the provider's API key.
+func (g *GeminiProvider) APIKey() string { return g.apiKey }
 
 // StreamCompletion sends a streaming request to the Gemini API.
 func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRequest) (<-chan StreamEvent, error) {
@@ -52,7 +86,7 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 	// net/http wraps transport failures in *url.Error, whose Error() prints the
 	// full URL, so a key in the query leaks into every log line and TUI error
 	// message on any network failure.
-	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse", geminiAPIURL, req.Model)
+	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse", g.baseURL, req.Model)
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
@@ -61,6 +95,17 @@ func (g *GeminiProvider) StreamCompletion(ctx context.Context, req *CompletionRe
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-goog-api-key", g.apiKey)
+	if g.bearer != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+g.bearer)
+	}
+	for k, v := range g.ExtraHeaders {
+		httpReq.Header.Set(k, v)
+	}
+	if g.RequestHeaders != nil {
+		for k, v := range g.RequestHeaders(req) {
+			httpReq.Header.Set(k, v)
+		}
+	}
 
 	resp, err := g.client.Do(httpReq)
 	if err != nil {
@@ -172,7 +217,7 @@ func (g *GeminiProvider) processStream(ctx context.Context, body io.ReadCloser, 
 	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024)
 
 	var usage UsageInfo
-	usage.Provider = "google"
+	usage.Provider = g.name
 
 	for scanner.Scan() {
 		line := scanner.Text()
