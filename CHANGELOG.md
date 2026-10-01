@@ -51,6 +51,12 @@ conventions.
   unsupported Anthropic-messages (`claude-*`) and Google-native (`gemini-*`)
   families. Verified live 2026-10-01: `opencode/gpt-5.6-luna` answers via
   BYOK Test Model.
+- **Zen Claude/messages and Gemini clients** (same day). `AnthropicProvider`
+  and `GeminiProvider` accept endpoint overrides plus per-request headers, so
+  `OpenCodeProvider` serves all four Zen protocols with official CLI headers.
+  Live 2026-10-01 the clients route correctly (auth passes, protocol
+  accepted); Zen answers `403 Model access is disabled` until the models are
+  enabled in the Zen workspace console — a console setting, not a code issue.
 - **`OpenAICompatConfig.RequestHeaders`**. An optional per-request header
   hook for OpenAI-compatible providers, applied after `ExtraHeaders`.
 - **`llm.OpenCodeClientHeaders` + endpoint builders** (`OpenCodeChatURL`,
