@@ -41,6 +41,7 @@ func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
 	if sessions[0] == "" || !strings.HasPrefix(sessions[0], "ses_") {
 		t.Fatalf("session header = %q, want ses_ prefix", sessions[0])
 	}
+	assertOpenCodeIDShape(t, "session", strings.TrimPrefix(sessions[0], "ses_"))
 	if sessions[0] != sessions[1] {
 		t.Errorf("session changed within one conversation: %q vs %q", sessions[0], sessions[1])
 	}
@@ -53,10 +54,32 @@ func TestOpenCodeSendsSessionAndUserAgent(t *testing.T) {
 	for i, id := range reqIDs {
 		if !strings.HasPrefix(id, "msg_") {
 			t.Errorf("x-opencode-request-id[%d] = %q, want msg_ prefix", i, id)
+		} else {
+			assertOpenCodeIDShape(t, "request-id", strings.TrimPrefix(id, "msg_"))
 		}
 	}
 	if len(reqIDs) == 2 && reqIDs[0] == reqIDs[1] {
 		t.Errorf("x-opencode-request-id reused across requests: %q", reqIDs[0])
+	}
+}
+
+// assertOpenCodeIDShape checks the CLI id payload shape: 12 lowercase hex
+// chars (snowflake timestamp) + 14 base62 chars, e.g.
+// f0959c456ffeQ7NLV6sEiokigu.
+func assertOpenCodeIDShape(t *testing.T, what, payload string) {
+	t.Helper()
+	const base62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	if len(payload) != 26 {
+		t.Fatalf("%s payload = %q, want 26 chars", what, payload)
+	}
+	for i, c := range payload {
+		if i < 12 {
+			if !strings.ContainsRune("0123456789abcdef", c) {
+				t.Fatalf("%s payload = %q, char %d not lowercase hex", what, payload, i)
+			}
+		} else if !strings.ContainsRune(base62, c) {
+			t.Fatalf("%s payload = %q, char %d not base62", what, payload, i)
+		}
 	}
 }
 

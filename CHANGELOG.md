@@ -25,7 +25,10 @@ conventions.
   `User-Agent: opencode/1.18.34 ai-sdk/provider-utils/4.0.40
   runtime/bun/1.3.14` plus `x-opencode-client: cli`, a fresh
   `x-opencode-request-id: msg_…` per call, and a stable `ses_…` session per
-  conversation. Zen endpoint layout is configurable without a code change:
+  conversation. Session/request IDs replicate the CLI's exact shape (12 hex
+  snowflake chars + 14 base62 chars, e.g.
+  `ses_f0959c456ffeQ7NLV6sEiokigu`), which the free-tier gate checks.
+  Zen endpoint layout is configurable without a code change:
   `OPENCODE_ZEN_BASE_URL`, `OPENCODE_GO_BASE_URL`, `OPENCODE_API_VERSION`
   (default `v1`), and `OPENCODE_USER_AGENT`. Verified 2026-10-01 that
   `/zen/v1/*` is the live gateway (the `/v2` API docs cover the CLI's local

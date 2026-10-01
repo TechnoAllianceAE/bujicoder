@@ -163,7 +163,7 @@ func opencodeSession(req *CompletionRequest) string {
 		for _, p := range m.Content {
 			if p.Type == "text" && p.Text != "" {
 				sum := sha256.Sum256([]byte(req.UserID + "\x00" + p.Text))
-				return "ses_" + hex.EncodeToString(sum[:12])
+				return "ses_" + openCodeIDPayload(sum[:])
 			}
 		}
 		break
@@ -171,20 +171,42 @@ func opencodeSession(req *CompletionRequest) string {
 	if req.RequestID != "" {
 		return req.RequestID
 	}
-	return "ses_anon"
+	return "ses_" + openCodeIDPayload(nil)
 }
 
-// newOpenCodeRequestID returns a CLI-shaped per-request id ("msg_" + 24
-// alphanumerics, e.g. msg_0f6a63bc3001rXUDQmbLzVC6Wg).
-func newOpenCodeRequestID() string {
+// openCodeIDPayload returns the 26-char payload of a CLI-shaped id: 12
+// lowercase hex chars (snowflake timestamp bits) followed by 14 base62 chars,
+// e.g. the "f0959c456ffeQ7NLV6sEiokigu" in "ses_f0959c456ffeQ7NLV6sEiokigu".
+// seed makes it deterministic per conversation (stable session for Zen routing
+// and prompt caching); nil seeds from fresh randomness.
+func openCodeIDPayload(seed []byte) string {
+	var entropy []byte
+	if len(seed) >= 20 {
+		entropy = seed
+	} else {
+		entropy = make([]byte, 20)
+		if _, err := rand.Read(entropy); err != nil {
+			sum := sha256.Sum256([]byte(time.Now().String()))
+			entropy = sum[:]
+		}
+	}
 	const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	b := make([]byte, 24)
-	if _, err := rand.Read(b); err != nil {
+	var sb strings.Builder
+	sb.Grow(14)
+	for _, b := range entropy[6:20] {
+		sb.WriteByte(alphabet[int(b)%len(alphabet)])
+	}
+	return hex.EncodeToString(entropy[:6]) + sb.String()
+}
+
+// newOpenCodeRequestID returns a CLI-shaped per-request id ("msg_" + 26-char
+// payload, e.g. msg_0f6a63bc3001rXUDQmbLzVC6Wg). Fresh randomness per call,
+// like the CLI.
+func newOpenCodeRequestID() string {
+	entropy := make([]byte, 20)
+	if _, err := rand.Read(entropy); err != nil {
 		sum := sha256.Sum256([]byte(time.Now().String()))
-		return "msg_" + hex.EncodeToString(sum[:12])
+		entropy = sum[:]
 	}
-	for i := range b {
-		b[i] = alphabet[int(b[i])%len(alphabet)]
-	}
-	return "msg_" + string(b)
+	return "msg_" + openCodeIDPayload(entropy)
 }
