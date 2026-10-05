@@ -1,6 +1,74 @@
 package llm
 
-import "testing"
+import (
+	"context"
+	"io"
+	"strings"
+	"testing"
+)
+
+func TestAnthropicStream_PreservesThinkingDeltas(t *testing.T) {
+	p := NewAnthropicProviderWithEndpoint("deepseek", "https://api.deepseek.com/anthropic", "test-key")
+	sse := `data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"Get the value first."}}
+
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"The value is 42."}}
+
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":12}}
+
+`
+	ch := make(chan StreamEvent, 3)
+	p.processStream(context.Background(), io.NopCloser(strings.NewReader(sse)), ch)
+	thought := <-ch
+	if thought.Delta == nil || !thought.Delta.IsReasoning || thought.Delta.Text != "Get the value first." {
+		t.Fatalf("thinking delta lost: %#v", thought)
+	}
+	text := <-ch
+	if text.Delta == nil || text.Delta.IsReasoning || text.Delta.Text != "The value is 42." {
+		t.Fatalf("text delta changed: %#v", text)
+	}
+	if ev := <-ch; ev.Complete == nil {
+		t.Fatalf("completion lost: %#v", ev)
+	}
+}
+
+func TestBuildRequest_DeepSeekIncompleteThinkingHistory(t *testing.T) {
+	tool := ContentPart{Type: "tool_call", ToolCallID: "t1", ToolName: "get_value", ArgumentsJSON: `{}`}
+	thought := ContentPart{Type: "reasoning", Reasoning: "Get the value first."}
+	for _, tc := range []struct {
+		name     string
+		endpoint string
+		history  []Message
+		tools    bool
+		disabled bool
+	}{
+		{"tool history missing thinking", "https://api.deepseek.com/anthropic", []Message{{Role: "assistant", Content: []ContentPart{tool}}}, true, true},
+		{"plain assistant history missing thinking", "https://api.deepseek.com/anthropic", []Message{{Role: "assistant", Content: []ContentPart{{Type: "text", Text: "Hello"}}}}, true, true},
+		{"complete thinking history", "https://api.deepseek.com/anthropic", []Message{{Role: "assistant", Content: []ContentPart{thought, tool}}}, true, false},
+		{"mixed history", "https://api.deepseek.com/anthropic", []Message{{Role: "assistant", Content: []ContentPart{thought, tool}}, {Role: "assistant", Content: []ContentPart{{Type: "text", Text: "Hello"}}}}, true, true},
+		{"no tools", "https://api.deepseek.com/anthropic", []Message{{Role: "assistant", Content: []ContentPart{tool}}}, false, false},
+		{"first turn", "https://api.deepseek.com/anthropic", []Message{{Role: "user", Content: []ContentPart{{Type: "text", Text: "Hello"}}}}, true, false},
+		{"native Anthropic", "https://api.anthropic.com", []Message{{Role: "assistant", Content: []ContentPart{tool}}}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := NewAnthropicProviderWithEndpoint("custom", tc.endpoint, "test-key")
+			req := &CompletionRequest{Model: "deepseek-v4-pro", Messages: tc.history}
+			if tc.tools {
+				req.Tools = []ToolDefinition{{Name: "get_value", InputSchema: map[string]any{"type": "object"}}}
+			}
+			body := p.buildRequest(req)
+			thinking, present := body["thinking"]
+			if present != tc.disabled {
+				t.Fatalf("thinking = %#v, want disabled=%v", thinking, tc.disabled)
+			}
+			if present && thinking.(map[string]any)["type"] != "disabled" {
+				t.Fatalf("thinking = %#v, want disabled", thinking)
+			}
+			if len(messagesOf(t, body)) != len(tc.history) {
+				t.Fatal("conversation history was lost")
+			}
+		})
+	}
+}
 
 // Thinking-mode upstreams reject requests whose assistant history dropped the
 // thinking blocks the model produced (DeepSeek /anthropic: "The

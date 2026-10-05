@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -152,6 +153,8 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 	}
 
 	var messages []map[string]any
+	endpoint, _ := url.Parse(a.apiURL)
+	deepSeekTools := endpoint != nil && strings.EqualFold(endpoint.Hostname(), "api.deepseek.com") && len(req.Tools) > 0
 	// Anthropic has no "tool" role — tool results are tool_result blocks inside
 	// a user message, and all results for one assistant turn must be grouped in
 	// a single user message. The gateway's canonical internal form is OpenAI-
@@ -165,6 +168,21 @@ func (a *AnthropicProvider) buildRequest(req *CompletionRequest) map[string]any 
 		}
 	}
 	for _, m := range req.Messages {
+		// DeepSeek defaults to thinking mode and requires thinking on every
+		// assistant turn when tools are present. Cross-provider history may
+		// lack it; disable thinking for this request rather than invent it.
+		if deepSeekTools && m.Role == "assistant" {
+			hasThinking := false
+			for _, part := range m.Content {
+				if part.Type == "reasoning" && part.Reasoning != "" {
+					hasThinking = true
+					break
+				}
+			}
+			if !hasThinking {
+				body["thinking"] = map[string]any{"type": "disabled"}
+			}
+		}
 		if m.Role == "tool" {
 			for _, part := range m.Content {
 				if part.Type != "tool_result" {
@@ -330,6 +348,11 @@ func (a *AnthropicProvider) processStream(ctx context.Context, body io.ReadClose
 			delta, _ := event["delta"].(map[string]any)
 			deltaType, _ := delta["type"].(string)
 			switch deltaType {
+			case "thinking_delta":
+				thinking, _ := delta["thinking"].(string)
+				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: thinking, IsReasoning: true}}) {
+					return
+				}
 			case "text_delta":
 				text, _ := delta["text"].(string)
 				if !sendEvent(ctx, ch, StreamEvent{Delta: &DeltaEvent{Text: text}}) {
