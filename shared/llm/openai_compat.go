@@ -131,6 +131,9 @@ func (p *openAICompatProvider) buildRequest(req *CompletionRequest) map[string]a
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
 	}
+	if req.ResponseFormat != nil {
+		body["response_format"] = responseFormatBody(req.ResponseFormat)
+	}
 
 	var messages []map[string]any
 
